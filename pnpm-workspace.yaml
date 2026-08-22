@@ -1,3 +1,16 @@
 packages:
   - 'apps/*'
   - 'packages/*'
+
+# Build scripts we have deliberately NOT approved.
+#
+# pnpm 10 blocks a dependency's postinstall by default and then exits 0 with a warning, so an
+# unrecorded decision here looks identical to nobody having noticed. Listing it makes the choice
+# explicit and silences the prompt.
+#
+# msgpackr-extract is an optional native accelerator for msgpackr, which BullMQ uses to serialize
+# job payloads. msgpackr falls back to a pure-JavaScript path without it, so the only cost is
+# throughput — and the benefit is that no developer needs a native build toolchain to install this
+# repo. Revisit if job serialization ever shows up in a profile.
+ignoredBuiltDependencies:
+  - msgpackr-extract

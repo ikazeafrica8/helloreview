@@ -15,7 +15,7 @@ its own acceptance criteria. `pnpm verify` must pass before every commit.
 - [x] T2 — Lint, format, and the `pnpm verify` gate
 - [x] T3 — Local services via Docker Compose
 - [x] T4 — NestJS `api` app boot and health endpoint
-- [ ] T5 — `worker` app boot and queue connection
+- [x] T5 — `worker` app boot and queue connection
 - [ ] T6 — Module-boundary lint rule
 - [ ] T7 — Test harness: Vitest and Testcontainers
 - [ ] T8 — Config and secrets validation
@@ -340,20 +340,60 @@ drains in-flight jobs. No processors yet.
 
 **Acceptance criteria:**
 
-- [ ] `pnpm dev:worker` connects to Redis and logs a ready state
-- [ ] SIGTERM drains in-flight jobs before exit rather than dropping them
-- [ ] Queue names are defined in one shared constant, not string literals at call sites
+- [x] `pnpm dev:worker` connects to Redis and logs a ready state — verified by hand:
+      `[worker] connected to redis` then `[worker] ready — 0 processors registered`
+- [x] SIGTERM drains in-flight jobs before exit rather than dropping them — see correction 2 for how
+      this was proven without a deliverable signal
+- [x] Queue names are defined in one shared constant, not string literals at call sites
 
 **Verification:**
 
-- [ ] Tests pass: `pnpm test:unit`
-- [ ] Manual check: enqueue a no-op job, send SIGTERM mid-flight, confirm it completes
+- [x] Tests pass: `pnpm verify` — 54/54, exit 0
+- [x] The drain test **bites**: swapping `worker.close()` for `close(true)` makes it fail in 472ms
+      with "stop() returned before the in-flight job completed — jobs are being dropped". A test that
+      passes either way would prove nothing
+- [x] Boot path covered separately from the runtime — a regression test exists because the first
+      `verifyRedis` failed against a _healthy_ Redis and every runtime test still passed
+- [x] Refusing to start against an unreachable Redis is asserted, not just hoped for
+- [x] The test process exits on its own, which is how the connection-ownership bug in correction 4
+      was found
 
 **Dependencies:** T1, T3
 
-**Files likely touched:** `apps/worker/src/main.ts`, `apps/worker/src/queues.ts`
+**Files touched:** `packages/contracts/src/{queues.ts,index.ts}`, `apps/worker/{package.json}`,
+`apps/worker/src/{main.ts,runtime.ts}`, `apps/worker/src/config/{env-source.ts,load-worker-config.ts}`,
+`apps/worker/src/processors/index.ts`, `eslint.config.js`, `pnpm-workspace.yaml`, `package.json`,
+`tests/toolchain/worker-contract.test.mjs`
 
-**Estimated scope:** S
+> **Four corrections to this task as written.**
+>
+> 1. **The queue registry is in `packages/contracts`, not `apps/worker/src/queues.ts`.** The worker is
+>    only the consumer; the api is the PRODUCER — T43's outbox enqueues inside the same transaction as
+>    the state change — and `apps/api` cannot import from `apps/worker`. A name known to only one side
+>    of a queue is not a contract. The `queueNames` lint message was updated to match.
+> 2. **SIGTERM cannot be delivered on Windows, so the criterion was proven a different way.** Measured
+>    in T4: `child.kill(sig)` on win32 maps to `TerminateProcess` for every signal. The test therefore
+>    calls the same `stop()` the signal handler calls, with a job genuinely in flight, and asserts it
+>    ran to completion. `worker.close()` (no argument) waits for in-flight jobs; `close(true)` abandons
+>    them — that distinction _is_ the criterion, so it is deliberately not parameterized. What stays
+>    unverified here is signal→handler delivery, which is Node's concern and works on POSIX.
+> 3. **A worker config module was needed and was not in the file list**, for the same reason as T4.
+>    It duplicates the api's twelve lines: `apps/worker` cannot import from `apps/api`, and inventing a
+>    shared package the SPEC.md §3.1 capability map does not describe would be worse than the
+>    duplication. **T8 consolidates both.** The lint exemption is keyed on the filename
+>    `**/config/env-source.ts`, so it already covers both without widening to a folder.
+> 4. **A connection-ownership bug was found and fixed during verification.** Passing ioredis
+>    _instances_ to BullMQ leaks a socket on every `close()`, because BullMQ only closes connections it
+>    created itself — the test suite hung rather than exiting. Fixed by passing connection _options_
+>    so BullMQ owns the lifecycle. `--test-force-exit` would have hidden this; the hang was the signal.
+
+> **Also decided here:** `msgpackr-extract` (an optional native accelerator for BullMQ's job
+> serialization) is recorded in `pnpm-workspace.yaml` as a deliberately un-approved build. msgpackr
+> falls back to pure JavaScript, so the only cost is throughput, and no developer needs a native
+> toolchain to install this repo. pnpm 10 exits 0 on a blocked build script, so an unrecorded decision
+> is indistinguishable from nobody noticing.
+
+**Estimated scope:** S → **M** (11 files; the config module and shared registry were not anticipated)
 
 ---
 

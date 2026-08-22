@@ -209,7 +209,8 @@ const SELECTORS = {
   queueNames: [
     {
       selector: 'NewExpression[callee.name=/^(Queue|Worker|QueueEvents|FlowProducer)$/][arguments.0.type="Literal"]',
-      message: 'Queue names live in one shared constant in apps/worker/src/queues.ts (T5).',
+      message:
+        'Queue names live in the QUEUE_NAMES registry in packages/contracts (T5) — the api is the producer for the T43 outbox and cannot import from apps/worker.',
     },
   ],
 
@@ -469,11 +470,11 @@ export default defineConfig([
     },
   },
 
-  // The one file permitted to read process.env (T4; T8 keeps this exemption when it replaces the
-  // loader's internals with a Zod schema).
+  // The only files permitted to read process.env — one per deployable (T4, T5). T8 keeps this
+  // exemption when it merges the two loaders and replaces their internals with a Zod schema.
   //
-  // Scoped to a single FILE, not the config folder: env-source.ts exists precisely so the impure
-  // read is one line, and widening this to `config/**` would quietly re-open process.env to the
+  // Scoped to a FILENAME, not the config folder: env-source.ts exists precisely so the impure read
+  // is one line, and widening this to `config/**` would quietly re-open process.env to the
   // validation code beside it.
   //
   // Note the exemption is composed with restrict() and re-lists every other selector by name.
@@ -481,7 +482,7 @@ export default defineConfig([
   // focused-test, outbox and queue-name conventions for this file too — overriding the rule
   // REPLACES its selector array rather than merging with it.
   {
-    files: ['**/platform-core/config/env-source.ts'],
+    files: ['**/config/env-source.ts'],
     rules: {
       'no-restricted-syntax': restrict(...BASE_SELECTORS.filter((key) => key !== 'processEnv')),
     },
