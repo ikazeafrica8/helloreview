@@ -23,10 +23,13 @@ its own acceptance criteria. `pnpm verify` must pass before every commit.
 
 ### Checkpoint A — Foundation
 
-- [ ] `pnpm verify` passes on a clean clone
-- [ ] `pnpm services:up && pnpm db:reset && pnpm dev` brings up api, worker, and admin
-- [ ] The boundary lint rule rejects a deliberately invalid cross-module import
-- [ ] Review with human before proceeding
+- [x] `pnpm verify` passes on a clean clone — verified by actually cloning HEAD into an empty
+      directory with no `.env` and nothing built: install, then 45/45, exit 0
+- [x] `pnpm services:up && pnpm db:reset && pnpm dev` brings up api and worker — **not admin**, which
+      is Milestone 3 work and does not exist yet. Health answered 200 while `pnpm dev` was running
+- [x] The boundary lint rule rejects a deliberately invalid cross-module import — both a deep import
+      past a module's index and an undeclared edge, each naming both modules
+- [ ] **Review with human before proceeding** ← the gate
 
 ### Phase 1 — Observability and audit
 
