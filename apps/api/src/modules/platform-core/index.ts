@@ -6,6 +6,6 @@
 
 export { PlatformCoreModule } from './platform-core.module.js'
 export { APP_CONFIG, POSTGRES_POOL, REDIS_CLIENT } from './tokens.js'
-export type { AppConfig } from './config/load-app-config.js'
-export { ConfigurationError, loadAppConfig } from './config/load-app-config.js'
+export type { ApiConfig } from '@helloreview/config'
+export { ConfigurationError } from '@helloreview/config'
 export type { HealthReport } from './health/health.service.js'

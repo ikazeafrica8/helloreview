@@ -18,7 +18,7 @@ its own acceptance criteria. `pnpm verify` must pass before every commit.
 - [x] T5 — `worker` app boot and queue connection
 - [x] T6 — Module-boundary lint rule
 - [x] T7 — Test harness: Vitest and Testcontainers
-- [ ] T8 — Config and secrets validation
+- [x] T8 — Config and secrets validation
 - [ ] T9 — Drizzle setup and initial migration
 
 ### Checkpoint A — Foundation
@@ -539,20 +539,47 @@ logged.
 
 **Acceptance criteria:**
 
-- [ ] Invalid or missing required config aborts startup with a message naming every offending key
-- [ ] Config is injectable as a typed object; `process.env` access outside the loader fails lint
-- [ ] Secret-valued keys are marked in the schema and redacted from any diagnostic output
+- [x] Invalid or missing required config aborts startup with a message naming every offending key
+- [x] Config is injectable as a typed object; `process.env` access outside the loader fails lint
+- [x] Secret-valued keys are marked in the schema and redacted from any diagnostic output
 
 **Verification:**
 
-- [ ] Tests pass: `pnpm test:unit`
-- [ ] Manual check: unset a required variable and confirm the failure message names it and prints no value
+- [x] Tests pass: `pnpm verify` — 45 unit tests, exit 0
+- [x] Manual check: with all three variables unset, the api aborts and prints all three at once —
+      `DATABASE_URL is not set. Copy .env.example to .env`, and the same for `REDIS_URL` and `API_PORT`
+- [x] Manual check: no message ever contains a value. Zod's defaults quote the input, which for
+      `DATABASE_URL` would print a password into the startup log of a process that has not started;
+      problems are assembled from the key and the rule only
+- [x] Manual check: both deployables boot on the shared loader — worker reports ready, api answers
+      `/health` with 200
 
-**Dependencies:** T4
+**Dependencies:** ~~T4~~ **T1**. T4 could not wait for T8: the health endpoint needs `DATABASE_URL`
+and `REDIS_URL`, so T4 and T5 each carried a minimal loader. The stated direction was backwards.
 
-**Files likely touched:** `apps/api/src/modules/platform-core/config/*`, `.env.example`
+**Files touched:** `packages/config/` (new: `package.json`, `tsconfig.json`, `src/env-source.ts`,
+`src/schema.ts`, `src/load.ts`, `src/index.ts`), `apps/api/package.json`,
+`apps/api/src/modules/platform-core/{platform-core.module.ts,index.ts}`, `apps/api/src/main.ts`,
+`apps/worker/{package.json,src/main.ts}`, `eslint.config.js`, `tests/unit/config-loaders.test.ts`,
+and the two per-app config folders (deleted)
 
-**Estimated scope:** S
+> **Three decisions worth recording.**
+>
+> 1. **Shared config lives in `packages/config`, a new package — and that is a gap in SPEC.md §5, not
+>    a whim.** §3.1 assigns configuration to `platform-core`; §5 says modules live under
+>    `apps/api/src/modules/`. Neither says where a module needed by TWO deployables belongs, and
+>    `apps/worker` cannot import from `apps/api`. T4 and T5 each carried a copy as a stopgap; this
+>    package removes the duplication. **§5 should gain a sentence about shared modules.**
+> 2. **The worker schema is `.pick()`ed from the api's, not written twice.** A copy would let the
+>    `REDIS_URL` rule drift between deployables. The worker never reads `API_PORT`, and a worker that
+>    refuses to start over a value it does not use is a confusing failure for whoever is on call.
+> 3. **Secrets are an explicit `SECRET_KEYS` set, not schema metadata.** This list is a security
+>    control and should be readable at a glance by someone auditing what the platform can leak, rather
+>    than reconstructed by walking a schema. Redaction replaces the value wholesale — a truncated
+>    prefix still leaks scheme, host and usually username, and "only the first few characters" is how
+>    credentials reach a log aggregator.
+
+**Estimated scope:** S → **M** (a new package, and both deployables rewired)
 
 ---
 

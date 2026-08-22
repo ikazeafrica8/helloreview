@@ -7,7 +7,7 @@ import { Logger } from '@nestjs/common'
 import { NestFactory } from '@nestjs/core'
 import { AppModule } from './app.module.js'
 import { APP_CONFIG } from './modules/platform-core/index.js'
-import { ConfigurationError, type AppConfig } from './modules/platform-core/index.js'
+import { ConfigurationError, type ApiConfig } from './modules/platform-core/index.js'
 
 const bootstrap = async (): Promise<void> => {
   const app = await NestFactory.create(AppModule, { logger: ['error', 'warn', 'log'] })
@@ -16,7 +16,7 @@ const bootstrap = async (): Promise<void> => {
   // and Redis connection are abandoned rather than closed.
   app.enableShutdownHooks()
 
-  const config = app.get<AppConfig>(APP_CONFIG)
+  const config = app.get<ApiConfig>(APP_CONFIG)
 
   // Loopback only. Binding 0.0.0.0 in development exposes the service to whatever network the
   // machine has joined, and this one talks to a database holding participant data (PRD §21.3).

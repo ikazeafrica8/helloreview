@@ -1,23 +1,24 @@
-// Unit tier: the configuration loaders, exercised in-process.
+// Unit tier: the shared configuration loader (T8).
 //
-// These are the first tests that import application SOURCE rather than spawning a built process,
-// which is what the unit tier exists for — and the only kind v8 coverage can actually observe.
-// Both loaders are pure functions of their input, so no environment is touched here.
-//
-// Importing .ts directly is safe for these two files specifically: they contain no decorators, so
-// esbuild's missing emitDecoratorMetadata (see vitest.config.ts) does not apply.
+// Both loaders are pure functions of their input, so nothing here touches the environment. These
+// import application SOURCE rather than a compiled process, which is what the unit tier is for —
+// and the only kind of test v8 coverage can observe.
 
 import { test, describe, expect } from 'vitest'
-import { loadAppConfig, ConfigurationError } from '../../apps/api/src/modules/platform-core/config/load-app-config.js'
-import { loadWorkerConfig } from '../../apps/worker/src/config/load-worker-config.js'
+import {
+  loadApiConfig,
+  loadWorkerConfig,
+  redactEnvironment,
+  ConfigurationError,
+  isSecret,
+} from '../../packages/config/src/index.js'
 
 /**
- * Run `body`, requiring it to throw a ConfigurationError, and return it narrowed.
+ * Run `body`, requiring a ConfigurationError, and return it narrowed.
  *
- * Narrowing via instanceof rather than `catch (e) { (e as ConfigurationError) }`: the cast is
- * exactly what @typescript-eslint/no-unsafe-type-assertion forbids, and the ban is right — a cast
- * here would silently pass if the loader ever threw something else, which is the case the test is
- * supposed to catch.
+ * instanceof rather than `catch (e) { e as ConfigurationError }`: the cast is what
+ * @typescript-eslint/no-unsafe-type-assertion forbids, and the ban is right — a cast would pass
+ * silently if the loader ever threw something else, which is the case worth catching.
  */
 const expectConfigurationError = (body: () => unknown): ConfigurationError => {
   try {
@@ -35,9 +36,9 @@ const VALID = {
   API_PORT: '13000',
 }
 
-describe('loadAppConfig', () => {
+describe('loadApiConfig', () => {
   test('returns a frozen, typed configuration when the environment is complete', () => {
-    const config = loadAppConfig(VALID)
+    const config = loadApiConfig(VALID)
 
     expect(config.databaseUrl).toBe(VALID.DATABASE_URL)
     expect(config.redisUrl).toBe(VALID.REDIS_URL)
@@ -48,27 +49,31 @@ describe('loadAppConfig', () => {
 
   test('reports EVERY problem at once, not just the first', () => {
     // Fixing configuration one error per restart is the small friction that makes people copy
-    // values around until it works. This is the behaviour T8 must preserve.
-    const { problems } = expectConfigurationError(() => loadAppConfig({}))
+    // values around until something works.
+    const { problems } = expectConfigurationError(() => loadApiConfig({}))
 
     expect(problems).toHaveLength(3)
-    expect(problems.join('\n')).toMatch(/DATABASE_URL/)
-    expect(problems.join('\n')).toMatch(/REDIS_URL/)
-    expect(problems.join('\n')).toMatch(/API_PORT/)
+    const joined = problems.join('\n')
+    expect(joined).toMatch(/DATABASE_URL/)
+    expect(joined).toMatch(/REDIS_URL/)
+    expect(joined).toMatch(/API_PORT/)
   })
 
-  test('never echoes the offending value, because a malformed URL still carries a password', () => {
+  test('never echoes a value, because a malformed URL still carries a password', () => {
+    // Zod's default messages quote the input. For DATABASE_URL that would print a password into the
+    // startup log of a process that has not started yet (SPEC.md §21.4).
     const secret = 'sup3rsecret'
-    const error = expectConfigurationError(() => loadAppConfig({ ...VALID, DATABASE_URL: `not-a-url-${secret}` }))
+    const error = expectConfigurationError(() => loadApiConfig({ ...VALID, DATABASE_URL: `bad-${secret}` }))
     expect(error.message).not.toContain(secret)
   })
 
   test('rejects a URL that parses but can never connect', () => {
-    // `new URL('redis://')` succeeds — WHATWG allows a non-special scheme with an empty host — so
-    // a bare try/catch around new URL() accepts values that fail only at connect time.
-    expect(() => loadAppConfig({ ...VALID, DATABASE_URL: 'nonsense://' })).toThrow(ConfigurationError)
-    expect(() => loadAppConfig({ ...VALID, DATABASE_URL: 'postgres://' })).toThrow(ConfigurationError)
-    expect(() => loadAppConfig({ ...VALID, REDIS_URL: 'http://127.0.0.1:16379' })).toThrow(ConfigurationError)
+    // `new URL('nonsense://')` succeeds — WHATWG allows a non-special scheme with an empty host — so
+    // a bare url() check accepts values that fail only at connect time. This was a real bug in the
+    // loaders T8 replaced.
+    expect(() => loadApiConfig({ ...VALID, DATABASE_URL: 'nonsense://' })).toThrow(ConfigurationError)
+    expect(() => loadApiConfig({ ...VALID, DATABASE_URL: 'postgres://' })).toThrow(ConfigurationError)
+    expect(() => loadApiConfig({ ...VALID, REDIS_URL: 'http://127.0.0.1:16379' })).toThrow(ConfigurationError)
   })
 
   test.each([
@@ -77,25 +82,54 @@ describe('loadAppConfig', () => {
     ['above the port range', '70000'],
     ['empty', ''],
   ])('rejects an API_PORT that is %s', (_label, value) => {
-    expect(() => loadAppConfig({ ...VALID, API_PORT: value })).toThrow(ConfigurationError)
+    expect(() => loadApiConfig({ ...VALID, API_PORT: value })).toThrow(ConfigurationError)
   })
 
   test('accepts the boundary ports', () => {
-    expect(loadAppConfig({ ...VALID, API_PORT: '1' }).apiPort).toBe(1)
-    expect(loadAppConfig({ ...VALID, API_PORT: '65535' }).apiPort).toBe(65535)
+    expect(loadApiConfig({ ...VALID, API_PORT: '1' }).apiPort).toBe(1)
+    expect(loadApiConfig({ ...VALID, API_PORT: '65535' }).apiPort).toBe(65535)
   })
 })
 
 describe('loadWorkerConfig', () => {
-  test('needs only REDIS_URL', () => {
+  test('needs only REDIS_URL, because the worker never reads the others', () => {
+    // A worker that refuses to start over a value it does not use is a confusing failure on call.
     const config = loadWorkerConfig({ REDIS_URL: VALID.REDIS_URL })
     expect(config.redisUrl).toBe(VALID.REDIS_URL)
     expect(Object.isFrozen(config)).toBe(true)
   })
 
-  test('rejects a missing or malformed REDIS_URL without echoing it', () => {
+  test('applies the same REDIS_URL rule as the api, because the schema is picked not copied', () => {
+    expect(() => loadWorkerConfig({ REDIS_URL: 'http://127.0.0.1:16379' })).toThrow(ConfigurationError)
+    expect(() => loadWorkerConfig({ REDIS_URL: 'redis://' })).toThrow(ConfigurationError)
     expect(() => loadWorkerConfig({})).toThrow(/REDIS_URL is not set/)
-    expect(() => loadWorkerConfig({ REDIS_URL: 'nonsense://' })).toThrow(/REDIS_URL/)
-    expect(() => loadWorkerConfig({ REDIS_URL: '   ' })).toThrow(/REDIS_URL is not set/)
+  })
+})
+
+describe('redaction', () => {
+  test('every credential-bearing key is marked secret', () => {
+    expect(isSecret('DATABASE_URL')).toBe(true)
+    expect(isSecret('REDIS_URL')).toBe(true)
+    expect(isSecret('API_PORT')).toBe(false)
+  })
+
+  test('secrets are replaced wholesale, never truncated', () => {
+    const redacted = redactEnvironment(VALID)
+
+    // A prefix still leaks the scheme, host and usually the username — "it is only the first few
+    // characters" is how credentials reach a log aggregator.
+    expect(redacted.DATABASE_URL).toBe('[redacted]')
+    expect(redacted.REDIS_URL).toBe('[redacted]')
+    expect(JSON.stringify(redacted)).not.toContain('pw')
+    expect(JSON.stringify(redacted)).not.toContain('127.0.0.1:15432')
+
+    // Non-secret values stay readable, which is the entire point of redacting selectively.
+    expect(redacted.API_PORT).toBe('13000')
+  })
+
+  test('absent keys are omitted rather than reported as redacted', () => {
+    // Printing "[redacted]" for a variable that is simply not set would send someone hunting for a
+    // value that does not exist.
+    expect(redactEnvironment({ API_PORT: '13000' })).toEqual({ API_PORT: '13000' })
   })
 })

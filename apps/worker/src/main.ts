@@ -1,7 +1,6 @@
 import { Redis } from 'ioredis'
 import { ALL_QUEUE_NAMES } from '@helloreview/contracts'
-import { readEnvironment } from './config/env-source.js'
-import { ConfigurationError, loadWorkerConfig } from './config/load-worker-config.js'
+import { readEnvironment, loadWorkerConfig, ConfigurationError } from '@helloreview/config'
 import { HANDLERS } from './processors/index.js'
 import { createWorkerRuntime } from './runtime.js'
 

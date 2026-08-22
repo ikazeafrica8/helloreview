@@ -490,7 +490,7 @@ export default defineConfig([
   // focused-test, outbox and queue-name conventions for this file too — overriding the rule
   // REPLACES its selector array rather than merging with it.
   {
-    files: ['**/config/env-source.ts'],
+    files: ['**/env-source.ts'],
     rules: {
       'no-restricted-syntax': restrict(...BASE_SELECTORS.filter((key) => key !== 'processEnv')),
     },

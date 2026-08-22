@@ -1,8 +1,7 @@
 import { Global, Inject, Logger, Module, type OnApplicationShutdown } from '@nestjs/common'
 import { Pool } from 'pg'
 import { Redis } from 'ioredis'
-import { readEnvironment } from './config/env-source.js'
-import { loadAppConfig, type AppConfig } from './config/load-app-config.js'
+import { readEnvironment, loadApiConfig, type ApiConfig } from '@helloreview/config'
 import { APP_CONFIG, POSTGRES_POOL, REDIS_CLIENT } from './tokens.js'
 import { HealthController } from './health/health.controller.js'
 import { HealthService } from './health/health.service.js'
@@ -24,12 +23,12 @@ const PROBE_TIMEOUT_MS = 2_000
       provide: APP_CONFIG,
       // The only call to readEnvironment() in the application. loadAppConfig is pure and takes the
       // environment as an argument, so it is testable without process.env.
-      useFactory: (): AppConfig => loadAppConfig(readEnvironment()),
+      useFactory: (): ApiConfig => loadApiConfig(readEnvironment()),
     },
     {
       provide: POSTGRES_POOL,
       inject: [APP_CONFIG],
-      useFactory: (config: AppConfig): Pool => {
+      useFactory: (config: ApiConfig): Pool => {
         const pool = new Pool({
           connectionString: config.databaseUrl,
           // Bounded so an unreachable database fails the health probe rather than hanging it.
@@ -47,7 +46,7 @@ const PROBE_TIMEOUT_MS = 2_000
     {
       provide: REDIS_CLIENT,
       inject: [APP_CONFIG],
-      useFactory: (config: AppConfig): Redis => {
+      useFactory: (config: ApiConfig): Redis => {
         const redis = new Redis(config.redisUrl, {
           connectTimeout: PROBE_TIMEOUT_MS,
           // The offline queue stays ENABLED on purpose. Disabling it makes a command fail the
