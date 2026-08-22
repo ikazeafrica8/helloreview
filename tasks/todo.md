@@ -11,7 +11,7 @@ its own acceptance criteria. `pnpm verify` must pass before every commit.
 
 ### Phase 0 — Foundation
 - [x] T1 — Workspace and toolchain scaffold
-- [ ] T2 — Lint, format, and the `pnpm verify` gate
+- [x] T2 — Lint, format, and the `pnpm verify` gate
 - [ ] T3 — Local services via Docker Compose
 - [ ] T4 — NestJS `api` app boot and health endpoint
 - [ ] T5 — `worker` app boot and queue connection
@@ -156,20 +156,40 @@ task establishes only the structure and compiler contract.
 
 **Description:** Configure ESLint and Prettier, and wire the `pnpm verify` composite script that
 SPEC.md §8 requires before every commit. `verify` runs typecheck, lint, unit tests, and transition
-tests; the last two are no-ops until T7.
+tests; the last two announce themselves as pending until T7 (see the correction below).
 
 **Acceptance criteria:**
-- [ ] `pnpm lint` and `pnpm format` run across all workspaces
-- [ ] ESLint rejects `as` casts applied to values typed `unknown` from external sources
-- [ ] `pnpm verify` chains typecheck → lint → test:unit → test:transitions and fails on any non-zero exit
+- [x] `pnpm lint` and `pnpm format` run across all workspaces — one root ESLint invocation, so
+      `tests/`, `tools/` and root config files (which belong to no workspace) are covered too
+- [x] ESLint rejects `as` casts applied to values typed `unknown` from external sources —
+      proven behaviourally, not by config inspection: a real fixture is linted and must be rejected
+      by `@typescript-eslint/no-unsafe-type-assertion`
+- [x] `pnpm verify` chains typecheck → lint → test:unit → test:transitions and fails on any non-zero exit
 
 **Verification:**
-- [ ] `pnpm verify` exits 0 on the clean scaffold
-- [ ] Manual check: introduce a lint error and confirm `pnpm verify` fails
+- [x] `pnpm verify` exits 0 on the clean scaffold
+- [x] `pnpm test:toolchain` — 19/19 passing
+- [x] Manual check: a deliberate `as`-cast violation makes `pnpm verify` exit 1, name the rule, and
+      short-circuit *before* the test tiers run
+- [x] Manual check: `tools/pending-tier.mjs` expires correctly — exit 1 once a vitest config exists,
+      exit 0 with a visible notice before that, exit 2 on an unknown tier name
 
 **Dependencies:** T1
 
-**Files likely touched:** `eslint.config.js`, `.prettierrc`, `package.json`
+**Files touched:** `eslint.config.js`, `.prettierrc`, `.prettierignore`, `tsconfig.json` (new root
+config), `tools/pending-tier.mjs`, `package.json`, `pnpm-lock.yaml`,
+`tests/toolchain/lint-contract.test.mjs`
+
+> **Two corrections to this task as written.**
+>
+> 1. *"the last two are no-ops until T7"* was wrong to accept. A tier that exits 0 without running
+>    anything makes the gate report success for work nobody has done. `tools/pending-tier.mjs`
+>    instead prints a notice saying the gate is green because the tier is empty, and **fails** once
+>    it detects Vitest in the tree — so the placeholder cannot outlive T7.
+> 2. The file list omitted `.prettierignore` (without it `pnpm format` rewrites `pnpm-lock.yaml`)
+>    and a root `tsconfig.json`. The latter is not optional: under `projectService`, a `.ts` file no
+>    tsconfig includes is a hard parsing error rather than a skipped file, so `tests/` and `tools/`
+>    need coverage before T7 and T9 add TypeScript there.
 
 **Estimated scope:** S
 

@@ -5,16 +5,29 @@
   "description": "HelloReview Reviewer Campaign Automation Platform",
   "packageManager": "pnpm@10.28.0",
   "engines": {
-    "node": ">=22"
+    "node": "^22.13.0 || >=24"
   },
   "type": "module",
   "scripts": {
     "build": "turbo run build",
     "typecheck": "turbo run typecheck",
-    "test:toolchain": "node --test \"tests/toolchain/**/*.test.mjs\""
+    "lint": "eslint . --max-warnings=0",
+    "lint:fix": "eslint . --fix --max-warnings=0",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test:toolchain": "node --test \"tests/toolchain/**/*.test.mjs\"",
+    "test:unit": "node tools/pending-tier.mjs test:unit && pnpm run test:toolchain",
+    "test:transitions": "node tools/pending-tier.mjs test:transitions",
+    "verify": "pnpm run typecheck && pnpm run lint && pnpm run test:unit && pnpm run test:transitions"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.9.0",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^17.11.0",
+    "prettier": "^3.9.6",
     "turbo": "^2.5.0",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "typescript-eslint": "^8.67.0"
   }
 }
