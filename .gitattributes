@@ -1,0 +1,13 @@
+# Store and check out text files with LF everywhere. Without this, Windows
+# checkouts introduce CRLF and every cross-platform diff is noise.
+* text=auto eol=lf
+
+# Binary assets git must not touch.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.pdf binary
+*.woff binary
+*.woff2 binary

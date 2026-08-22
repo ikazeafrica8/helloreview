@@ -1,0 +1,20 @@
+{
+  "name": "helloreview",
+  "version": "0.0.0",
+  "private": true,
+  "description": "HelloReview Reviewer Campaign Automation Platform",
+  "packageManager": "pnpm@10.28.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "type": "module",
+  "scripts": {
+    "build": "turbo run build",
+    "typecheck": "turbo run typecheck",
+    "test:toolchain": "node --test \"tests/toolchain/**/*.test.mjs\""
+  },
+  "devDependencies": {
+    "turbo": "^2.5.0",
+    "typescript": "^5.7.0"
+  }
+}

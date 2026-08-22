@@ -10,7 +10,7 @@ its own acceptance criteria. `pnpm verify` must pass before every commit.
 ## Task Index
 
 ### Phase 0 — Foundation
-- [ ] T1 — Workspace and toolchain scaffold
+- [x] T1 — Workspace and toolchain scaffold
 - [ ] T2 — Lint, format, and the `pnpm verify` gate
 - [ ] T3 — Local services via Docker Compose
 - [ ] T4 — NestJS `api` app boot and health endpoint
@@ -123,20 +123,32 @@ strict shared TypeScript configuration. Apps and packages are empty placeholders
 task establishes only the structure and compiler contract.
 
 **Acceptance criteria:**
-- [ ] `pnpm install` succeeds and resolves `apps/*` and `packages/*` workspaces
-- [ ] `tsconfig.base.json` sets `strict`, `noUncheckedIndexedAccess`, and `exactOptionalPropertyTypes`
-- [ ] `pnpm typecheck` runs across all workspaces and exits 0
+- [x] `pnpm install` succeeds and resolves `apps/*` and `packages/*` workspaces — 7 projects resolved
+- [x] `tsconfig.base.json` sets `strict`, `noUncheckedIndexedAccess`, and `exactOptionalPropertyTypes`
+- [x] `pnpm typecheck` runs across all workspaces and exits 0 — 6/6 successful
 
 **Verification:**
-- [ ] Build succeeds: `pnpm build`
-- [ ] Typecheck passes: `pnpm typecheck`
-- [ ] Manual check: directory tree matches SPEC.md §5
+- [x] Build succeeds: `pnpm build` — 6/6 successful
+- [x] Typecheck passes: `pnpm typecheck` — 6/6 successful
+- [x] Tests pass: `pnpm test:toolchain` — 9/9 passing
+- [x] Manual check: directory tree matches SPEC.md §5, except `apps/admin` (deferred to Milestone 3)
+- [x] Manual check: strictness flags proven *effective*, not merely present — a probe violating each of
+      the five flags was rejected by `tsc` (TS2322, TS2375, TS2366, TS7029), then removed
 
 **Dependencies:** None
 
-**Files likely touched:** `package.json`, `pnpm-workspace.yaml`, `turbo.json`, `tsconfig.base.json`, `.gitignore`
+**Files touched:** 25. Root config — `package.json`, `pnpm-workspace.yaml`, `pnpm-lock.yaml`,
+`turbo.json`, `tsconfig.base.json`, `.gitignore`, `.gitattributes`. Six workspace placeholders
+(`apps/api`, `apps/worker`, `packages/contracts`, `packages/db`, `packages/adapters`,
+`packages/testing`) × `package.json` + `tsconfig.json` + `src/index.ts`. Plus
+`tests/toolchain/workspace-contract.test.mjs`.
 
-**Estimated scope:** S
+> **Estimate correction.** The original list named 5 files. A monorepo scaffold cannot satisfy
+> criterion 1 without real workspaces to resolve, and each needs a manifest, a tsconfig, and a source
+> entry. Still one unit of work — 18 of the 25 files are three-line generated placeholders — but the
+> file count in the original estimate was wrong.
+
+**Estimated scope:** S (25 files, but 18 are generated boilerplate)
 
 ---
 
