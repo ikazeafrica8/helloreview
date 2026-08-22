@@ -13,7 +13,7 @@ its own acceptance criteria. `pnpm verify` must pass before every commit.
 
 - [x] T1 — Workspace and toolchain scaffold
 - [x] T2 — Lint, format, and the `pnpm verify` gate
-- [ ] T3 — Local services via Docker Compose
+- [x] T3 — Local services via Docker Compose
 - [ ] T4 — NestJS `api` app boot and health endpoint
 - [ ] T5 — `worker` app boot and queue connection
 - [ ] T6 — Module-boundary lint rule
@@ -219,18 +219,49 @@ volumes, and health checks. These back local development and Testcontainers-free
 
 **Acceptance criteria:**
 
-- [ ] `pnpm services:up` starts all three and reports healthy; `pnpm services:down` removes them
-- [ ] MinIO starts with a private bucket and no anonymous read policy (`§21.3`)
-- [ ] Credentials come from `.env.example`, with no secret committed
+- [x] `pnpm services:up` starts all three and reports healthy; `pnpm services:down` removes them —
+      `--wait` makes health an exit code rather than a claim
+- [x] MinIO starts with a private bucket and no anonymous read policy (`§21.3`) — the init container
+      sets the policy, reads it back, and independently confirms an unauthenticated request returns
+      403, failing `services:up` if either check does not hold
+- [x] Credentials come from `.env.example`, with no secret committed — `.env` is gitignored and every
+      committed value is an obvious local-only placeholder
 
 **Verification:**
 
-- [ ] Manual check: `pnpm services:up`, connect to Postgres and Redis, confirm MinIO bucket is private
-- [ ] Manual check: `pnpm services:down` leaves no running container
+- [x] Manual check: `pnpm services:up` → all three healthy, `[init] MINIO_INIT_OK`, exit 0
+- [x] Manual check: Postgres reachable, `UTF8 | C.UTF-8` as configured; Redis returns `PONG` with
+      `maxmemory-policy noeviction` (BullMQ requires it)
+- [x] Manual check: bucket policy is `private` and anonymous list returns HTTP 403
+- [x] Manual check: `pnpm services:down` leaves no running container but preserves the three named
+      volumes; a row written before `down` is still there after the next `up`
+- [x] Manual check: re-running `services:up` is idempotent (`bucket ready`, `service account already
+    present`, exit 0)
+- [x] Manual check: the developer's unrelated `db-scraper`, `supabase` and `thepopebot` stacks keep
+      running untouched throughout
+- [x] `pnpm verify` exits 0; 36/36 toolchain tests; `pnpm format:check` clean
 
 **Dependencies:** T1
 
-**Files likely touched:** `infra/docker-compose.yml`, `.env.example`, `package.json`
+**Files touched:** `infra/docker-compose.yml`, `infra/scripts/preflight.mjs`, `.env.example`,
+`package.json`, `tests/toolchain/local-services-contract.test.mjs`
+
+> **Three corrections to this task as written.**
+>
+> 1. **Host ports cannot use the defaults.** This machine already runs another project's stack
+>    (`D:\VIBE CODING\DB-Scraper`) on 5432/6379/9000/9001. Two containers cannot bind one host port,
+>    so `services:up` would have failed on first run. The stack uses 15432/16379/19000/19001,
+>    parameterized through `.env`; container-internal ports stay standard, so nothing inside the
+>    compose network changes and both stacks run side by side. A contract test now fails if a
+>    default is reinstated.
+> 2. **A preflight script was needed and was not in the file list.** Compose resolves `.env` next to
+>    the compose file, so without `--project-directory .` every credential silently falls back to
+>    empty. The preflight also creates `.env` on a fresh clone, checks `DATABASE_URL`/`REDIS_URL`
+>    agree with the `POSTGRES_*`/`REDIS_*` parts they duplicate (disagreement yields a healthy stack
+>    the app cannot connect to), and names the container holding a conflicting port.
+> 3. **`services:reset` was added.** `services:down` deliberately preserves volumes — losing data
+>    should never be a side effect of stopping a stack — so deliberate destruction needs its own
+>    command. A contract test asserts `down` carries no `-v` and `reset` does.
 
 **Estimated scope:** S
 
