@@ -1,13 +1,13 @@
 # Spec: HelloReview Reviewer Campaign Automation Platform
 
-| Field | Value |
-|---|---|
-| Spec version | 1.0 (root spec — platform level) |
-| Status | Draft — awaiting capability-map approval |
+| Field                  | Value                                                                                                                              |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Spec version           | 1.0 (root spec — platform level)                                                                                                   |
+| Status                 | Draft — awaiting capability-map approval                                                                                           |
 | Source of requirements | [PRD v1.0](HelloReview%20Reviewer%20Campaign%20Automation%20Platform%20—%20Product%20Requirements%20Document.md), dated 2026-08-22 |
-| Scope of this document | Platform-wide contract + capability map. Per-module specs are separate files. |
-| Timezone | Asia/Seoul (all business rules, all participant-facing rendering) |
-| Language | Korean for participant-facing copy; English for all code, identifiers, logs, and docs |
+| Scope of this document | Platform-wide contract + capability map. Per-module specs are separate files.                                                      |
+| Timezone               | Asia/Seoul (all business rules, all participant-facing rendering)                                                                  |
+| Language               | Korean for participant-facing copy; English for all code, identifiers, logs, and docs                                              |
 
 This spec is the engineering contract derived from the PRD. It does not re-open product decisions —
 where the PRD states a requirement, this spec says how it is built and how we prove it works.
@@ -43,19 +43,19 @@ from the audit log. Full criteria in §8 below.
 
 ## 2. Tech Stack
 
-| Layer | Choice | Why |
-|---|---|---|
-| Language | TypeScript 5.x, strict mode, `noUncheckedIndexedAccess` | One language across API, workers, and dashboard; the `§18` event envelopes are defined once and shared |
-| API framework | NestJS 11 | First-class module boundaries and DI — the modular monolith of `§10.1` maps onto NestJS modules directly |
-| Database | PostgreSQL 16 | Authoritative operational state store (`§17.1`); the unique constraints in `§17.3` are the idempotency mechanism |
-| ORM / migrations | Drizzle ORM + drizzle-kit | SQL-first, so the `§17.3` constraints and partial indexes stay explicit and reviewable |
-| Queue | BullMQ on Redis 7 | Durable jobs, retries, dead-letter, delayed jobs for reconciliation (`§22.2`, `§22.4`) |
-| Validation | Zod | One schema serves runtime validation, TS types, and the AI structured-output allowlist (`§19.6`) |
-| Dashboard | Next.js 15 (App Router) + React 19 | Consumes `admin-api`; shares contract types with the backend |
-| Object storage | S3-compatible, private buckets, short-lived signed URLs | `§21.3`, `§21.5` |
-| Testing | Vitest, Testcontainers, Playwright, Supertest | See §7 |
-| Monorepo | pnpm workspaces + Turborepo | Enforced package boundaries; incremental CI |
-| Runtime | Node 22 LTS | — |
+| Layer            | Choice                                                  | Why                                                                                                              |
+| ---------------- | ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| Language         | TypeScript 5.x, strict mode, `noUncheckedIndexedAccess` | One language across API, workers, and dashboard; the `§18` event envelopes are defined once and shared           |
+| API framework    | NestJS 11                                               | First-class module boundaries and DI — the modular monolith of `§10.1` maps onto NestJS modules directly         |
+| Database         | PostgreSQL 16                                           | Authoritative operational state store (`§17.1`); the unique constraints in `§17.3` are the idempotency mechanism |
+| ORM / migrations | Drizzle ORM + drizzle-kit                               | SQL-first, so the `§17.3` constraints and partial indexes stay explicit and reviewable                           |
+| Queue            | BullMQ on Redis 7                                       | Durable jobs, retries, dead-letter, delayed jobs for reconciliation (`§22.2`, `§22.4`)                           |
+| Validation       | Zod                                                     | One schema serves runtime validation, TS types, and the AI structured-output allowlist (`§19.6`)                 |
+| Dashboard        | Next.js 15 (App Router) + React 19                      | Consumes `admin-api`; shares contract types with the backend                                                     |
+| Object storage   | S3-compatible, private buckets, short-lived signed URLs | `§21.3`, `§21.5`                                                                                                 |
+| Testing          | Vitest, Testcontainers, Playwright, Supertest           | See §7                                                                                                           |
+| Monorepo         | pnpm workspaces + Turborepo                             | Enforced package boundaries; incremental CI                                                                      |
+| Runtime          | Node 22 LTS                                             | —                                                                                                                |
 
 **Region and hosting are unresolved** (`§8`: "Korean hosting is mandatory — Unknown"). Nothing in this
 stack presumes a region. See Open Questions.
@@ -77,32 +77,32 @@ by these ids. Arrows point one way; there are no cycles.
 
 ### 3.1 Modules
 
-| Module id | Responsibility | Depends on | Phase |
-|---|---|---|---|
-| `platform-core` | Config, secrets, DB access, queue, correlation IDs, error model (`§18.4`), structured logging, metrics, health | — | MVP |
-| `audit-log` | Append-only decision and access evidence; alert on write failure for protected actions (`§11`, `§21.4`) | `platform-core` | MVP |
-| `campaign-config` | Campaigns, versioned rules, weekday/time windows, blackouts, business details and aliases, terms versions, guideline versions, message templates, activation validation, maker-checker (`§13.5`, `§17.2`) | `platform-core`, `audit-log` | MVP |
-| `provider-gateway` | Webhook edge: signature, replay window, schema, rate limit; event inbox idempotency; inbound adapters + fakes (`§10.3`, `§18.3`) | `platform-core` | MVP |
-| `rules-engine` | Pure deterministic evaluation of a rule version against structured facts → pass / fail / review + reason (`§11`) | `campaign-config` | MVP |
-| `application-sync` | Website adapter, applications, source event IDs, reconciliation window, freshness and staleness (`§13.1`) | `provider-gateway`, `campaign-config` | MVP |
-| `identity-resolution` | Participants, channel identities, the `§16.1` matching table, phone normalization, verification tokens, ambiguity (`§13.2`) | `application-sync`, `campaign-config` | MVP |
-| `workflow-core` | Workflow instances and immutable events, the `§14.2` state dimensions, `§14.5` transition guards, `§14.6` illegal transitions, optimistic locking, corrections (`§14.7`), automation pauses and kill switch | `identity-resolution`, `campaign-config`, `audit-log` | MVP |
-| `messaging` | Conversations, messages, template rendering, message intents, dedupe keys (`§17.4`), transactional outbox, outbound adapters + fakes, delivery reconciliation, opt-out, quiet hours, human-ownership suppression (`§13.13`) | `workflow-core`, `campaign-config`, `provider-gateway` | MVP |
-| `attachments` | Secure ingest, type allowlist and signature check, malware scan, quarantine, content hash, ownership binding, encrypted storage, signed URLs (`§21.5`) | `workflow-core` | MVP |
-| `ai-orchestration` | Text intent taxonomy (`§19.2`), entity and date/time extraction (`§19.3`, `§19.5`), pipeline (`§19.6`), injection defenses (`§19.7`), fallback (`§19.8`), eval harness (`§19.9`), cost budget | `platform-core`, `campaign-config` | MVP |
-| `human-tasks` | Review queue, case packet, ownership lock, one holding message per episode, priority and SLA, return-to-automation validation (`§13.14`) | `workflow-core`, `messaging` | MVP |
-| `selection` | Immutable decision evidence, versioned thresholds, manual-review band, shadow mode, auto-select disabled by default, overrides with reason (`§13.4`) | `workflow-core`, `rules-engine`, `identity-resolution` | MVP (recommendation-only) |
-| `shipping` | Versioned addresses, secure one-time form, deterministic field validation, masking, cutoff and lock (`§13.6`) | `workflow-core`, `messaging`, `rules-engine` | MVP |
-| `payback-consent` | Consent versioned against terms version, `§13.7` states, exactly one clarification, withdrawal (`§16.5`) | `workflow-core`, `messaging`, `campaign-config` | MVP |
-| `business-approval` | Visit C approval versions, authorized-source-only recording, expiry, revocation, the hard gate predicate (`§13.10`, `§16.6`) | `workflow-core`, `campaign-config` | MVP |
-| `reservation` | Reservation aggregate and immutable versions, the `§16.7` validation table, rule-specific corrections, cancellation, rescheduling. Visit A path in MVP | `workflow-core`, `rules-engine`, `ai-orchestration`, `business-approval` | MVP (Visit A) |
-| `guideline-delivery` | Per-campaign-type readiness predicate (`§16.9`), guideline versions, delivery dedupe, authorized re-delivery, premature-delivery incident (`§13.12`) | `workflow-core`, `rules-engine`, `messaging` | MVP |
-| `privacy-ops` | Privacy-request intake and queue, retention schedules, deletion and masking jobs, legal hold (`§21.6`) | `workflow-core`, `attachments`, `audit-log` | MVP (minimal) |
-| `admin-api` | RBAC (`§20.2`), authorized commands, masked reads with logged reveal, participant-timeline assembly, replay and retry controls, export controls (`§13.15`) | all business-flow modules, `audit-log` | MVP |
-| `operator-console` | Next.js dashboard, the `§20.1` pages, safeguards from `§20.5` | `admin-api` | MVP |
-| `ocr-extraction` | Screenshot extraction schema (`§19.4`), confidence bands (`§16.8`), OCR plus multimodal fallback, disagreement → human review. Unlocks Visit B and full Visit C | `attachments`, `ai-orchestration` | Phase 5 |
-| `blog-score` | Approved score-source adapter and freshness. Unlocks auto-selection | `platform-core` | Phase 7 |
-| `analytics` | `§25` metric dashboards, cost and AI-usage reporting | `audit-log`, `admin-api` | Phase 8 |
+| Module id             | Responsibility                                                                                                                                                                                                              | Depends on                                                               | Phase                     |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ | ------------------------- |
+| `platform-core`       | Config, secrets, DB access, queue, correlation IDs, error model (`§18.4`), structured logging, metrics, health                                                                                                              | —                                                                        | MVP                       |
+| `audit-log`           | Append-only decision and access evidence; alert on write failure for protected actions (`§11`, `§21.4`)                                                                                                                     | `platform-core`                                                          | MVP                       |
+| `campaign-config`     | Campaigns, versioned rules, weekday/time windows, blackouts, business details and aliases, terms versions, guideline versions, message templates, activation validation, maker-checker (`§13.5`, `§17.2`)                   | `platform-core`, `audit-log`                                             | MVP                       |
+| `provider-gateway`    | Webhook edge: signature, replay window, schema, rate limit; event inbox idempotency; inbound adapters + fakes (`§10.3`, `§18.3`)                                                                                            | `platform-core`                                                          | MVP                       |
+| `rules-engine`        | Pure deterministic evaluation of a rule version against structured facts → pass / fail / review + reason (`§11`)                                                                                                            | `campaign-config`                                                        | MVP                       |
+| `application-sync`    | Website adapter, applications, source event IDs, reconciliation window, freshness and staleness (`§13.1`)                                                                                                                   | `provider-gateway`, `campaign-config`                                    | MVP                       |
+| `identity-resolution` | Participants, channel identities, the `§16.1` matching table, phone normalization, verification tokens, ambiguity (`§13.2`)                                                                                                 | `application-sync`, `campaign-config`                                    | MVP                       |
+| `workflow-core`       | Workflow instances and immutable events, the `§14.2` state dimensions, `§14.5` transition guards, `§14.6` illegal transitions, optimistic locking, corrections (`§14.7`), automation pauses and kill switch                 | `identity-resolution`, `campaign-config`, `audit-log`                    | MVP                       |
+| `messaging`           | Conversations, messages, template rendering, message intents, dedupe keys (`§17.4`), transactional outbox, outbound adapters + fakes, delivery reconciliation, opt-out, quiet hours, human-ownership suppression (`§13.13`) | `workflow-core`, `campaign-config`, `provider-gateway`                   | MVP                       |
+| `attachments`         | Secure ingest, type allowlist and signature check, malware scan, quarantine, content hash, ownership binding, encrypted storage, signed URLs (`§21.5`)                                                                      | `workflow-core`                                                          | MVP                       |
+| `ai-orchestration`    | Text intent taxonomy (`§19.2`), entity and date/time extraction (`§19.3`, `§19.5`), pipeline (`§19.6`), injection defenses (`§19.7`), fallback (`§19.8`), eval harness (`§19.9`), cost budget                               | `platform-core`, `campaign-config`                                       | MVP                       |
+| `human-tasks`         | Review queue, case packet, ownership lock, one holding message per episode, priority and SLA, return-to-automation validation (`§13.14`)                                                                                    | `workflow-core`, `messaging`                                             | MVP                       |
+| `selection`           | Immutable decision evidence, versioned thresholds, manual-review band, shadow mode, auto-select disabled by default, overrides with reason (`§13.4`)                                                                        | `workflow-core`, `rules-engine`, `identity-resolution`                   | MVP (recommendation-only) |
+| `shipping`            | Versioned addresses, secure one-time form, deterministic field validation, masking, cutoff and lock (`§13.6`)                                                                                                               | `workflow-core`, `messaging`, `rules-engine`                             | MVP                       |
+| `payback-consent`     | Consent versioned against terms version, `§13.7` states, exactly one clarification, withdrawal (`§16.5`)                                                                                                                    | `workflow-core`, `messaging`, `campaign-config`                          | MVP                       |
+| `business-approval`   | Visit C approval versions, authorized-source-only recording, expiry, revocation, the hard gate predicate (`§13.10`, `§16.6`)                                                                                                | `workflow-core`, `campaign-config`                                       | MVP                       |
+| `reservation`         | Reservation aggregate and immutable versions, the `§16.7` validation table, rule-specific corrections, cancellation, rescheduling. Visit A path in MVP                                                                      | `workflow-core`, `rules-engine`, `ai-orchestration`, `business-approval` | MVP (Visit A)             |
+| `guideline-delivery`  | Per-campaign-type readiness predicate (`§16.9`), guideline versions, delivery dedupe, authorized re-delivery, premature-delivery incident (`§13.12`)                                                                        | `workflow-core`, `rules-engine`, `messaging`                             | MVP                       |
+| `privacy-ops`         | Privacy-request intake and queue, retention schedules, deletion and masking jobs, legal hold (`§21.6`)                                                                                                                      | `workflow-core`, `attachments`, `audit-log`                              | MVP (minimal)             |
+| `admin-api`           | RBAC (`§20.2`), authorized commands, masked reads with logged reveal, participant-timeline assembly, replay and retry controls, export controls (`§13.15`)                                                                  | all business-flow modules, `audit-log`                                   | MVP                       |
+| `operator-console`    | Next.js dashboard, the `§20.1` pages, safeguards from `§20.5`                                                                                                                                                               | `admin-api`                                                              | MVP                       |
+| `ocr-extraction`      | Screenshot extraction schema (`§19.4`), confidence bands (`§16.8`), OCR plus multimodal fallback, disagreement → human review. Unlocks Visit B and full Visit C                                                             | `attachments`, `ai-orchestration`                                        | Phase 5                   |
+| `blog-score`          | Approved score-source adapter and freshness. Unlocks auto-selection                                                                                                                                                         | `platform-core`                                                          | Phase 7                   |
+| `analytics`           | `§25` metric dashboards, cost and AI-usage reporting                                                                                                                                                                        | `audit-log`, `admin-api`                                                 | Phase 8                   |
 
 ### 3.2 Build order
 
@@ -291,8 +291,11 @@ export type GateResult =
   | { ready: true; guidelineVersion: string }
   | { ready: false; blockedBy: GuidelineBlockCode; detail: Record<string, string> }
 
-const blocked = (blockedBy: GuidelineBlockCode, detail: Record<string, string> = {}): GateResult =>
-  ({ ready: false, blockedBy, detail })
+const blocked = (blockedBy: GuidelineBlockCode, detail: Record<string, string> = {}): GateResult => ({
+  ready: false,
+  blockedBy,
+  detail,
+})
 
 export function evaluateGuidelineReadiness(wf: WorkflowSnapshot, now: SeoulInstant): GateResult {
   // §16.9 "All" row — these apply to every campaign type, so they come first.
@@ -349,10 +352,14 @@ export function evaluateGuidelineReadiness(wf: WorkflowSnapshot, now: SeoulInsta
 await this.db.transaction(async (tx) => {
   // Optimistic concurrency (§14.4). A stale expectedVersion throws StaleWorkflowVersionError → HTTP 409.
   const next = await this.workflow.transition(tx, {
-    workflowId, expectedVersion: wf.version,
-    dimension: 'guideline', to: 'delivery_queued',
-    triggeringEventId: event.id, actor: SYSTEM_ACTOR,
-    reason: GUIDELINE_BLOCK_NONE, correlationId: ctx.correlationId,
+    workflowId,
+    expectedVersion: wf.version,
+    dimension: 'guideline',
+    to: 'delivery_queued',
+    triggeringEventId: event.id,
+    actor: SYSTEM_ACTOR,
+    reason: GUIDELINE_BLOCK_NONE,
+    correlationId: ctx.correlationId,
   })
 
   // Transactional outbox (§13.13 FR-MSG-004): state and send intent commit together or not at all.
@@ -361,7 +368,12 @@ await this.db.transaction(async (tx) => {
   await this.messaging.enqueueIntent(tx, {
     workflowId,
     purpose: MESSAGE_PURPOSE.GUIDELINE_DELIVERY,
-    dedupeKey: buildDedupeKey({ channel: 'KAKAO', workflowId, purpose: MESSAGE_PURPOSE.GUIDELINE_DELIVERY, contentVersion: gate.guidelineVersion }),
+    dedupeKey: buildDedupeKey({
+      channel: 'KAKAO',
+      workflowId,
+      purpose: MESSAGE_PURPOSE.GUIDELINE_DELIVERY,
+      contentVersion: gate.guidelineVersion,
+    }),
     templateId: 'GUIDELINE_DELIVERY_KO_V1',
   })
 })
@@ -403,15 +415,15 @@ security, and e2e suites live under `tests/`. Evaluation datasets live under `ev
 
 ### Levels
 
-| Level | Runs against | Covers | Command |
-|---|---|---|---|
-| Unit | Nothing — pure functions | Rule evaluation, normalization, dedupe-key construction, transition guards, date/time parsing (`§26.1`) | `pnpm test:unit` |
-| Transition | In-memory workflow store | Every `§14.5` legal transition; every `§14.6` illegal transition rejected; stale events; corrections; cancellation | `pnpm test:transitions` |
-| Integration | Testcontainers Postgres + Redis, fake providers | Repositories, unique constraints, outbox, inbox idempotency, queue retry and dead-letter | `pnpm test:integration` |
-| Contract | Fake providers | `§18` event envelopes in both directions; adapter conformance — real and fake adapters run the identical suite | `pnpm test:integration` |
-| Security | Full app, fake providers | Authorization, cross-participant access, webhook spoofing and replay, file attacks, PII in logs | `pnpm test:security` |
-| E2E | Full stack, fake providers | Operator workflows from `§20.1` | `pnpm test:e2e` |
-| Evaluation | Real or recorded model responses | Korean intents, entities, consent, dates, prompt injection, OCR field accuracy | `pnpm eval:ai` |
+| Level       | Runs against                                    | Covers                                                                                                             | Command                 |
+| ----------- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ | ----------------------- |
+| Unit        | Nothing — pure functions                        | Rule evaluation, normalization, dedupe-key construction, transition guards, date/time parsing (`§26.1`)            | `pnpm test:unit`        |
+| Transition  | In-memory workflow store                        | Every `§14.5` legal transition; every `§14.6` illegal transition rejected; stale events; corrections; cancellation | `pnpm test:transitions` |
+| Integration | Testcontainers Postgres + Redis, fake providers | Repositories, unique constraints, outbox, inbox idempotency, queue retry and dead-letter                           | `pnpm test:integration` |
+| Contract    | Fake providers                                  | `§18` event envelopes in both directions; adapter conformance — real and fake adapters run the identical suite     | `pnpm test:integration` |
+| Security    | Full app, fake providers                        | Authorization, cross-participant access, webhook spoofing and replay, file attacks, PII in logs                    | `pnpm test:security`    |
+| E2E         | Full stack, fake providers                      | Operator workflows from `§20.1`                                                                                    | `pnpm test:e2e`         |
+| Evaluation  | Real or recorded model responses                | Korean intents, entities, consent, dates, prompt injection, OCR field accuracy                                     | `pnpm eval:ai`          |
 
 ### Non-negotiable test requirements
 
@@ -430,12 +442,12 @@ These come straight from the PRD's Definition of Done (`§36`) and acceptance cr
 
 ### Coverage
 
-| Target | Threshold | Rationale |
-|---|---:|---|
-| `rules-engine`, and every `*-gate.ts` / `*-predicate.ts` / `*-validator.ts` | 100% branch | These are pure and small; the safety guarantees live here |
-| Business-flow modules (`selection`, `shipping`, `payback-consent`, `business-approval`, `reservation`, `guideline-delivery`) | 90% line | The `§14` state model |
-| All other modules | 80% line | — |
-| `operator-console` | No line threshold | Covered by e2e against `§20.1` pages |
+| Target                                                                                                                       |         Threshold | Rationale                                                 |
+| ---------------------------------------------------------------------------------------------------------------------------- | ----------------: | --------------------------------------------------------- |
+| `rules-engine`, and every `*-gate.ts` / `*-predicate.ts` / `*-validator.ts`                                                  |       100% branch | These are pure and small; the safety guarantees live here |
+| Business-flow modules (`selection`, `shipping`, `payback-consent`, `business-approval`, `reservation`, `guideline-delivery`) |          90% line | The `§14` state model                                     |
+| All other modules                                                                                                            |          80% line | —                                                         |
+| `operator-console`                                                                                                           | No line threshold | Covered by e2e against `§20.1` pages                      |
 
 Coverage is a floor, not the goal. A module at 95% with no test for its illegal transitions fails
 review; a module at 82% with the full `§26.2` matrix covered passes.
@@ -464,7 +476,7 @@ security property, not a quality metric (`AC-07`).
 - Keep provider-specific types inside `packages/adapters`; core modules see only `§18` contracts.
 - Give every new provider a fake in `packages/adapters/fakes` and run the shared conformance suite
   against both.
-- Add a transition test for each new legal transition *and* its illegal counterparts.
+- Add a transition test for each new legal transition _and_ its illegal counterparts.
 - Mask PII in every log line and every default dashboard view.
 - Write an audit record for every protected-state change and every sensitive-field reveal.
 - Store `timestamptz`; render Asia/Seoul.
@@ -512,6 +524,7 @@ The platform is ready for controlled production when all of the following hold. 
 in testable form; the parenthetical names the proving test.
 
 **Correctness and safety**
+
 1. Zero premature guideline deliveries across UAT and pilot (`AC-03`, `test:e2e`).
 2. Zero Visit C booking instructions sent in any non-approved state (`AC-01`, `test:transitions`).
 3. Zero cross-participant data exposures (`test:security`).
@@ -520,33 +533,16 @@ in testable form; the parenthetical names the proving test.
 6. AI and OCR output cannot reach a protected state — proven by the absence of any write path, not by
    convention (`test:security`, architecture lint).
 
-**Idempotency and recovery**
-7. A duplicate source event id produces exactly one state transition and one outbound message
-   (`AC-02`, `test:integration`).
-8. Duplicate outbound intents are blocked by the database `UNIQUE` constraint, not by application
-   logic alone (`test:integration`).
-9. Event replay repeats no completed side effect (`test:integration`).
-10. Out-of-order and stale events are rejected or reconciled, never silently applied (`test:transitions`).
+**Idempotency and recovery** 7. A duplicate source event id produces exactly one state transition and one outbound message
+(`AC-02`, `test:integration`). 8. Duplicate outbound intents are blocked by the database `UNIQUE` constraint, not by application
+logic alone (`test:integration`). 9. Event replay repeats no completed side effect (`test:integration`). 10. Out-of-order and stale events are rejected or reconciled, never silently applied (`test:transitions`).
 
-**Business state**
-11. Payback consent only satisfies the current terms version (`AC-05`).
-12. A repeated guideline request does not resend a delivered version; a new version delivers exactly
-    once (`AC-08`).
-13. Cancellation and rescheduling preserve prior versions as superseded, not deleted (`test:transitions`).
-14. Human ownership suppresses automated replies (`AC-06`).
-15. Reservation validation names the failed rule and the corrective action (`test:unit`, `§16.7`).
+**Business state** 11. Payback consent only satisfies the current terms version (`AC-05`). 12. A repeated guideline request does not resend a delivered version; a new version delivers exactly
+once (`AC-08`). 13. Cancellation and rescheduling preserve prior versions as superseded, not deleted (`test:transitions`). 14. Human ownership suppresses automated replies (`AC-06`). 15. Reservation validation names the failed rule and the corrective action (`test:unit`, `§16.7`).
 
-**Operations**
-16. The participant timeline shows every item in `§20.3`.
-17. Emergency pause works at global, campaign, workflow-type, and participant scope (`test:e2e`).
-18. Sensitive fields are masked by default and every reveal is audited (`test:security`).
-19. Uploaded files pass every `§21.5` control before reaching OCR (`test:security`).
-20. `pnpm verify` is green and coverage thresholds in §7 are met.
+**Operations** 16. The participant timeline shows every item in `§20.3`. 17. Emergency pause works at global, campaign, workflow-type, and participant scope (`test:e2e`). 18. Sensitive fields are masked by default and every reveal is audited (`test:security`). 19. Uploaded files pass every `§21.5` control before reaching OCR (`test:security`). 20. `pnpm verify` is green and coverage thresholds in §7 are met.
 
-**Spec completeness** (for this document specifically)
-21. The capability map in §3 is approved by the product owner.
-22. Every MVP module has a `SPEC-<module-id>.md` before its implementation begins.
-23. Every module spec traces each requirement to a PRD requirement id.
+**Spec completeness** (for this document specifically) 21. The capability map in §3 is approved by the product owner. 22. Every MVP module has a `SPEC-<module-id>.md` before its implementation begins. 23. Every module spec traces each requirement to a PRD requirement id.
 
 ---
 
@@ -564,7 +560,7 @@ each one changes code, not just plans)
 2. **Kakao 상담톡 dealer and capability** — whether stable user and conversation identifiers,
    attachment events, and human-takeover signalling exist at all. `§30` rates this high-probability,
    critical-impact. The fake-adapter approach means development proceeds, but `identity-resolution`
-   and `messaging` cannot be *finished* without it.
+   and `messaging` cannot be _finished_ without it.
 3. **Website integration shape** — API, webhook, or approved read replica; and whether source event
    ids and an application verification token can be added. Determines whether `application-sync` is
    event-driven or reconciliation-driven.
@@ -585,7 +581,7 @@ each one changes code, not just plans)
    rather than move a file you may have linked elsewhere.
 9. **Operator-console authentication** — SSO or local accounts with MFA (`§20.2` says "SSO/MFA where
    available"). Affects `admin-api` from its first commit.
-10. **Whether `analytics` should start earlier than Phase 8.** The `§25` metrics need to be *collected*
+10. **Whether `analytics` should start earlier than Phase 8.** The `§25` metrics need to be _collected_
     from day one even if nothing renders them; I have assumed `platform-core` emits them and
     `analytics` only adds presentation.
 
