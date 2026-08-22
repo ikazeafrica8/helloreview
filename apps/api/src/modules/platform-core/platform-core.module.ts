@@ -50,9 +50,15 @@ const PROBE_TIMEOUT_MS = 2_000
       useFactory: (config: AppConfig): Redis => {
         const redis = new Redis(config.redisUrl, {
           connectTimeout: PROBE_TIMEOUT_MS,
-          // Fail a command immediately while disconnected instead of queueing it. Without this the
-          // health probe waits for a reconnect that may never come.
-          enableOfflineQueue: false,
+          // The offline queue stays ENABLED on purpose. Disabling it makes a command fail the
+          // instant the socket is not writeable — including during the initial connect — so a probe
+          // arriving in the first moments after boot reports `down` against a perfectly healthy
+          // Redis. That is a false alarm on the exact signal an orchestrator routes on, and it
+          // showed up here as an intermittently red 503 test.
+          //
+          // Queueing is safe because the probe is independently bounded at PROBE_TIMEOUT_MS: a
+          // genuinely unreachable Redis still reports down, it just does so on the probe's deadline
+          // rather than on the socket's writeability.
           maxRetriesPerRequest: 1,
           // Keep trying in the background, with a ceiling, so the app recovers on its own when
           // Redis comes back — but never faster than once a second.
