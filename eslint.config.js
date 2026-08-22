@@ -478,6 +478,34 @@ export default defineConfig([
     },
   },
 
+  // Activated by T9 — SPEC.md §8 Always: "Store timestamptz".
+  //
+  // Drizzle's `timestamp()` defaults to `timestamp WITHOUT time zone`, a silent default that would
+  // store every instant with no offset. Banning the raw import and routing schema files through
+  // tstz() is exact, whereas a syntax selector would break on `{ precision: 3, withTimezone: true }`
+  // and on spread options.
+  //
+  // Scoped to schema files so packages/db/src/columns.ts — the wrapper itself — can still import it.
+  // Note this cannot catch a namespace import (`import * as pg` then `pg.timestamp`); that stays a
+  // review matter.
+  {
+    files: ['packages/db/src/schema/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: 'drizzle-orm/pg-core',
+              importNames: ['timestamp'],
+              message: 'Use tstz() from ../columns.js — SPEC.md §8 requires timestamptz.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+
   // The only files permitted to read process.env — one per deployable (T4, T5). T8 keeps this
   // exemption when it merges the two loaders and replaces their internals with a Zod schema.
   //
@@ -538,16 +566,6 @@ export default defineConfig([
   //       message: 'Throw a typed error from the §18.4 hierarchy (SPEC.md §6, T14).' }) },
   // },
   //
-  // T9 activates this — SPEC.md §8 Always: "Store timestamptz". Drizzle's timestamp() defaults to
-  // `timestamp without time zone`. Do NOT try this with a syntax selector (it breaks on
-  // `{ precision: 3, withTimezone: true }` and on spread options); ban the raw import and export a
-  // wrapped `tstz()` helper from packages/db instead — exact, robust, self-documenting.
-  // {
-  //   files: ['packages/db/src/schema/**/*.ts'],
-  //   rules: { 'no-restricted-imports': ['error', { paths: [{ name: 'drizzle-orm/pg-core',
-  //     importNames: ['timestamp'],
-  //     message: 'Use tstz() from ../columns — SPEC.md §8 requires timestamptz.' }] }] },
-  // },
   //
   // T13 / T34 activate this — SPEC.md §8 Never: "Delete or overwrite business history". Deferred
   // because the table identifiers must be written against real schema exports, not guessed. The

@@ -16,8 +16,12 @@ packages:
 # not use — local Docker Desktop is reached over its own socket. protobufjs's script is build-time
 # codegen with a runtime fallback. All three are optional, and none is worth requiring every
 # developer to have a native toolchain.
+# drizzle-kit pulls three separate esbuild copies (via its own dependency, via tsx, and via a
+# deprecated loader). All three postinstalls are blocked and drizzle-kit works regardless — verified
+# by generating and applying a migration with them un-run.
 ignoredBuiltDependencies:
   - cpu-features
+  - esbuild
   - msgpackr-extract
   - protobufjs
   - ssh2

@@ -22,7 +22,13 @@ import { defineConfig } from 'vitest/config'
  * the slow tiers a generous budget while the unit tier keeps the tight default means a genuinely
  * hung unit test still fails fast, instead of every tier inheriting the slowest one's patience.
  */
-const tier = (name: string, include: string[], timeoutMs = 5_000) => ({
+interface TierOptions {
+  timeoutMs?: number
+  /** Share one worker: the tier touches Docker and host ports, which cannot be used concurrently. */
+  serial?: boolean
+}
+
+const tier = (name: string, include: string[], { timeoutMs = 5_000, serial = false }: TierOptions = {}) => ({
   test: {
     name,
     include,
@@ -32,6 +38,9 @@ const tier = (name: string, include: string[], timeoutMs = 5_000) => ({
     // The later tiers are empty until the tasks that fill them land, and an empty tier must not
     // fail the run — otherwise `pnpm verify` is red from now until T36.
     passWithNoTests: true,
+    // fileParallelism/maxWorkers rather than poolOptions.forks.singleFork: Vitest 4 deprecates that
+    // idiom and ignores it, so the config would look correct and quietly do nothing.
+    ...(serial ? { pool: 'forks' as const, fileParallelism: false, maxWorkers: 1 } : {}),
   },
 })
 
@@ -51,11 +60,19 @@ export default defineConfig({
       // Every §14.5 legal transition and every §14.6 illegal one (T36, T37).
       tier('transitions', ['tests/transitions/**/*.test.{ts,mts,mjs}']),
       // Real Postgres and Redis, real child processes, fake providers.
-      tier('integration', ['tests/integration/**/*.test.{ts,mts,mjs}'], SLOW_TIER_TIMEOUT_MS),
+      //
+      // SERIAL, deliberately. These files share one Docker daemon and one set of host ports: two
+      // running at once means a container-leak assertion counts a sibling's container, and a boot
+      // test races another for the same port. Measured — the leak assertions failed intermittently
+      // under parallelism and pass reliably serialized.
+      tier('integration', ['tests/integration/**/*.test.{ts,mts,mjs}'], {
+        timeoutMs: SLOW_TIER_TIMEOUT_MS,
+        serial: true,
+      }),
       // Authorization, webhook spoofing and replay, file attacks, PII in logs (T12, T16).
-      tier('security', ['tests/security/**/*.test.{ts,mts,mjs}'], SLOW_TIER_TIMEOUT_MS),
+      tier('security', ['tests/security/**/*.test.{ts,mts,mjs}'], { timeoutMs: SLOW_TIER_TIMEOUT_MS }),
       // The §26.3 acceptance tests that gate release (T20, T33, T47, T52, T56).
-      tier('e2e', ['tests/e2e/**/*.test.{ts,mts,mjs}'], SLOW_TIER_TIMEOUT_MS),
+      tier('e2e', ['tests/e2e/**/*.test.{ts,mts,mjs}'], { timeoutMs: SLOW_TIER_TIMEOUT_MS, serial: true }),
     ],
 
     coverage: {

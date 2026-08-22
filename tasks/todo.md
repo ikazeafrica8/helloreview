@@ -19,7 +19,7 @@ its own acceptance criteria. `pnpm verify` must pass before every commit.
 - [x] T6 — Module-boundary lint rule
 - [x] T7 — Test harness: Vitest and Testcontainers
 - [x] T8 — Config and secrets validation
-- [ ] T9 — Drizzle setup and initial migration
+- [x] T9 — Drizzle setup and initial migration
 
 ### Checkpoint A — Foundation
 
@@ -591,18 +591,58 @@ extensions only; entity tables arrive with their owning modules.
 
 **Acceptance criteria:**
 
-- [ ] `pnpm db:reset` drops, recreates, migrates, and seeds without manual steps
-- [ ] Migrations are checked in as SQL and reviewable — no runtime schema push
-- [ ] The integration test harness runs migrations against its container automatically
+- [x] `pnpm db:reset` drops, recreates, migrates, and seeds without manual steps
+- [x] Migrations are checked in as SQL and reviewable — no runtime schema push, and a test asserts no
+      `db:push` script exists anywhere
+- [x] The integration test harness runs migrations against its container automatically —
+      `withPostgres()` plus `applyMigrations(url)`, with no path knowledge in `packages/testing`
 
 **Verification:**
 
-- [ ] Tests pass: `pnpm test:integration`
-- [ ] Manual check: `pnpm db:reset` twice in a row succeeds and is idempotent
+- [x] `pnpm test:integration` — migrations apply to an empty container, twice, and the extensions,
+      enums and enum VALUES are all asserted
+- [x] Manual check: `pnpm db:reset` twice in a row succeeds and is idempotent
+- [x] Manual check: **dropping the `drizzle` schema proved load-bearing.** Dropping only `public`
+      leaves the ledger, and the next migrate reports `migrations applied` against a database with
+      **zero enums** — a silent empty database. The full reset repairs it
+- [x] Manual check: `tstz()` emits `timestamp with time zone`, and the lint rule rejects a raw
+      `timestamp` import while accepting `tstz`
+- [x] Manual check: the `db:generate` guard exits 1 on a missing name and on a broken schema file
+      (where drizzle-kit itself exits 0), and exits 0 on a legitimate "no schema changes"
 
 **Dependencies:** T3, T7, T8
 
-**Files likely touched:** `packages/db/src/schema/index.ts`, `packages/db/drizzle.config.ts`, `packages/db/migrations/0000_init.sql`, `package.json`
+**Files touched:** `packages/db/{package.json,drizzle.config.ts}`,
+`packages/db/src/{index.ts,columns.ts,migrate.ts,schema/index.ts,schema/enums.ts}`,
+`packages/db/migrations/0000_init.sql` (+ `meta/`), `tools/{db-generate.mjs,db-migrate.mjs,db-reset.mjs,db-seed.mjs}`,
+`eslint.config.js`, `pnpm-workspace.yaml`, `package.json`, `tests/integration/migrations.test.mjs`
+
+> **Four things worth knowing before touching this again.**
+>
+> 1. **`drizzle-kit generate` exits 0 when it fails.** A schema file that will not compile, and an
+>    ambiguous rename needing a TTY prompt it cannot show, both end with a zero exit and no migration
+>    written — so an unguarded script can never fail a build, and the missing migration surfaces later
+>    against a database that does not match. `tools/db-generate.mjs` asserts on the output and on
+>    whether a file actually appeared. Verified: a deliberately broken schema now exits 1.
+>    `drizzle-kit check` **does** exit non-zero on a real journal collision, which is why it is the one
+>    worth running in CI.
+> 2. **`db:reset` must drop the `drizzle` schema, not only `public`.** Drizzle keeps its applied-
+>    migration ledger in its own schema. Drop only `public` and the ledger survives, so the next
+>    migrate treats every migration as already applied and reports success against an empty database.
+>    Demonstrated above: `migrations applied`, zero enums.
+> 3. **There is no `db:push` script and there should not be.** Push diffs a schema straight into a
+>    live database with no artifact anyone reviews, and SPEC.md §8 puts schema changes under Ask
+>    first. A test asserts the script does not exist rather than trusting that nobody adds it.
+> 4. **`0000_init.sql` is frozen.** Drizzle records that a migration ran but never re-checks its
+>    contents, so editing an applied migration leaves every database that already ran it silently
+>    different from what the file says. The `CREATE EXTENSION` lines were hand-prepended, which is safe
+>    only because the diff source is `meta/0000_snapshot.json` rather than the SQL.
+>
+> **Also:** the deferred `no-restricted-imports` block T2 left commented is now active — a raw
+> `timestamp` import from `drizzle-orm/pg-core` is rejected in schema files, because Drizzle's default
+> is `WITHOUT time zone` and SPEC.md §8 requires timestamptz. Verified that `tstz()` emits
+> `timestamp with time zone`. It cannot catch a namespace import (`import * as pg`), which stays a
+> review matter.
 
 **Estimated scope:** M
 

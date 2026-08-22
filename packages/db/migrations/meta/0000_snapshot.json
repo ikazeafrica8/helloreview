@@ -1,0 +1,38 @@
+{
+  "id": "c6327f58-8df7-4abf-921d-483c4d0db9a9",
+  "prevId": "00000000-0000-0000-0000-000000000000",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {},
+  "enums": {
+    "public.campaign_type": {
+      "name": "campaign_type",
+      "schema": "public",
+      "values": [
+        "shipping",
+        "payback",
+        "visit"
+      ]
+    },
+    "public.visit_method": {
+      "name": "visit_method",
+      "schema": "public",
+      "values": [
+        "not_applicable",
+        "visit_a",
+        "visit_b",
+        "visit_c"
+      ]
+    }
+  },
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}
