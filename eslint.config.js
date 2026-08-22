@@ -34,7 +34,14 @@ import { moduleBoundaries } from './tools/eslint-rules/module-boundaries.js'
  *
  * A new workspace added by T4/T5/T9/T14 matches these globs automatically — no edit required.
  */
-const TYPE_AWARE = ['apps/*/src/**/*.{ts,mts,cts}', 'packages/*/src/**/*.{ts,mts,cts}']
+const TYPE_AWARE = [
+  'apps/*/src/**/*.{ts,mts,cts}',
+  'packages/*/src/**/*.{ts,mts,cts}',
+  // Added by T7. The root tsconfig.json covers tests/, so these get a real TypeScript program.
+  // It matters here specifically: a dropped `await` on container startup is the textbook
+  // Testcontainers bug, and no-floating-promises is exactly the rule that catches it.
+  'tests/**/*.{ts,mts,cts}',
+]
 
 /**
  * SPEC.md §6: "Purity is the boundary. Predicates, validators, normalizers, and dedupe-key

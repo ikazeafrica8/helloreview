@@ -4,10 +4,10 @@
 // kind of thing that regresses silently during a config edit, so they are checked
 // by the build rather than by review.
 //
-// Runs on node:test because the Vitest harness does not exist until T7; this file
+// Unit tier: reads files only, no I/O beyond the filesystem.
 // moves into the unit tier then.
 
-import { test, describe } from 'node:test'
+import { test, describe } from 'vitest'
 import assert from 'node:assert/strict'
 import { readFileSync, existsSync, readdirSync } from 'node:fs'
 import { join, dirname } from 'node:path'

@@ -9,9 +9,9 @@
 // the same stop() the signal handler calls, and assert the job ran to completion. What remains
 // unverified on this platform is only signal delivery, which is Node's business, not ours.
 //
-// Runs on node:test because the Vitest harness does not exist until T7.
+// Integration tier: spawns processes and touches the local stack.
 
-import { test, describe, before } from 'node:test'
+import { test, describe, beforeAll } from 'vitest'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
@@ -115,7 +115,7 @@ describe('worker app', () => {
 
   // ------------------------------------------------------------------ behavioural
 
-  before(() => {
+  beforeAll(() => {
     for (const workspace of ['packages/contracts', 'apps/worker']) {
       const build = spawnSync('node', [join(ROOT, 'node_modules', 'typescript', 'bin', 'tsc'), '-p', 'tsconfig.json'], {
         cwd: join(ROOT, workspace),

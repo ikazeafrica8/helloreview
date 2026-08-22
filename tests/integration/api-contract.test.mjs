@@ -7,9 +7,9 @@
 // The unhealthy case points the app at a dead Postgres port rather than stopping the real container,
 // so the test never disturbs the running stack or any other project on this machine.
 //
-// Runs on node:test because the Vitest harness does not exist until T7.
+// Integration tier: spawns processes and touches the local stack.
 
-import { test, describe, before } from 'node:test'
+import { test, describe, beforeAll, onTestFinished } from 'vitest'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
@@ -105,7 +105,7 @@ describe('api app', () => {
 
   // ------------------------------------------------------------------ behavioural
 
-  before(() => {
+  beforeAll(() => {
     const build = spawnSync('node', [join(ROOT, 'node_modules', 'typescript', 'bin', 'tsc'), '-p', 'tsconfig.json'], {
       cwd: API_DIR,
       encoding: 'utf8',
@@ -114,9 +114,9 @@ describe('api app', () => {
     assert.equal(build.status, 0, `apps/api must compile before the boot tests:\n${build.stdout}${build.stderr}`)
   })
 
-  test('GET /health returns 200 and reports every dependency when all are reachable', async (t) => {
+  test('GET /health returns 200 and reports every dependency when all are reachable', async () => {
     const api = await bootApi({})
-    t.after(api.stop)
+    onTestFinished(api.stop)
 
     assert.equal(api.response.status, 200, `expected 200, got ${api.response.status}: ${JSON.stringify(api.body)}`)
     assert.equal(api.body.status, 'ok')
@@ -124,11 +124,11 @@ describe('api app', () => {
     assert.equal(api.body.dependencies?.redis?.status, 'up')
   })
 
-  test('GET /health returns 503 and names the failed dependency', async (t) => {
+  test('GET /health returns 503 and names the failed dependency', async () => {
     // Point Postgres at a closed port. Redis stays real, so the test also proves the response
     // distinguishes the failed dependency from the healthy one rather than failing wholesale.
     const api = await bootApi({ DATABASE_URL: 'postgres://nobody:nobody@127.0.0.1:1/nothing' })
-    t.after(api.stop)
+    onTestFinished(api.stop)
 
     assert.equal(api.response.status, 503, `expected 503, got ${api.response.status}`)
     assert.equal(api.body.status, 'degraded')
@@ -136,11 +136,11 @@ describe('api app', () => {
     assert.equal(api.body.dependencies?.redis?.status, 'up', 'a healthy dependency must still report up')
   })
 
-  test('the health response leaks nothing an unauthenticated caller should not see', async (t) => {
+  test('the health response leaks nothing an unauthenticated caller should not see', async () => {
     // Criterion 3: no authentication, and therefore no version or environment detail. SPEC.md §21.4
     // additionally forbids connection strings and secrets anywhere they could be read.
     const api = await bootApi({})
-    t.after(api.stop)
+    onTestFinished(api.stop)
 
     const serialized = JSON.stringify(api.body)
     for (const forbidden of ['postgres://', 'redis://', 'password', 'localhost', '127.0.0.1', 'helloreview_local']) {

@@ -28,7 +28,17 @@ export class ConfigurationError extends Error {
   }
 }
 
-const REQUIRED_URLS = ['DATABASE_URL', 'REDIS_URL'] as const
+/**
+ * Each required URL and the schemes it may use.
+ *
+ * The scheme and host checks are not decoration. `new URL('nonsense://')` parses successfully —
+ * WHATWG allows a non-special scheme with an empty host — so a bare `new URL()` in a try/catch
+ * accepts a value that cannot possibly connect, and the failure surfaces later and further away.
+ */
+const REQUIRED_URLS = [
+  { key: 'DATABASE_URL', protocols: ['postgres:', 'postgresql:'] },
+  { key: 'REDIS_URL', protocols: ['redis:', 'rediss:'] },
+] as const
 
 /**
  * Validate the environment and return the typed configuration.
@@ -39,17 +49,24 @@ const REQUIRED_URLS = ['DATABASE_URL', 'REDIS_URL'] as const
 export const loadAppConfig = (source: EnvironmentSource): AppConfig => {
   const problems: string[] = []
 
-  const requireUrl = (key: string): string => {
+  const requireUrl = ({ key, protocols }: { key: string; protocols: readonly string[] }): string => {
     const raw = source[key]
     if (raw === undefined || raw.trim() === '') {
       problems.push(`${key} is not set. Copy .env.example to .env`)
       return ''
     }
+    // No value from here on is ever echoed: a malformed DATABASE_URL still carries a password.
+    let parsed: URL
     try {
-      new URL(raw)
+      parsed = new URL(raw)
     } catch {
-      // The value is deliberately not echoed: a malformed DATABASE_URL still carries a password.
       problems.push(`${key} is not a valid URL`)
+      return raw
+    }
+    if (!protocols.includes(parsed.protocol)) {
+      problems.push(`${key} must use one of ${protocols.join(', ')}`)
+    } else if (parsed.hostname === '') {
+      problems.push(`${key} has no host`)
     }
     return raw
   }

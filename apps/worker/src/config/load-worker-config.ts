@@ -24,11 +24,21 @@ export const loadWorkerConfig = (source: EnvironmentSource): WorkerConfig => {
   if (redisUrl === undefined || redisUrl.trim() === '') {
     problems.push('REDIS_URL is not set. Copy .env.example to .env')
   } else {
+    // Nothing below echoes the value: a malformed REDIS_URL still carries a password.
+    let parsed: URL | undefined
     try {
-      new URL(redisUrl)
+      parsed = new URL(redisUrl)
     } catch {
-      // Not echoed: a malformed REDIS_URL still carries a password.
       problems.push('REDIS_URL is not a valid URL')
+    }
+    if (parsed !== undefined) {
+      // `new URL('nonsense://')` parses — WHATWG allows a non-special scheme with an empty host —
+      // so a bare try/catch accepts a value that can never connect.
+      if (parsed.protocol !== 'redis:' && parsed.protocol !== 'rediss:') {
+        problems.push('REDIS_URL must use redis: or rediss:')
+      } else if (parsed.hostname === '') {
+        problems.push('REDIS_URL has no host')
+      }
     }
   }
 

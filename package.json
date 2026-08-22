@@ -5,7 +5,7 @@
   "description": "HelloReview Reviewer Campaign Automation Platform",
   "packageManager": "pnpm@10.28.0",
   "engines": {
-    "node": "^22.13.0 || >=24"
+    "node": "^22.22.0 || >=24"
   },
   "type": "module",
   "scripts": {
@@ -20,19 +20,32 @@
     "services:up": "node infra/scripts/preflight.mjs && docker compose -f infra/docker-compose.yml --project-directory . up -d --wait --wait-timeout 180 && docker compose -f infra/docker-compose.yml --project-directory . run --rm -T minio-init",
     "services:down": "docker compose --profile init -f infra/docker-compose.yml --project-directory . down --remove-orphans",
     "services:reset": "docker compose --profile init -f infra/docker-compose.yml --project-directory . down -v --remove-orphans",
-    "test:toolchain": "node --test \"tests/toolchain/**/*.test.mjs\"",
-    "test:unit": "node tools/pending-tier.mjs test:unit && pnpm run test:toolchain",
-    "test:transitions": "node tools/pending-tier.mjs test:transitions",
+    "test": "vitest run --project unit --project transitions --project integration",
+    "test:unit": "vitest run --project unit",
+    "test:transitions": "vitest run --project transitions",
+    "test:integration": "vitest run --project integration",
+    "test:security": "vitest run --project security",
+    "test:e2e": "vitest run --project e2e",
+    "test:coverage": "vitest run --coverage",
+    "test:watch": "vitest",
     "verify": "pnpm run typecheck && pnpm run lint && pnpm run test:unit && pnpm run test:transitions"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@testcontainers/postgresql": "^12.1.0",
+    "@testcontainers/redis": "^12.1.0",
+    "@types/pg": "^8.23.1",
+    "@vitest/coverage-v8": "^4.1.11",
     "eslint": "^10.9.0",
     "eslint-config-prettier": "^10.1.8",
     "globals": "^17.11.0",
+    "ioredis": "^6.0.0",
+    "pg": "^8.23.0",
     "prettier": "^3.9.6",
+    "testcontainers": "^12.1.0",
     "turbo": "^2.5.0",
     "typescript": "^5.7.0",
-    "typescript-eslint": "^8.67.0"
+    "typescript-eslint": "^8.67.0",
+    "vitest": "^4.1.11"
   }
 }

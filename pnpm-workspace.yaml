@@ -12,5 +12,12 @@ packages:
 # job payloads. msgpackr falls back to a pure-JavaScript path without it, so the only cost is
 # throughput — and the benefit is that no developer needs a native build toolchain to install this
 # repo. Revisit if job serialization ever shows up in a profile.
+# cpu-features / ssh2 back Testcontainers' remote-Docker-over-SSH transport, which this project does
+# not use — local Docker Desktop is reached over its own socket. protobufjs's script is build-time
+# codegen with a runtime fallback. All three are optional, and none is worth requiring every
+# developer to have a native toolchain.
 ignoredBuiltDependencies:
+  - cpu-features
   - msgpackr-extract
+  - protobufjs
+  - ssh2

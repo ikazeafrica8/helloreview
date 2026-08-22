@@ -7,7 +7,7 @@
 // The properties below are the ones whose absence is silent. A missing healthcheck, a 0.0.0.0
 // port binding, or a bucket left publicly readable all produce a stack that looks fine.
 
-import { test, describe } from 'node:test'
+import { test, describe } from 'vitest'
 import assert from 'node:assert/strict'
 import { readFileSync, existsSync } from 'node:fs'
 import { join, dirname } from 'node:path'

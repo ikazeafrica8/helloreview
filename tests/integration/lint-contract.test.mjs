@@ -4,9 +4,9 @@
 // that it fires. The two behavioural tests at the bottom are the real proof: they run ESLint
 // against a real fixture and against the real tree.
 //
-// Runs on node:test because the Vitest harness does not exist until T7.
+// Integration tier: spawns processes and touches the local stack.
 
-import { test, describe } from 'node:test'
+import { test, describe, onTestFinished } from 'vitest'
 import assert from 'node:assert/strict'
 import { readFileSync, existsSync, writeFileSync, rmSync, readdirSync } from 'node:fs'
 import { join, dirname } from 'node:path'
@@ -31,12 +31,12 @@ const sweepStaleFixtures = () => {
 }
 
 /** Write a fixture under a unique name and register unconditional cleanup on the test context. */
-const withFixture = (t, source) => {
+const withFixture = (source) => {
   fixtureCounter += 1
   const name = `${FIXTURE_PREFIX}${process.pid}-${fixtureCounter}.ts`
   const absolute = join(FIXTURE_DIR, name)
   writeFileSync(absolute, source)
-  t.after(() => {
+  onTestFinished(() => {
     rmSync(absolute, { force: true })
   })
   return `apps/api/src/${name}`
@@ -120,13 +120,18 @@ describe('lint and format toolchain', () => {
     assert.ok(!verify.includes('--sequential'), 'pnpm run --sequential runs only the first script and exits 0')
   })
 
-  test('every tier verify names is either implemented or explicitly pending', () => {
+  test('every tier verify names is a real Vitest tier, not a placeholder', () => {
     const { scripts = {} } = readJson('package.json')
     for (const tier of ['test:unit', 'test:transitions']) {
       assert.ok(scripts[tier], `"${tier}" is named by verify, so it must exist as a script`)
+      assert.match(scripts[tier], /vitest/, `"${tier}" must run Vitest now that T7 has landed`)
     }
-    // A pending tier must announce itself, never quietly exit 0.
-    assert.ok(existsSync(join(ROOT, 'tools', 'pending-tier.mjs')), 'tools/pending-tier.mjs is missing')
+    // T7 retired the placeholder. Its own guard would have failed the build once Vitest appeared,
+    // which is what makes this assertion a formality rather than a hope.
+    assert.ok(
+      !existsSync(join(ROOT, 'tools', 'pending-tier.mjs')),
+      'tools/pending-tier.mjs should have been deleted by T7',
+    )
   })
 
   test('prettier pins LF and does not reformat the lockfile', () => {
@@ -143,9 +148,8 @@ describe('lint and format toolchain', () => {
 
   // ------------------------------------------------------------------ behavioural
 
-  test('T2 criterion 2: ESLint rejects an `as` cast applied to unknown', (t) => {
+  test('T2 criterion 2: ESLint rejects an `as` cast applied to unknown', () => {
     const relative = withFixture(
-      t,
       ['const raw: unknown = JSON.parse("{}")', 'export const parsed = raw as { id: string }', ''].join('\n'),
     )
     const result = runEslintOnFixture(relative)
@@ -158,12 +162,11 @@ describe('lint and format toolchain', () => {
     )
   })
 
-  test('the reason-code rule accepts a SCREAMING_SNAKE key written as a string literal', (t) => {
+  test('the reason-code rule accepts a SCREAMING_SNAKE key written as a string literal', () => {
     // Regression: esquery's `!=` compares an absent key.name against the string "undefined", so
     // testing only key.name wrongly rejected `{ 'NOT_SELECTED': ... } as const`. Both key forms
     // must be tested. Verified failing before the fix.
     const relative = withFixture(
-      t,
       [
         "export const IDENT = { NOT_SELECTED: 'NOT_SELECTED' } as const",
         "export const QUOTED = { 'NOT_SELECTED': 'NOT_SELECTED' } as const",
@@ -176,11 +179,10 @@ describe('lint and format toolchain', () => {
     assert.equal(result.status, 0, `a valid SCREAMING_SNAKE registry must lint clean:\n${result.stdout}`)
   })
 
-  test('a generic .enqueue() is not mistaken for a transactional-outbox violation', (t) => {
+  test('a generic .enqueue() is not mistaken for a transactional-outbox violation', () => {
     // Regression: the outbox selector originally matched any `.enqueue(`, which is a generic method
     // name — verified to fire on an ordinary local queue helper. Narrowed to `enqueueIntent`.
     const relative = withFixture(
-      t,
       [
         'const localQueue = { enqueue: (_job: string): undefined => undefined }',
         'export const run = (): undefined => {',
