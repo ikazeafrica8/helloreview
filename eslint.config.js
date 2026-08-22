@@ -54,8 +54,22 @@ const PURE = [
   '**/matching-table.ts',
 ]
 
-/** Build and operational scripts. Not participant-facing, not part of the domain. */
-const TOOLING = ['tools/**', 'infra/**', 'eval/**', '**/*.config.{ts,mts,cts,js,mjs,cjs}', 'eslint.config.js']
+/**
+ * Build, operational and test scripts. Not participant-facing, not part of the domain.
+ *
+ * `tests/**` is here deliberately. Verified: without it, a T7-shaped `tests/transitions/*.spec.ts`
+ * containing a diagnostic `console.log` is rejected by `no-console` — a rule whose stated purpose
+ * (SPEC.md §6 PII: console output escapes the structured logger and T12's PII matcher) does not
+ * apply to test code, which has no participants and no logger.
+ */
+const TOOLING = [
+  'tools/**',
+  'infra/**',
+  'eval/**',
+  'tests/**',
+  '**/*.config.{ts,mts,cts,js,mjs,cjs}',
+  'eslint.config.js',
+]
 
 // -----------------------------------------------------------------------------------------------
 // Restricted-syntax selectors
@@ -160,7 +174,10 @@ const SELECTORS = {
   focusedTests: [
     {
       selector:
-        'CallExpression[callee.object.name=/^(describe|it|test|suite|bench)$/][callee.property.name=/^(only|skip|todo|failing)$/]',
+        // `todo` is deliberately NOT banned. SPEC.md §8's rule is "do not remove or skip a FAILING
+        // test to make the build green" — `test.todo` advertises a test that was never written and
+        // shows as such in the output, which is the opposite of hiding a failure.
+        'CallExpression[callee.object.name=/^(describe|it|test|suite|bench)$/][callee.property.name=/^(only|skip|failing)$/]',
       message: 'Do not skip or focus tests to go green (SPEC.md §8 Never). Fix it, or delete it with a spec change.',
     },
     {
@@ -177,7 +194,9 @@ const SELECTORS = {
    */
   outboxTx: [
     {
-      selector: 'CallExpression[callee.property.name=/^(enqueueIntent|enqueue)$/][arguments.0.name!="tx"]',
+      // `enqueueIntent` only. A bare `.enqueue(` is a generic method name — verified to fire on an
+      // ordinary local queue helper, which is a false positive T5's worker would hit immediately.
+      selector: 'CallExpression[callee.property.name="enqueueIntent"][arguments.0.name!="tx"]',
       message:
         'Message intents commit with their state change — pass the transaction handle (SPEC.md §6, §8, FR-MSG-004, T43).',
     },
@@ -232,7 +251,11 @@ const SELECTORS = {
   reasonCodeCasing: [
     {
       selector:
-        'TSAsExpression[typeAnnotation.typeName.name="const"] > ObjectExpression > Property[key.name!=/^[A-Z][A-Z0-9_]*$/]',
+        // BOTH key forms must be tested. When the key is a string literal, `key.name` is absent and
+        // esquery's `!=` compares against the string "undefined", which never matches the pattern —
+        // so a correct `{ 'NOT_SELECTED': ... } as const` was verified to be wrongly rejected.
+        // Requiring both conditions means the rule fires only when neither form is SCREAMING_SNAKE.
+        'TSAsExpression[typeAnnotation.typeName.name="const"] > ObjectExpression > Property[key.name!=/^[A-Z][A-Z0-9_]*$/][key.value!=/^[A-Z][A-Z0-9_]*$/]',
       message:
         'Reason, purpose and intent codes are SCREAMING_SNAKE (SPEC.md §6 Naming). Export the derived union type alongside the registry.',
     },
@@ -266,6 +289,11 @@ export default defineConfig([
     '**/.vitest/**',
     // Drizzle emits these; they are generated SQL wrappers, reviewed as migrations (T9).
     'packages/db/migrations/**',
+    // Throwaway fixtures written by tests/toolchain/lint-contract.test.mjs. They must live inside a
+    // workspace src/ to get a real TypeScript program, and they contain deliberate violations — so
+    // a leaked one would otherwise fail every subsequent `pnpm lint`. The test lints them by
+    // explicit path with --no-ignore, so ignoring them here costs the tests nothing.
+    'apps/*/src/__lint-fixture-*.ts',
   ]),
 
   // 1. Everything ESLint parses: JS, MJS, CJS and TS alike.

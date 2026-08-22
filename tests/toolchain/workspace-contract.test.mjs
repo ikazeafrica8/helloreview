@@ -35,6 +35,47 @@ const workspaceDirs = () =>
         .map((entry) => `${parent}/${entry.name}`),
     )
 
+/** Every source file under the given roots, skipping generated and vendored trees. */
+const sourceFiles = (roots) => {
+  const SKIP = new Set(['node_modules', 'dist', 'build', '.turbo', 'coverage', '.next', 'migrations'])
+  const out = []
+  const walk = (absolute, relative) => {
+    if (!existsSync(absolute)) return
+    for (const entry of readdirSync(absolute, { withFileTypes: true })) {
+      if (SKIP.has(entry.name)) continue
+      const childAbsolute = join(absolute, entry.name)
+      const childRelative = `${relative}/${entry.name}`
+      if (entry.isDirectory()) walk(childAbsolute, childRelative)
+      else if (/\.(ts|mts|cts|js|mjs|cjs)$/.test(entry.name)) out.push(childRelative)
+    }
+  }
+  for (const root of roots) walk(join(ROOT, root), root)
+  return out
+}
+
+describe('naming conventions', () => {
+  test('every source filename is kebab-case', () => {
+    // SPEC.md §6 Naming: "Files kebab-case." Enforced here rather than through a lint plugin,
+    // because that would mean adding a dependency for one rule and SPEC.md §8 puts dependency
+    // additions under Ask first.
+    //
+    // The stem is everything before the first dot, so compound extensions that carry meaning —
+    // guideline-gate.spec.ts, eslint.config.js, campaign-config.module.ts — are checked on the
+    // part that names the file, not on the suffixes.
+    const offenders = sourceFiles(['apps', 'packages', 'tools', 'tests'])
+      .filter((path) => {
+        const basename = path.slice(path.lastIndexOf('/') + 1)
+        // Throwaway test fixtures are generated, not authored, and are gitignored.
+        if (basename.startsWith('__')) return false
+        const stem = basename.slice(0, basename.indexOf('.'))
+        return !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(stem)
+      })
+      .sort()
+
+    assert.deepEqual(offenders, [], `these filenames are not kebab-case:\n  ${offenders.join('\n  ')}`)
+  })
+})
+
 describe('workspace resolution', () => {
   test('pnpm-workspace.yaml declares the apps and packages globs', () => {
     const globs = readWorkspaceGlobs()

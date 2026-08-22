@@ -22,3 +22,6 @@ packages/db/migrations/
 
 # Source requirements — kept byte-identical to what was delivered.
 HelloReview Reviewer Campaign Automation Platform — Product Requirements Document.md
+
+# Throwaway lint fixtures (see .gitignore)
+apps/*/src/__lint-fixture-*.ts

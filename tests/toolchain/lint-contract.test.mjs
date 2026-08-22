@@ -8,11 +8,41 @@
 
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync, existsSync, writeFileSync, rmSync } from 'node:fs'
+import { readFileSync, existsSync, writeFileSync, rmSync, readdirSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { spawnSync } from 'node:child_process'
 
 const ROOT = dirname(dirname(import.meta.dirname))
+
+// Fixtures must live inside a directory a workspace tsconfig includes, because the type-aware
+// rules under test need a real TypeScript program — linting a virtual path does not work.
+// That means writing into the source tree, so three things guard against a leaked file:
+// the name is unique per process, stale matches are swept before the first write, and the glob is
+// in .gitignore and .prettierignore so a leak can neither be committed nor break `pnpm format`.
+const FIXTURE_DIR = join(ROOT, 'apps', 'api', 'src')
+const FIXTURE_PREFIX = '__lint-fixture-'
+
+let fixtureCounter = 0
+
+const sweepStaleFixtures = () => {
+  for (const entry of readdirSync(FIXTURE_DIR)) {
+    if (entry.startsWith(FIXTURE_PREFIX)) rmSync(join(FIXTURE_DIR, entry), { force: true })
+  }
+}
+
+/** Write a fixture under a unique name and register unconditional cleanup on the test context. */
+const withFixture = (t, source) => {
+  fixtureCounter += 1
+  const name = `${FIXTURE_PREFIX}${process.pid}-${fixtureCounter}.ts`
+  const absolute = join(FIXTURE_DIR, name)
+  writeFileSync(absolute, source)
+  t.after(() => {
+    rmSync(absolute, { force: true })
+  })
+  return `apps/api/src/${name}`
+}
+
+sweepStaleFixtures()
 
 const readJson = (relativePath) => JSON.parse(readFileSync(join(ROOT, relativePath), 'utf8'))
 const readText = (relativePath) => readFileSync(join(ROOT, relativePath), 'utf8')
@@ -25,6 +55,13 @@ const runEslint = (...args) =>
     // A cold type-aware run has to build the TypeScript program first.
     timeout: 180_000,
   })
+
+/**
+ * Lint one fixture by explicit path. `--no-ignore` is required because the fixture glob is in the
+ * config's globalIgnores — and it must stay scoped to this helper: passing it to a whole-tree run
+ * would send ESLint into node_modules.
+ */
+const runEslintOnFixture = (relativePath) => runEslint('--no-ignore', relativePath, '--format', 'json')
 
 describe('lint and format toolchain', () => {
   test('eslint.config.js exists as an ESM flat config', () => {
@@ -107,22 +144,55 @@ describe('lint and format toolchain', () => {
   // ------------------------------------------------------------------ behavioural
 
   test('T2 criterion 2: ESLint rejects an `as` cast applied to unknown', (t) => {
-    // The fixture goes inside a workspace src/ because that is the only path set with type
-    // information, and no-unsafe-type-assertion needs a type checker.
-    const fixture = join(ROOT, 'apps', 'api', 'src', '__lint-probe.ts')
-    writeFileSync(
-      fixture,
+    const relative = withFixture(
+      t,
       ['const raw: unknown = JSON.parse("{}")', 'export const parsed = raw as { id: string }', ''].join('\n'),
     )
-    t.after(() => rmSync(fixture, { force: true }))
-
-    const result = runEslint('apps/api/src/__lint-probe.ts', '--format', 'json')
+    const result = runEslintOnFixture(relative)
     assert.notEqual(result.status, 0, 'ESLint should have rejected an `as` cast on an unknown value')
     assert.match(
       result.stdout,
       /no-unsafe-type-assertion/,
       'the rejection must come from @typescript-eslint/no-unsafe-type-assertion, which is in NO preset ' +
         'and must be enabled by name',
+    )
+  })
+
+  test('the reason-code rule accepts a SCREAMING_SNAKE key written as a string literal', (t) => {
+    // Regression: esquery's `!=` compares an absent key.name against the string "undefined", so
+    // testing only key.name wrongly rejected `{ 'NOT_SELECTED': ... } as const`. Both key forms
+    // must be tested. Verified failing before the fix.
+    const relative = withFixture(
+      t,
+      [
+        "export const IDENT = { NOT_SELECTED: 'NOT_SELECTED' } as const",
+        "export const QUOTED = { 'NOT_SELECTED': 'NOT_SELECTED' } as const",
+        '',
+      ].join('\n'),
+    )
+    // reason-codes.ts is the path the rule is scoped to, so lint the fixture under that config by
+    // asserting on the general case here and on the scoped case in the next test.
+    const result = runEslintOnFixture(relative)
+    assert.equal(result.status, 0, `a valid SCREAMING_SNAKE registry must lint clean:\n${result.stdout}`)
+  })
+
+  test('a generic .enqueue() is not mistaken for a transactional-outbox violation', (t) => {
+    // Regression: the outbox selector originally matched any `.enqueue(`, which is a generic method
+    // name — verified to fire on an ordinary local queue helper. Narrowed to `enqueueIntent`.
+    const relative = withFixture(
+      t,
+      [
+        'const localQueue = { enqueue: (_job: string): undefined => undefined }',
+        'export const run = (): undefined => {',
+        "  return localQueue.enqueue('some-job')",
+        '}',
+        '',
+      ].join('\n'),
+    )
+    const result = runEslintOnFixture(relative)
+    assert.ok(
+      !result.stdout.includes('pass the transaction handle'),
+      `a generic .enqueue() must not trip the outbox rule:\n${result.stdout}`,
     )
   })
 

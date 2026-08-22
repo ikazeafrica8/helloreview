@@ -27,3 +27,7 @@ Thumbs.db
 .idea/
 .vscode/*
 !.vscode/extensions.json
+
+# Throwaway lint fixtures written by tests/toolchain/lint-contract.test.mjs. They contain
+# deliberate violations and must never be committed if a run leaks one.
+apps/*/src/__lint-fixture-*.ts

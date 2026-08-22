@@ -236,7 +236,7 @@ volumes, and health checks. These back local development and Testcontainers-free
 - [x] Manual check: `pnpm services:down` leaves no running container but preserves the three named
       volumes; a row written before `down` is still there after the next `up`
 - [x] Manual check: re-running `services:up` is idempotent (`bucket ready`, `service account already
-    present`, exit 0)
+  present`, exit 0)
 - [x] Manual check: the developer's unrelated `db-scraper`, `supabase` and `thepopebot` stacks keep
       running untouched throughout
 - [x] `pnpm verify` exits 0; 36/36 toolchain tests; `pnpm format:check` clean
@@ -360,6 +360,21 @@ a `packages/testing` home for fixtures and builders.
 **Dependencies:** T1, T3
 
 **Files likely touched:** `vitest.config.ts`, `vitest.workspace.ts`, `packages/testing/src/containers.ts`, `packages/testing/src/index.ts`
+
+> **Carried forward from T2 — three obligations this task inherits.**
+>
+> 1. **Extend type-aware linting to `tests/`.** T2 scopes it to `apps/*/src` and `packages/*/src`,
+>    because under `projectService` a `.ts` file no tsconfig includes is a hard parsing error. That
+>    means `no-floating-promises` and the whole `no-unsafe-*` family are currently silent in
+>    `tests/` — and a dropped `await` on container startup is the textbook Testcontainers bug. Add a
+>    tsconfig covering `tests/` and one glob to `TYPE_AWARE` in `eslint.config.js`; both are additive.
+> 2. **Retire the pending-tier placeholder.** `tools/pending-tier.mjs` fails the build as soon as it
+>    detects Vitest in any workspace manifest or a root config. Point `test:unit` and
+>    `test:transitions` at the real tiers and delete both entries — the guard is designed to make
+>    forgetting impossible, so this is not optional.
+> 3. **Move the toolchain tests into the unit tier.** `tests/toolchain/*.test.mjs` runs on `node:test`
+>    only because Vitest did not exist. Convention worth keeping when they move: a toolchain test
+>    must not write outside a per-file temp path, or the fixture races return.
 
 **Estimated scope:** M
 

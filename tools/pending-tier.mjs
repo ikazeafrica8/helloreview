@@ -11,7 +11,7 @@
 // an unfinished rewire, so this exits non-zero and fails `pnpm verify` rather than continuing to
 // wave the run through.
 
-import { readFileSync, existsSync } from 'node:fs'
+import { readFileSync, existsSync, readdirSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 
 const ROOT = dirname(import.meta.dirname)
@@ -37,11 +37,31 @@ const PENDING_TIERS = {
  */
 const landedEvidence = () => {
   const evidence = []
-  const manifest = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'))
-  const declared = { ...manifest.dependencies, ...manifest.devDependencies }
-  if (Object.hasOwn(declared, 'vitest')) {
+
+  const declaresVitest = (manifestPath) => {
+    if (!existsSync(manifestPath)) return false
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
+    return Object.hasOwn({ ...manifest.dependencies, ...manifest.devDependencies }, 'vitest')
+  }
+
+  if (declaresVitest(join(ROOT, 'package.json'))) {
     evidence.push('the root manifest declares a "vitest" dependency')
   }
+
+  // Any workspace, not just the root. T7 may well declare vitest inside packages/testing and put
+  // no config at the root, and a guard that only looked at the root would then keep waving both
+  // tiers through while announcing they are pending.
+  for (const group of ['apps', 'packages']) {
+    const groupDir = join(ROOT, group)
+    if (!existsSync(groupDir)) continue
+    for (const entry of readdirSync(groupDir, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue
+      if (declaresVitest(join(groupDir, entry.name, 'package.json'))) {
+        evidence.push(`${group}/${entry.name} declares a "vitest" dependency`)
+      }
+    }
+  }
+
   for (const config of ['vitest.config.ts', 'vitest.config.mts', 'vitest.config.js', 'vitest.workspace.ts']) {
     if (existsSync(join(ROOT, config))) {
       evidence.push(`${config} exists`)
