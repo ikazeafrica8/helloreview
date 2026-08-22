@@ -235,8 +235,8 @@ volumes, and health checks. These back local development and Testcontainers-free
 - [x] Manual check: bucket policy is `private` and anonymous list returns HTTP 403
 - [x] Manual check: `pnpm services:down` leaves no running container but preserves the three named
       volumes; a row written before `down` is still there after the next `up`
-- [x] Manual check: re-running `services:up` is idempotent (`bucket ready`, `service account already
-  present`, exit 0)
+- [x] Manual check: re-running `services:up` is idempotent — the bucket and service account are both
+      reported as already present, exit 0
 - [x] Manual check: the developer's unrelated `db-scraper`, `supabase` and `thepopebot` stacks keep
       running untouched throughout
 - [x] `pnpm verify` exits 0; 36/36 toolchain tests; `pnpm format:check` clean
