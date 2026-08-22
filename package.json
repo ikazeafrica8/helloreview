@@ -11,6 +11,7 @@
   "scripts": {
     "build": "turbo run build",
     "typecheck": "turbo run typecheck",
+    "dev": "node tools/dev-runner.mjs api worker",
     "dev:api": "node tools/dev-runner.mjs api",
     "dev:worker": "node tools/dev-runner.mjs worker",
     "lint": "eslint . --max-warnings=0",

@@ -22,16 +22,25 @@ const WORKSPACES = {
   worker: { dir: 'apps/worker', label: 'worker' },
 }
 
-const name = process.argv[2]
-const workspace = name === undefined ? undefined : WORKSPACES[name]
+// One or more workspaces: `dev-runner.mjs api` for a single app, `dev-runner.mjs api worker` for
+// the whole stack. `pnpm dev` uses the latter.
+const names = process.argv.slice(2)
 
-if (workspace === undefined) {
-  process.stderr.write(
-    `dev-runner: unknown workspace ${JSON.stringify(name ?? null)}. ` +
-      `Known: ${Object.keys(WORKSPACES).join(', ')}.\n`,
-  )
+if (names.length === 0) {
+  process.stderr.write(`dev-runner: name at least one of: ${Object.keys(WORKSPACES).join(', ')}\n`)
   process.exit(2)
 }
+
+const selected = names.map((name) => {
+  const workspace = WORKSPACES[name]
+  if (workspace === undefined) {
+    process.stderr.write(
+      `dev-runner: unknown workspace ${JSON.stringify(name)}. Known: ${Object.keys(WORKSPACES).join(', ')}.\n`,
+    )
+    process.exit(2)
+  }
+  return workspace
+})
 
 if (!existsSync(join(ROOT, '.env'))) {
   process.stderr.write('\n  No .env found. Run `pnpm services:up` first — it creates one from .env.example.\n\n')
@@ -54,21 +63,29 @@ const run = (label, command, args) => {
   return child
 }
 
-const tsc = run(`${workspace.label}:tsc`, process.execPath, [
-  join(ROOT, 'node_modules', 'typescript', 'bin', 'tsc'),
-  '-p',
-  join(ROOT, workspace.dir, 'tsconfig.json'),
-  '--watch',
-  // Without this the compiler clears the terminal on every rebuild, taking the app's logs with it.
-  '--preserveWatchOutput',
-])
-
-const app = run(`${workspace.label}:run`, process.execPath, [
-  '--watch',
-  // --env-file-if-exists rather than --env-file: a missing file should surface as the config
-  // loader's own message listing every absent key, not as a Node startup error.
-  '--env-file-if-exists=.env',
-  join(ROOT, workspace.dir, 'dist', 'main.js'),
+/** Each workspace gets a compiler and a runner; every child is tagged so the streams stay readable. */
+const halves = selected.flatMap((workspace) => [
+  [
+    run(`${workspace.label}:tsc`, process.execPath, [
+      join(ROOT, 'node_modules', 'typescript', 'bin', 'tsc'),
+      '-p',
+      join(ROOT, workspace.dir, 'tsconfig.json'),
+      '--watch',
+      // Without this the compiler clears the terminal on every rebuild, taking the app's logs with it.
+      '--preserveWatchOutput',
+    ]),
+    `${workspace.label} compiler`,
+  ],
+  [
+    run(`${workspace.label}:run`, process.execPath, [
+      '--watch',
+      // --env-file-if-exists rather than --env-file: a missing file should surface as the config
+      // loader's own message listing every absent key, not as a Node startup error.
+      '--env-file-if-exists=.env',
+      join(ROOT, workspace.dir, 'dist', 'main.js'),
+    ]),
+    `${workspace.label} app`,
+  ],
 ])
 
 let shuttingDown = false
@@ -83,10 +100,7 @@ process.on('SIGTERM', shutdown)
 
 // If either half dies, stop the other — a running app with a dead compiler silently serves stale
 // code, which is worse than stopping.
-for (const [child, why] of [
-  [tsc, 'compiler'],
-  [app, 'app'],
-]) {
+for (const [child, why] of halves) {
   child.on('exit', (code) => {
     if (!shuttingDown) {
       process.stderr.write(`\n  ${why} exited (${String(code)}); stopping the other half.\n`)
