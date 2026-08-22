@@ -16,7 +16,7 @@ its own acceptance criteria. `pnpm verify` must pass before every commit.
 - [x] T3 — Local services via Docker Compose
 - [x] T4 — NestJS `api` app boot and health endpoint
 - [x] T5 — `worker` app boot and queue connection
-- [ ] T6 — Module-boundary lint rule
+- [x] T6 — Module-boundary lint rule
 - [ ] T7 — Test harness: Vitest and Testcontainers
 - [ ] T8 — Config and secrets validation
 - [ ] T9 — Drizzle setup and initial migration
@@ -405,18 +405,42 @@ column, fails lint. Built before the modules exist so the rule is never retroact
 
 **Acceptance criteria:**
 
-- [ ] Deep imports into another module's internals fail lint
-- [ ] A cross-module import absent from the §3.1 dependency table fails lint with a message naming both modules
-- [ ] The dependency table lives in one machine-readable file that the rule reads, not duplicated in config
+- [x] Deep imports into another module's internals fail lint
+- [x] A cross-module import absent from the §3.1 dependency table fails lint with a message naming both modules
+- [x] The dependency table lives in one machine-readable file that the rule reads, not duplicated in config —
+      a test asserts the rule does not inline it
 
 **Verification:**
 
-- [ ] Tests pass: `pnpm test:unit` (rule has its own fixture tests)
-- [ ] Manual check: add a deliberate violation, confirm `pnpm lint` fails and names the modules
+- [x] Tests pass: `pnpm verify` — 58/58, exit 0. The rule has 4 fixture tests via ESLint's `RuleTester`
+- [x] Manual check: a deep import into `platform-core/config/` is rejected with
+      _"Reaching past the public surface of platform-core"_
+- [x] Manual check: `platform-core` importing `rules-engine` is rejected with
+      _"Module platform-core may not import rules-engine. That edge is not in module-graph.json"_ —
+      both modules named, as the criterion requires
+- [x] Manual check: introducing a cycle (`platform-core -> audit-log -> platform-core`) makes the rule
+      refuse to load, naming the cycle path
 
 **Dependencies:** T2
 
-**Files likely touched:** `eslint.config.js`, `tools/eslint-rules/module-boundaries.js`, `module-graph.json`
+**Files touched:** `module-graph.json`, `tools/eslint-rules/module-boundaries.js`, `eslint.config.js`,
+`tests/toolchain/module-boundaries.test.mjs`
+
+> **Two notes.**
+>
+> 1. **The rule also proves the graph is acyclic**, which nothing else in the toolchain did. SPEC.md
+>    §3.1 asserts it; now `pnpm lint` enforces it. The check runs at rule load and throws, because a
+>    cyclic map is a configuration error — reporting it against some arbitrary import would point at
+>    the wrong thing entirely.
+> 2. **`no-restricted-imports` genuinely could not do this job.** It matches the import specifier
+>    STRING via minimatch, not the resolved path, so a relative deep import like
+>    `'../campaign-config/internal/rule-table.js'` slips past any `**/modules/*/!(index)*` pattern.
+>    Resolving first is also what lets the message name both modules. Dynamic `import()` and
+>    `export ... from` are covered too — either would otherwise be a silent way around the rule.
+>
+> **Process note:** the rule was written before its fixture tests, so this task did not follow
+> RED-then-GREEN. The tests passed on first run, which is weaker evidence than a test seen to fail.
+> The two manual violation checks above are what actually establish the rule bites.
 
 **Estimated scope:** M
 

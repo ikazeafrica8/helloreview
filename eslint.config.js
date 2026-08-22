@@ -22,6 +22,7 @@ import globals from 'globals'
 import tseslint from 'typescript-eslint'
 import eslintConfigPrettier from 'eslint-config-prettier/flat'
 import { defineConfig, globalIgnores } from 'eslint/config'
+import { moduleBoundaries } from './tools/eslint-rules/module-boundaries.js'
 
 // -----------------------------------------------------------------------------------------------
 // Path sets
@@ -488,8 +489,21 @@ export default defineConfig([
     },
   },
 
+  // Module boundaries (T6). Enforces the SPEC.md §3.1 capability map on RESOLVED import paths:
+  // a module's public surface is its index, and a cross-module edge must be declared in
+  // module-graph.json. The rule reads that file, so the table exists in exactly one place.
+  //
+  // Scoped to apps/** because that is where modules live. Files outside a module (the composition
+  // root, tests) are still held to the public-surface half — reaching into internals is wrong from
+  // anywhere — but only module-to-module edges are checked against the dependency table.
+  {
+    files: ['apps/**/*.{ts,mts,cts}'],
+    plugins: { local: { rules: { 'module-boundaries': moduleBoundaries } } },
+    rules: { 'local/module-boundaries': 'error' },
+  },
+
   // =============================================================================================
-  // T6 APPEND POINT — module boundaries.
+  // T6 LANDED — the append point below is kept for the notes that follow it.
   //
   // T6 appends its blocks HERE, between the convention blocks and eslint-config-prettier:
   //   - a `plugins: { local: { rules: { 'module-boundaries': rule } } }` block wired to
