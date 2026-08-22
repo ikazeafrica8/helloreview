@@ -14,7 +14,7 @@ its own acceptance criteria. `pnpm verify` must pass before every commit.
 - [x] T1 — Workspace and toolchain scaffold
 - [x] T2 — Lint, format, and the `pnpm verify` gate
 - [x] T3 — Local services via Docker Compose
-- [ ] T4 — NestJS `api` app boot and health endpoint
+- [x] T4 — NestJS `api` app boot and health endpoint
 - [ ] T5 — `worker` app boot and queue connection
 - [ ] T6 — Module-boundary lint rule
 - [ ] T7 — Test harness: Vitest and Testcontainers
@@ -274,20 +274,62 @@ reporting database and queue reachability.
 
 **Acceptance criteria:**
 
-- [ ] `pnpm dev:api` serves on port 3000
-- [ ] `GET /health` returns 200 with per-dependency status, and 503 when a dependency is unreachable
-- [ ] The health endpoint requires no authentication and exposes no version or environment detail
+- [x] `pnpm dev:api` serves on port ~~3000~~ **13000** — see correction 1
+- [x] `GET /health` returns 200 with per-dependency status, and 503 when a dependency is unreachable
+- [x] The health endpoint requires no authentication and exposes no version or environment detail
 
 **Verification:**
 
-- [ ] Tests pass: `pnpm test:unit`
-- [ ] Manual check: stop Postgres, confirm `/health` returns 503 naming the failed dependency
+- [x] Tests pass: `pnpm verify` — 46/46, exit 0
+- [x] Healthy response, confirmed by hand:
+      `{"status":"ok","dependencies":{"postgres":{"status":"up","latencyMs":5},"redis":{"status":"up","latencyMs":3}}}`
+- [x] 503 path proven by booting against a dead Postgres port rather than stopping the container —
+      Postgres reports `down`, Redis still reports `up`, so the response distinguishes the failed
+      dependency instead of failing wholesale. Nothing on the machine is disturbed by the test.
+- [x] Leak test: the response contains no connection string, password, hostname, version, environment
+      or uptime
+- [x] Graceful shutdown proven via `app.close()` — the hook logs `closing dependencies` and both
+      connections close. See correction 4 for why signals could not be used.
+- [x] NestJS 11 verified working under ESM + NodeNext with every strictness flag including
+      `exactOptionalPropertyTypes`; DI resolves at runtime
 
 **Dependencies:** T1, T3
 
-**Files likely touched:** `apps/api/src/main.ts`, `apps/api/src/app.module.ts`, `apps/api/src/health/*`
+**Files touched:** `apps/api/{package.json,tsconfig.json}`, `apps/api/src/{main.ts,app.module.ts}`,
+`apps/api/src/modules/platform-core/` (`index.ts`, `platform-core.module.ts`, `tokens.ts`,
+`config/{env-source.ts,load-app-config.ts}`, `health/{health.controller.ts,health.service.ts,dependency-probes.ts,reason-codes.ts}`),
+`tools/dev-runner.mjs`, `eslint.config.js`, `.env.example`, `package.json`,
+`tests/toolchain/api-contract.test.mjs`
 
-**Estimated scope:** S
+> **Five corrections to this task as written.**
+>
+> 1. **Port 3000 → 13000, a deliberate SPEC.md §4 deviation.** Port 3000 is held on this machine by an
+>    unrelated Next.js dev server, and two processes cannot bind one host port. Parameterized through
+>    `.env` as `API_PORT`, same treatment as the T3 service ports; set it to 3000 where that port is
+>    free. **SPEC.md §4 should be updated or this backed out — it is an "Ask first" item under §8.**
+> 2. **Health lives in `modules/platform-core/health/`, not `src/health/`.** SPEC.md §3.1 assigns
+>    health to `platform-core`, and §5 requires modules to live under `src/modules/<module-id>/` with
+>    `index.ts` as the only public surface. The original file list contradicted the spec.
+> 3. **A config module was required and was not in the file list.** T4 cannot health-check Postgres
+>    and Redis without `DATABASE_URL`/`REDIS_URL`, but `eslint.config.js` bans `process.env` outside
+>    the loader — and T8, which owns the loader, is listed as depending on T4. Resolved by keeping the
+>    impure read to a single line in `config/env-source.ts` (one narrowly-scoped lint exemption) with
+>    `loadAppConfig()` a pure function of its input. **T8 is left with: a Zod schema over the full
+>    environment surface, marking secret keys for redaction, and consolidating this loader with the
+>    worker's.** T8's dependency should read T1, not T4.
+> 4. **SIGTERM shutdown is unverifiable on Windows.** Measured: `child.kill(sig)` on win32 maps to
+>    `TerminateProcess` for SIGTERM, SIGINT, SIGBREAK and SIGHUP alike, so no programmatically sent
+>    signal reaches a handler — the hook was skipped and the process died in 11ms. The shutdown _logic_
+>    is proven correct via `app.close()`; only the signal→handler delivery is untestable here. It works
+>    normally on the Linux hosts this deploys to. **The same limitation applies to T5's "SIGTERM drains
+>    in-flight jobs" criterion.**
+> 5. **tsx cannot run this app, and fails silently.** Measured: under tsx the API boots, maps its
+>    routes, and then returns HTTP 500 on every DI-dependent request, because esbuild does not emit
+>    `emitDecoratorMetadata`. Node's native type stripping fails outright. `tsc` is the only runner in
+>    this toolchain that emits correct metadata, which is why `tools/dev-runner.mjs` pairs
+>    `tsc --watch` with `node --watch` instead of using a single fast transpiler.
+
+**Estimated scope:** S → **M** (16 files; the config module and dev runner were not anticipated)
 
 ---
 

@@ -469,6 +469,24 @@ export default defineConfig([
     },
   },
 
+  // The one file permitted to read process.env (T4; T8 keeps this exemption when it replaces the
+  // loader's internals with a Zod schema).
+  //
+  // Scoped to a single FILE, not the config folder: env-source.ts exists precisely so the impure
+  // read is one line, and widening this to `config/**` would quietly re-open process.env to the
+  // validation code beside it.
+  //
+  // Note the exemption is composed with restrict() and re-lists every other selector by name.
+  // Writing `'no-restricted-syntax': 'off'` here would silently drop the dedupe-key, PII-logger,
+  // focused-test, outbox and queue-name conventions for this file too — overriding the rule
+  // REPLACES its selector array rather than merging with it.
+  {
+    files: ['**/platform-core/config/env-source.ts'],
+    rules: {
+      'no-restricted-syntax': restrict(...BASE_SELECTORS.filter((key) => key !== 'processEnv')),
+    },
+  },
+
   // =============================================================================================
   // T6 APPEND POINT — module boundaries.
   //
