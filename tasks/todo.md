@@ -961,20 +961,51 @@ registries. These types are the only shape core modules ever see.
 
 **Acceptance criteria:**
 
-- [ ] Envelope, acceptance response, and each `§18.5`–`§18.15` payload have a schema and a derived type
-- [ ] The `§18.4` status table is a typed exception hierarchy mapping to HTTP status codes
-- [ ] Message purpose codes are a single `as const` registry with a derived union
+- [x] Envelope, acceptance response, and each `§18.5`–`§18.15` payload have a schema and a derived type
+- [x] The `§18.4` status table is a typed exception hierarchy mapping to HTTP status codes
+- [x] Message purpose codes are a single `as const` registry with a derived union
 
 **Verification:**
 
-- [ ] Tests pass: `pnpm test:unit`
-- [ ] Manual check: every payload example in PRD `§18` parses against its schema as a fixture
+- [x] Tests pass: `pnpm test:unit` — 45 new tests, 204 total across 18 files
+- [x] Manual check: every payload example in PRD `§18` parses against its schema as a fixture —
+      all eleven are copied **verbatim** from the document, and a twelfth test asserts the fixture
+      count matches `EVENT_TYPES` so a deleted schema cannot shrink the loop into a green run
 
 **Dependencies:** T1
 
 **Files likely touched:** `packages/contracts/src/events/*`, `packages/contracts/src/errors.ts`, `packages/contracts/src/purposes.ts`
 
 **Estimated scope:** S
+
+> **Notes.**
+>
+> 1. **The wire format is snake_case; the domain shape is camelCase.** Each schema validates the PRD
+>    shape exactly and transforms it. Same boundary decision `packages/config` already makes with
+>    `DATABASE_URL` → `config.databaseUrl`. A provider renaming a field then changes one line in the
+>    schema rather than every call site, which is what SPEC.md §3.1's adapters boundary is for.
+> 2. **`z.union`, not `z.discriminatedUnion`.** Every member is a transforming schema (a `ZodPipe`),
+>    and `discriminatedUnion` needs to read a literal discriminant directly off its members. The
+>    OUTPUT is still a discriminated union, which is what call sites need; the cost is that a bad
+>    payload reports issues from all eleven branches rather than one.
+> 3. **Zod 4 cannot infer through a generic payload schema.** A generic `eventOf(type, payload)`
+>    helper made `raw.payload` stop existing — TS2339, its optional-key detection collapsing to an
+>    unresolved mapped type. Fixed by spreading the envelope fields at each concrete call site and
+>    absorbing the repetition into one generic `toDomain` function instead. Measured, not guessed.
+> 4. **`strictObject` everywhere: an unmodelled field is rejected, not dropped.** A provider sending
+>    something new is a contract change worth failing loudly at the edge. Silently discarding it
+>    means the first symptom is a business rule acting on data it never received.
+> 5. **Parameterised purposes hold the STEM only.** The PRD writes four as
+>    `GUIDELINE_DELIVERY:<version>`. The parameter belongs to the dedupe key T43 builds — a code
+>    with a version baked in is a key, and mixing the two is how `GUIDELINE_DELIVERY:v4` ends up
+>    compared against `GUIDELINE_DELIVERY`.
+> 6. **`VISIT_C_BOOKING_INSTRUCTIONS` is separate from `VISIT_C_APPROVAL_STATUS`.** §26.3 asserts no
+>    notification with the booking purpose exists while approval is pending, and SPEC.md §8 lists
+>    sending it early under "Never" — neither is expressible if the two share one code.
+> 7. **The tests were mutation-checked rather than trusted for passing first time.** Weakening
+>    `strictObject` to `object`, duplicating a purpose code, and loosening the timestamp each
+>    produced a failure. A suite that goes green on the first run is indistinguishable from one that
+>    cannot fail.
 
 ---
 

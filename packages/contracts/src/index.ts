@@ -1,8 +1,32 @@
 // Platform-neutral contracts shared by every deployable.
 //
-// T14 adds the PRD §18 event envelopes, the typed error hierarchy and the reason-code registries
-// here. Today it carries the queue registry, which both the api (producer) and the worker
-// (consumer) need.
+// This package is the only place a provider's wire format is named. Everything downstream sees the
+// parsed domain shape, which is what SPEC.md §3.1 means by the adapters boundary — a Kakao field
+// name appearing in a core module is a lint error (T6), and this is the file that makes that
+// achievable rather than merely required.
 
 export { QUEUE_NAMES, ALL_QUEUE_NAMES } from './queues.js'
 export type { QueueName } from './queues.js'
+
+// PRD §18 events.
+export { platformEventSchema, acceptanceResponseSchema, EVENT_TYPES } from './events/envelope.js'
+export type { PlatformEvent, EventOfType, EventType, AcceptanceResponse } from './events/envelope.js'
+
+// PRD §18.4 error model.
+export {
+  ContractError,
+  InvalidEnvelopeError,
+  UnauthenticatedError,
+  ForbiddenError,
+  StaleVersionError,
+  PayloadTooLargeError,
+  UnsupportedMediaTypeError,
+  UnprocessableCommandError,
+  RateLimitedError,
+  DependencyUnavailableError,
+} from './errors.js'
+export type { ContractErrorStatus } from './errors.js'
+
+// FR-MSG-002 message purpose codes.
+export { MESSAGE_PURPOSES, ALL_MESSAGE_PURPOSES, isMessagePurpose } from './purposes.js'
+export type { MessagePurpose } from './purposes.js'
