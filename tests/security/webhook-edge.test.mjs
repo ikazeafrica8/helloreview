@@ -11,7 +11,7 @@ import { createHmac } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 
 const ROOT = dirname(dirname(import.meta.dirname))
 const PORT = 13098
@@ -110,6 +110,21 @@ let output = ''
 
 describe('the webhook edge', () => {
   beforeAll(async () => {
+    // BUILD FIRST. This suite spawns apps/api/dist/main.js; without a build it would exercise
+    // whatever was last compiled. Measured: a gutted size limit in source left the whole gate green.
+    for (const workspace of ['packages/contracts', 'packages/db', 'packages/observability', 'apps/api']) {
+      const build = spawnSync('node', [join(ROOT, 'node_modules', 'typescript', 'bin', 'tsc'), '-p', 'tsconfig.json'], {
+        cwd: join(ROOT, workspace),
+        encoding: 'utf8',
+        timeout: 300_000,
+      })
+      expect(
+        build.status,
+        `${workspace} must compile:
+${build.stdout}${build.stderr}`,
+      ).toBe(0)
+    }
+
     // CREATE DATABASE cannot run inside a transaction, so it goes through a plain connection.
     await admin(`DROP DATABASE IF EXISTS ${TEST_DATABASE}`)
     await admin(`CREATE DATABASE ${TEST_DATABASE}`)

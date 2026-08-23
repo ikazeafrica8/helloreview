@@ -23,6 +23,8 @@
 // the tsc source maps back onto src/*.ts.
 import { test, describe, expect } from 'vitest'
 import { EventEmitter } from 'node:events'
+import { existsSync, readdirSync, statSync } from 'node:fs'
+import { join, dirname, relative } from 'node:path'
 import {
   singleHeader,
   flattenHeaders,
@@ -46,7 +48,67 @@ import {
 // the dist path is named explicitly.
 import { UnauthenticatedError, RateLimitedError } from '../../packages/contracts/dist/index.js'
 
+const ROOT = dirname(dirname(import.meta.dirname))
+
 // --------------------------------------------------------------------------------- http helpers
+
+describe('build freshness', () => {
+  test('the dist this file imported is not older than its source', () => {
+    // WHY AN ASSERTION AND NOT A beforeAll BUILD.
+    //
+    // The obvious guard — rebuild in `beforeAll` — DOES NOT WORK here, and I verified that rather
+    // than assuming it. The imports at the top of this file are static, so the modules are resolved
+    // and evaluated at COLLECTION time, before any hook runs. A build in `beforeAll` would produce
+    // fresh output that this file had already finished importing, and the suite would report green
+    // while testing the previous build. That is a worse failure than no guard, because it looks
+    // like one.
+    //
+    // `pnpm test:unit` now runs `pnpm build` first, which is the actual fix. This assertion is what
+    // catches the case that fix cannot reach: someone running `npx vitest` directly. It compares
+    // timestamps rather than rebuilding, so it is correct regardless of when imports were resolved.
+    //
+    // The bug it exists for: gutting the payload size limit in raw-body.middleware.ts
+    // (`limitBytes` -> `limitBytes * 1000`) left typecheck, lint and all 254 unit tests green,
+    // because nothing in the gate rebuilt apps/api.
+    const stale = []
+
+    for (const workspace of ['packages/contracts', 'packages/observability', 'apps/api']) {
+      const srcDir = join(ROOT, workspace, 'src')
+      const distDir = join(ROOT, workspace, 'dist')
+
+      const walk = (dir) => {
+        for (const entry of readdirSync(dir)) {
+          const absolute = join(dir, entry)
+          if (statSync(absolute).isDirectory()) {
+            walk(absolute)
+            continue
+          }
+          if (!entry.endsWith('.ts')) continue
+
+          const compiled = join(distDir, relative(srcDir, absolute).replace(/\.ts$/, '.js'))
+          if (!existsSync(compiled)) {
+            stale.push(`${workspace}: ${relative(srcDir, absolute)} has never been compiled`)
+            continue
+          }
+          // One second of tolerance: some filesystems record whole seconds, so a build run
+          // immediately after an edit can legitimately share its timestamp.
+          if (statSync(absolute).mtimeMs > statSync(compiled).mtimeMs + 1000) {
+            stale.push(`${workspace}: ${relative(srcDir, absolute)} is newer than its build output`)
+          }
+        }
+      }
+      walk(srcDir)
+    }
+
+    expect(
+      stale,
+      `This file imports compiled output, and ${String(stale.length)} source file(s) are newer than it.\n` +
+        'Every assertion below is therefore about code that is not the code under review.\n' +
+        'Run `pnpm build`, or use `pnpm test:unit`, which builds first.\n\n' +
+        stale.map((entry) => `    - ${entry}`).join('\n'),
+    ).toEqual([])
+  })
+})
 
 describe('header flattening', () => {
   test('a single value passes through', () => {

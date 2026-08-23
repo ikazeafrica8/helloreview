@@ -80,6 +80,45 @@ describe('build output', () => {
     )
   })
 
+  test('no compiled module is OLDER than the source it was built from', () => {
+    // The guard for the whole class of bug M1 belonged to.
+    //
+    // A test that imports or spawns dist verifies whatever was last built. If that is not the
+    // source under review, the test is measuring history. Measured: gutting the payload size limit
+    // in raw-body.middleware.ts left typecheck, lint and 254 unit tests green, because nothing in
+    // `pnpm verify` rebuilt apps/api.
+    //
+    // The test scripts now build first, which is the real fix. This is the check that says so —
+    // it fails if that ever stops happening, whatever the reason.
+    const stale = []
+
+    for (const workspace of builtWorkspaces()) {
+      const distDir = join(ROOT, workspace, 'dist')
+      for (const emitted of emittedFiles(distDir)) {
+        const source = join(ROOT, workspace, 'src', emitted.replace(/\.js$/, '.ts'))
+        if (!existsSync(source)) continue
+
+        const sourceTime = statSync(source).mtimeMs
+        const builtTime = statSync(join(distDir, emitted)).mtimeMs
+        // A one-second tolerance: some filesystems record whole seconds, so a build that ran
+        // immediately after an edit can legitimately share its timestamp.
+        if (sourceTime > builtTime + 1000) {
+          stale.push(
+            `${workspace}/${emitted} (source is ${String(Math.round((sourceTime - builtTime) / 1000))}s newer)`,
+          )
+        }
+      }
+    }
+
+    assert.deepEqual(
+      stale,
+      [],
+      `${String(stale.length)} compiled module(s) are older than their source. Any test importing or\n` +
+        'spawning dist is verifying code that is not the code under review. Run `pnpm build`.\n\n' +
+        stale.map((path) => `    - ${path}`).join('\n'),
+    )
+  })
+
   test('no lint fixture has been compiled into dist', () => {
     // Narrower and more pointed than the orphan check above, because the fix is different: the
     // sweep in lint-contract.test.mjs clears these. Note that excluding the glob in
