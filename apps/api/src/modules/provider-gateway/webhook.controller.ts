@@ -1,6 +1,6 @@
 import { Controller, Param, Post, Req, UseFilters, UseGuards } from '@nestjs/common'
 import { InvalidEnvelopeError, platformEventSchema, type AcceptanceResponse } from '@helloreview/contracts'
-import { currentCorrelationId } from '@helloreview/observability'
+import { InboxService } from './inbox.service.js'
 import { ContractErrorFilter } from './contract-error.filter.js'
 import { SignatureGuard } from './signature.guard.js'
 import { RateLimitGuard } from './rate-limit.guard.js'
@@ -20,12 +20,14 @@ import { RAW_BODY, type RequestWithRawBody } from './raw-body.middleware.js'
 @Controller('webhooks')
 @UseFilters(ContractErrorFilter)
 export class WebhookController {
+  constructor(private readonly inbox: InboxService) {}
+
   @Post(':provider')
   // Order is significant: authenticate FIRST, then limit. Limiting first would let an
   // unauthenticated attacker drain a named provider's bucket — a denial of service against that
   // provider, using the rate limiter as the weapon. Nest runs guards left to right.
   @UseGuards(SignatureGuard, RateLimitGuard)
-  accept(@Param('provider') provider: string, @Req() request: RequestWithRawBody): AcceptanceResponse {
+  async accept(@Param('provider') provider: string, @Req() request: RequestWithRawBody): Promise<AcceptanceResponse> {
     const rawBody = request[RAW_BODY]
     if (rawBody === undefined) throw new InvalidEnvelopeError('request body was not read')
 
@@ -53,12 +55,8 @@ export class WebhookController {
       throw new InvalidEnvelopeError('envelope source does not match the authenticated provider', 'SOURCE_MISMATCH')
     }
 
-    return {
-      accepted: true,
-      event_id: event.data.eventId,
-      duplicate: false,
-      ...(currentCorrelationId() === undefined ? {} : { correlation_id: currentCorrelationId() }),
-      processing_status: 'queued',
-    }
+    // Everything above is validation. This is the only line that changes state, and it is
+    // idempotent by construction — see inbox.service.ts.
+    return this.inbox.accept(event.data, rawBody)
   }
 }

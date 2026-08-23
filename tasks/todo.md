@@ -1096,14 +1096,16 @@ processing.
 
 **Acceptance criteria:**
 
-- [ ] A duplicate returns the original acceptance response with `duplicate: true` and enqueues nothing
-- [ ] A new event returns 202 and enqueues exactly one processing job
-- [ ] Concurrent delivery of the same event id yields one inbox row and one job, under a concurrency test
+- [x] A duplicate returns the original acceptance response with `duplicate: true` and enqueues nothing
+- [x] A new event returns 202 and enqueues exactly one processing job
+- [x] Concurrent delivery of the same event id yields one inbox row and one job, under a concurrency test
 
 **Verification:**
 
-- [ ] Tests pass: `pnpm test:integration`
-- [ ] Manual check: fire the same event twice concurrently and confirm one job
+- [x] Tests pass: `pnpm test:integration` — 7 tests against a real Postgres and Redis
+- [x] Manual check: 25 concurrent deliveries of the same event id produce exactly one row, one job,
+      and exactly one `duplicate: false` response. A check-then-insert implementation passes every
+      sequential test and fails this one
 
 **Dependencies:** T15, T17
 

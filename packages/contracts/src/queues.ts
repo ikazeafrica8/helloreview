@@ -12,6 +12,15 @@
 // or `new Worker(...)`, so the only way to name a queue is through this object.
 
 export const QUEUE_NAMES = {
+  /**
+   * Process an accepted inbound event (T18, FR-MSG-001).
+   *
+   * The gateway's job ends at "durably recorded". Everything a business event actually causes
+   * happens on this queue, which is what keeps the webhook response fast and, more importantly,
+   * what makes processing RETRYABLE independently of the provider's delivery attempt. A gateway
+   * that processed inline would have to choose between a slow response and losing work on failure.
+   */
+  PROCESS_INBOUND_EVENT: 'process-inbound-event',
   /** Reconcile website applications when an event never arrived (T27, FR-APP-005). */
   RECONCILE_APPLICATIONS: 'reconcile-applications',
   /** Deliver notification intents committed by the transactional outbox (T45, FR-MSG-004). */

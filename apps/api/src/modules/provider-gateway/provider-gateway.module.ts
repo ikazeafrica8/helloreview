@@ -4,6 +4,8 @@ import { ProviderRegistry } from './provider-registry.js'
 import { SignatureGuard } from './signature.guard.js'
 import { RateLimitGuard } from './rate-limit.guard.js'
 import { WebhookRateLimiter } from './rate-limit.js'
+import { InboxRepository } from './inbox.repository.js'
+import { InboxService } from './inbox.service.js'
 import { WebhookController } from './webhook.controller.js'
 import { createRawBodyMiddleware } from './raw-body.middleware.js'
 
@@ -20,8 +22,8 @@ const WEBHOOK_BODY_LIMIT_BYTES = 1_048_576
 @Module({
   imports: [PlatformCoreModule],
   controllers: [WebhookController],
-  providers: [ProviderRegistry, SignatureGuard, RateLimitGuard, WebhookRateLimiter],
-  exports: [ProviderRegistry, WebhookRateLimiter],
+  providers: [ProviderRegistry, SignatureGuard, RateLimitGuard, WebhookRateLimiter, InboxRepository, InboxService],
+  exports: [ProviderRegistry, WebhookRateLimiter, InboxService, InboxRepository],
 })
 export class ProviderGatewayModule implements NestModule {
   configure(consumer: MiddlewareConsumer): void {

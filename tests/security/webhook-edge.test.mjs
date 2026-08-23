@@ -10,6 +10,7 @@ import { test, describe, beforeAll, afterAll, expect } from 'vitest'
 import { createHmac } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { spawn } from 'node:child_process'
 
 const ROOT = dirname(dirname(import.meta.dirname))
@@ -71,11 +72,50 @@ const post = async (body, { signature, timestamp, provider = 'helloreview_websit
   return { status: response.status, text, json: text === '' ? undefined : JSON.parse(text) }
 }
 
+/**
+ * A database of this suite's own.
+ *
+ * The controller now PERSISTS, so these tests write rows. Pointing them at the developer's dev
+ * database would leave test events in it — the same objection that moved the queue tests onto Redis
+ * database 15. Postgres has no numbered databases, so the equivalent is a database named for this
+ * suite, created before it runs and dropped after.
+ */
+const TEST_DATABASE = 'helloreview_webhook_edge'
+
+const adminUrl = () => {
+  const url = new URL(ENV.get('DATABASE_MIGRATION_URL'))
+  url.pathname = '/postgres'
+  return url.toString()
+}
+
+const testDatabaseUrl = () => {
+  const url = new URL(ENV.get('DATABASE_MIGRATION_URL'))
+  url.pathname = `/${TEST_DATABASE}`
+  return url.toString()
+}
+
+/** Run one SQL statement against the `postgres` maintenance database. */
+const admin = async (sql) => {
+  const { createDbClient } = await import(pathToFileURL(join(ROOT, 'packages/db/dist/index.js')).href)
+  const client = createDbClient(adminUrl(), 1)
+  try {
+    await client.query(sql)
+  } finally {
+    await client.close()
+  }
+}
+
 let child
 let output = ''
 
 describe('the webhook edge', () => {
   beforeAll(async () => {
+    // CREATE DATABASE cannot run inside a transaction, so it goes through a plain connection.
+    await admin(`DROP DATABASE IF EXISTS ${TEST_DATABASE}`)
+    await admin(`CREATE DATABASE ${TEST_DATABASE}`)
+    const { applyMigrations } = await import(pathToFileURL(join(ROOT, 'packages/db/dist/index.js')).href)
+    await applyMigrations(testDatabaseUrl())
+
     child = spawn(process.execPath, [join(ROOT, 'apps', 'api', 'dist', 'main.js')], {
       cwd: ROOT,
       // Redis isolated to database 15, the same policy the queue tests follow: this suite drives
@@ -84,6 +124,7 @@ describe('the webhook edge', () => {
         ...process.env,
         ...Object.fromEntries(ENV),
         API_PORT: String(PORT),
+        DATABASE_URL: testDatabaseUrl(),
         REDIS_URL: ENV.get('REDIS_URL').replace(/\/\d+$/, '/15'),
       },
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -103,8 +144,12 @@ describe('the webhook edge', () => {
     throw new Error(`api never became reachable:\n${output}`)
   }, 60_000)
 
-  afterAll(() => {
+  afterAll(async () => {
     child?.kill()
+    // The connection must be gone before the database can be dropped, so give the child a moment
+    // to release it. A lingering database is untidy rather than dangerous, hence the tolerance.
+    await new Promise((resolve) => setTimeout(resolve, 500))
+    await admin(`DROP DATABASE IF EXISTS ${TEST_DATABASE} WITH (FORCE)`).catch(() => undefined)
   })
 
   test('a correctly signed envelope is accepted with 202-style acknowledgement', async () => {
