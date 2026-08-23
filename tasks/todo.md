@@ -40,13 +40,13 @@ its own acceptance criteria. `pnpm verify` must pass before every commit.
 
 ### Phase 2 — Idempotency spine
 
-- [ ] T14 — Event contracts (`§18`)
-- [ ] T15 — Event inbox schema
-- [ ] T16 — Webhook gateway: signature and replay
-- [ ] T17 — Webhook gateway: schema, limits, rate limiting
-- [ ] T18 — Idempotent accept semantics
-- [ ] T19 — Inbound provider port, fake, and conformance suite
-- [ ] T20 — **AC-02**: duplicate application-completion webhook
+- [x] T14 — Event contracts (`§18`)
+- [x] T15 — Event inbox schema
+- [x] T16 — Webhook gateway: signature and replay
+- [x] T17 — Webhook gateway: schema, limits, rate limiting
+- [x] T18 — Idempotent accept semantics
+- [x] T19 — Inbound provider port, fake, and conformance suite
+- [x] T20 — **AC-02**: duplicate application-completion webhook
 
 ### Checkpoint B — Idempotency proven
 
@@ -172,9 +172,9 @@ Every fix carries a test that was verified to FAIL without it.
 
 # Phase 3 — Configuration and source of truth
 
-- [ ] T21 — Campaigns and versioned rules
-- [ ] T22 — Time windows and blackouts
-- [ ] T23 — Business details and approved aliases
+- [x] T21 — Campaigns and versioned rules
+- [x] T22 — Time windows and blackouts
+- [x] T23 — Business details and approved aliases
 - [ ] T24 — Guideline, terms, and template versions
 - [ ] T25 — Campaign activation validation
 - [ ] T26 — Website adapter port, fake, and applications schema
@@ -1330,14 +1330,30 @@ multiple windows per weekday and configurable boundary inclusivity (`§16.7`, `F
 
 **Acceptance criteria:**
 
-- [ ] Multiple windows per weekday are supported, and all are evaluated
-- [ ] Boundary inclusivity is stored per window, not assumed globally
-- [ ] `UNIQUE(campaign_id, rule_version, date)` holds for blackouts
+- [x] Multiple windows per weekday are supported, and all are evaluated
+- [x] Boundary inclusivity is stored per window, not assumed globally
+- [x] `UNIQUE(campaign_id, rule_version, date)` holds for blackouts
 
 **Verification:**
 
-- [ ] Tests pass: `pnpm test:integration`
-- [ ] Manual check: configure two Tuesday windows and confirm both persist and resolve
+- [x] Tests pass: `pnpm test:integration` — 9 tests against a real migrated Postgres
+- [x] Manual check: two Tuesday windows (11:00–14:00 and 17:00–21:00) both persist and both come
+      back from the resolver. The gap between them is the point — nothing in the result says 15:00
+      is allowed, which a single spanning window would have accepted while the business was closed
+
+> **Notes.**
+>
+> 1. **Bound to a RULE VERSION, not to a campaign.** If windows hung off the campaign, editing one
+>    would retroactively change what "valid" meant for every reservation already checked against the
+>    old windows — the silent retroactive rule application FR-CAM-007 forbids.
+> 2. **Boundary inclusivity is per window because §16.7 makes Boundary its own check.** A shop may
+>    accept a booking at closing time for a ten-minute service and refuse it for a ninety-minute
+>    one; that is a property of the window, not of the platform.
+> 3. **The default is start-inclusive, end-EXCLUSIVE**, asymmetric on purpose: defaulting both ends
+>    to inclusive would make adjacent windows overlap at their shared boundary, so 14:00 would fall
+>    in both the morning and the afternoon window.
+> 4. **A blackout is a `date`, never a timestamp.** Midnight UTC is 09:00 in Seoul, so an 08:00
+>    Seoul reservation on a blacked-out day would compare against the previous date and pass.
 
 **Dependencies:** T21
 
@@ -1355,14 +1371,30 @@ validation later.
 
 **Acceptance criteria:**
 
-- [ ] Business records are effective-dated and versioned; changes create a new version
-- [ ] Aliases are a first-class list, and name comparison normalizes whitespace, casing, and Korean spacing variants
-- [ ] Branch is stored separately from business name so a wrong-branch booking is distinguishable from a wrong business
+- [x] Business records are effective-dated and versioned; changes create a new version
+- [x] Aliases are a first-class list, and name comparison normalizes whitespace, casing, and Korean spacing variants
+- [x] Branch is stored separately from business name so a wrong-branch booking is distinguishable from a wrong business
 
 **Verification:**
 
-- [ ] Tests pass: `pnpm test:unit` (normalization) and `pnpm test:integration`
-- [ ] Manual check: a known alias resolves to the campaign business; an unapproved one does not
+- [x] Tests pass: `pnpm test:unit` — 31 normalizer tests — and `pnpm test:integration` — 7 tests
+- [x] Manual check: a known alias resolves to the campaign business and an unapproved one does not,
+      including across Korean spacing (`스벅 강남` vs `스벅강남`) and Unicode composition
+
+> **Notes.**
+>
+> 1. **An alias is an AUTHORIZATION, not a convenience.** §16.7 validates a booking against an
+>    "approved alias", so the list is frozen with its business version — adding one to a published
+>    version would retroactively authorize bookings under a name nobody approved at the time.
+> 2. **Unicode normalization comes FIRST, and it is the step that matters most.** Korean text from
+>    an OCR engine, a browser paste and a phone keyboard is genuinely not byte-identical even when
+>    it renders identically. Mutation-tested: dropping NFKC breaks 5 tests, keeping whitespace
+>    breaks 11.
+> 3. **Whitespace is removed, not collapsed**, because Korean spacing is inconsistent — and that is
+>    the one rule that could create a FALSE match. Accepted knowingly: §16.7 pairs the business
+>    check with a separate branch check, so a name collision alone cannot validate a booking.
+> 4. **Branch is its own column** so a right-business/wrong-branch booking is distinguishable from a
+>    wrong-business one; §16.7 gives those different failure actions.
 
 **Dependencies:** T21
 
