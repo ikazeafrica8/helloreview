@@ -55,7 +55,7 @@ const bootstrap = async (): Promise<void> => {
     queues.length === 0
       ? 'ready — 0 processors registered (T27, T45 and T55 add them; see src/processors/index.ts)'
       : `ready — ${String(queues.length)} processor(s): ${queues.join(', ')}`,
-    { operation: 'worker.ready', result: 'ok', retryCount: queues.length },
+    { operation: 'worker.ready', result: 'ok', count: queues.length },
   )
 
   let stopping = false

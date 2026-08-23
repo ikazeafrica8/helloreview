@@ -25,6 +25,10 @@ export interface LogContext {
   errorCategory?: string
   retryCount?: number
   stateVersion?: number
+  /** HTTP status, for request lines. Separate from retryCount, which counts RETRIES. */
+  statusCode?: number
+  /** A small count the line is about — processors bound, rows written. Never a retry count. */
+  count?: number
   /** Already masked by the caller — see maskIdentifier. */
   actorId?: string
 }
@@ -84,6 +88,8 @@ export const createLogger = (options: LoggerOptions): Logger => {
         ...(context.errorCategory === undefined ? {} : { errorCategory: context.errorCategory }),
         ...(context.retryCount === undefined ? {} : { retryCount: context.retryCount }),
         ...(context.stateVersion === undefined ? {} : { stateVersion: context.stateVersion }),
+        ...(context.statusCode === undefined ? {} : { statusCode: context.statusCode }),
+        ...(context.count === undefined ? {} : { count: context.count }),
         ...(context.actorId === undefined ? {} : { actorId: context.actorId }),
       }
 
