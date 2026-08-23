@@ -1,0 +1,28 @@
+{
+  "name": "@helloreview/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/main.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "node dist/main.js"
+  },
+  "dependencies": {
+    "@helloreview/config": "workspace:*",
+    "@helloreview/db": "workspace:*",
+    "@helloreview/observability": "workspace:*",
+    "@nestjs/common": "^11.2.1",
+    "@nestjs/core": "^11.2.1",
+    "@nestjs/platform-express": "^11.2.1",
+    "drizzle-orm": "^0.45.2",
+    "ioredis": "^6.0.0",
+    "pg": "^8.23.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.15.6"
+  }
+}

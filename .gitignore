@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+.next/
+*.tsbuildinfo
+
+# Tooling caches
+.turbo/
+coverage/
+.vitest/
+
+# Secrets — SPEC.md §8 forbids committing any of these.
+# .env.example is the only environment file that belongs in version control.
+.env
+.env.*
+!.env.example
+
+# Local service state
+infra/data/
+
+# Editor and OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Throwaway lint fixtures written by tests/toolchain/lint-contract.test.mjs. They contain
+# deliberate violations and must never be committed if a run leaks one.
+apps/*/src/__lint-fixture-*.ts
+
+# Database dumps. These contain every participant record the platform holds.
+backups/

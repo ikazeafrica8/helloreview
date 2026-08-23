@@ -1,0 +1,19 @@
+{
+  "name": "@helloreview/worker",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/main.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "node dist/main.js"
+  },
+  "dependencies": {
+    "@helloreview/config": "workspace:*",
+    "@helloreview/contracts": "workspace:*",
+    "@helloreview/observability": "workspace:*",
+    "bullmq": "^6.2.0",
+    "ioredis": "^6.0.0"
+  }
+}

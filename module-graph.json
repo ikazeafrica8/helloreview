@@ -1,0 +1,75 @@
+{
+  "$comment": [
+    "The SPEC.md §3.1 capability map, in the one machine-readable form the toolchain reads.",
+    "tools/eslint-rules/module-boundaries.js enforces it; nothing duplicates it.",
+    "",
+    "Adding a module here does NOT create it — it declares what that module is allowed to import.",
+    "An import not permitted by this file is a lint error naming both modules, so widening a",
+    "module's reach is a deliberate edit to this table and shows up in review as one.",
+    "",
+    "Arrows point one way. SPEC.md §3.1 states the graph is acyclic; `pnpm lint` proves it, because",
+    "the rule refuses to load a graph containing a cycle.",
+    "",
+    "Modules realized under apps/api/src/modules/ are the ones the rule can actually see. The",
+    "later-phase entries are recorded so the table stays the single description of the map."
+  ],
+  "modules": {
+    "platform-core": { "dependsOn": [] },
+    "audit-log": { "dependsOn": ["platform-core"] },
+    "campaign-config": { "dependsOn": ["platform-core", "audit-log"] },
+    "provider-gateway": { "dependsOn": ["platform-core"] },
+    "rules-engine": { "dependsOn": ["campaign-config"] },
+    "application-sync": { "dependsOn": ["provider-gateway", "campaign-config"] },
+    "identity-resolution": { "dependsOn": ["application-sync", "campaign-config"] },
+    "workflow-core": { "dependsOn": ["identity-resolution", "campaign-config", "audit-log"] },
+    "messaging": { "dependsOn": ["workflow-core", "campaign-config", "provider-gateway"] },
+    "attachments": { "dependsOn": ["workflow-core"] },
+    "ai-orchestration": { "dependsOn": ["platform-core", "campaign-config"] },
+    "human-tasks": { "dependsOn": ["workflow-core", "messaging"] },
+    "selection": { "dependsOn": ["workflow-core", "rules-engine", "identity-resolution"] },
+    "shipping": { "dependsOn": ["workflow-core", "messaging", "rules-engine"] },
+    "payback-consent": { "dependsOn": ["workflow-core", "messaging", "campaign-config"] },
+    "business-approval": { "dependsOn": ["workflow-core", "campaign-config"] },
+    "reservation": {
+      "dependsOn": ["workflow-core", "rules-engine", "ai-orchestration", "business-approval"]
+    },
+    "guideline-delivery": { "dependsOn": ["workflow-core", "rules-engine", "messaging"] },
+    "privacy-ops": { "dependsOn": ["workflow-core", "attachments", "audit-log"] },
+    "admin-api": {
+      "$comment": "SPEC.md §3.1 says 'all business-flow modules, audit-log'. Enumerated, because a rule cannot read prose.",
+      "dependsOn": [
+        "audit-log",
+        "campaign-config",
+        "application-sync",
+        "identity-resolution",
+        "workflow-core",
+        "messaging",
+        "attachments",
+        "human-tasks",
+        "selection",
+        "shipping",
+        "payback-consent",
+        "business-approval",
+        "reservation",
+        "guideline-delivery",
+        "privacy-ops"
+      ]
+    },
+    "ocr-extraction": {
+      "$comment": "Phase 5 — unlocks Visit B and full Visit C.",
+      "dependsOn": ["attachments", "ai-orchestration"]
+    },
+    "blog-score": {
+      "$comment": "Phase 7 — unlocks auto-selection.",
+      "dependsOn": ["platform-core"]
+    },
+    "analytics": {
+      "$comment": "Phase 8.",
+      "dependsOn": ["audit-log", "admin-api"]
+    },
+    "operator-console": {
+      "$comment": "Realized as apps/admin (Milestone 3), not as an apps/api module, so the rule never sees it.",
+      "dependsOn": ["admin-api"]
+    }
+  }
+}

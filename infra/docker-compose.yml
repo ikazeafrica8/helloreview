@@ -1,0 +1,192 @@
+# HelloReview local service stack — PostgreSQL 16, Redis 7, MinIO.
+#
+# Run it with `pnpm services:up` / `pnpm services:down`, never with a bare `docker compose`.
+# The scripts pass `--project-directory .` so Compose reads the ROOT `.env`; without it Compose
+# resolves `.env` next to this file, finds nothing, and every credential falls back to empty.
+#
+# Images are pinned by tag AND digest. The digest is what actually makes a run reproducible, and
+# T7's Testcontainers helper should reuse these exact strings.
+#
+# PORTS: the published host ports deliberately avoid 5432/6379/9000/9001. Two containers cannot
+# bind the same host port, and a developer machine may already run another project's stack on the
+# standard ones. Container-internal ports stay standard, so nothing inside the network changes.
+#
+# MinIO note: minio/minio is AGPLv3 and this pin has not been rebuilt since 2025-09-07. Accepted
+# deliberately — it is a local development emulator, never distributed and never serving production
+# traffic. Production object storage is an open question tied to the unresolved hosting region
+# (SPEC.md §2). The storage port in packages/adapters is what keeps it swappable.
+
+name: helloreview
+
+services:
+  postgres:
+    # Debian, not Alpine: Alpine ships no glibc locales and a different ICU major version, and this
+    # product sorts and matches Korean text under the §17.3 unique constraints that are the
+    # idempotency mechanism. A collation difference there is a correctness bug, not cosmetics.
+    image: postgres:16.15-bookworm@sha256:60f4761b9035e0b8d5218f701a8c3382f641bf12b1604822574cf5be3baeb537
+    restart: 'no'
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is not set. Copy .env.example to .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is not set. Copy .env.example to .env}
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is not set. Copy .env.example to .env}
+      # C.UTF-8 gives deterministic byte-order collation: exact equality for the unique constraints,
+      # and immunity to the glibc collation changes that silently corrupt text indexes across a base
+      # image upgrade. Korean display ordering is a per-query COLLATE "ko-KR-x-icu", not a cluster
+      # default.
+      POSTGRES_INITDB_ARGS: '--encoding=UTF8 --locale=C.UTF-8'
+      # Containers run UTC. SPEC.md §6: compute in UTC, render to Asia/Seoul. A Seoul-local
+      # container would hide naive-Date bugs that then surface in a deployed UTC environment.
+      TZ: UTC
+    ports:
+      # Explicit 127.0.0.1. The bare "15432:5432" form binds 0.0.0.0 and Docker Desktop opens the
+      # Windows firewall for it, which would put a PII-bearing dev database on whatever network the
+      # laptop joins (PRD §21.3).
+      - '127.0.0.1:${POSTGRES_PORT:-15432}:5432'
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      # -h 127.0.0.1 forces a TCP probe. During bootstrap initdb runs a temporary server that
+      # listens only on the Unix socket, so a bare pg_isready reports ready while init is still
+      # running and the real server is about to restart. -U/-d stop it defaulting to the root OS user.
+      test: ['CMD-SHELL', 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" -h 127.0.0.1']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  redis:
+    image: redis:7.4.11-alpine@sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf
+    restart: 'no'
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is not set. Copy .env.example to .env}
+    command:
+      - redis-server
+      - --requirepass
+      - ${REDIS_PASSWORD:?REDIS_PASSWORD is not set. Copy .env.example to .env}
+      # BullMQ jobs are durable work, so local Redis persists them across a services:down.
+      - --appendonly
+      - 'yes'
+      # BullMQ requires noeviction; under any eviction policy Redis may silently drop job keys.
+      - --maxmemory-policy
+      - noeviction
+    ports:
+      - '127.0.0.1:${REDIS_PORT:-16379}:6379'
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      # REDISCLI_AUTH keeps the password off the command line inside the container. Piping to grep
+      # is what makes an auth failure FAIL the probe — redis-cli exits 0 while printing "NOAUTH
+      # Authentication required", so a bare `redis-cli ping` reports healthy when it is not.
+      # (This image is Alpine and does have grep; the MinIO image below does not.)
+      test: ['CMD-SHELL', 'REDISCLI_AUTH="$$REDIS_PASSWORD" redis-cli ping | grep -q PONG']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
+
+  minio:
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
+    restart: 'no'
+    command: ['server', '/data', '--console-address', ':9001']
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?MINIO_ROOT_USER is not set. Copy .env.example to .env}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is not set. Copy .env.example to .env}
+      MINIO_BROWSER_REDIRECT_URL: http://127.0.0.1:${MINIO_CONSOLE_PORT:-19001}
+    ports:
+      - '127.0.0.1:${MINIO_PORT:-19000}:9000'
+      - '127.0.0.1:${MINIO_CONSOLE_PORT:-19001}:9001'
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      # `mc` ships inside the server image and reports cluster READINESS, not mere liveness.
+      # Do not rewrite this as `wget --spider /minio/health/live`: verified, the image has no wget
+      # and no nc, so that near-universal snippet leaves the container unhealthy forever.
+      test: ['CMD', 'mc', 'ready', 'local']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  # One-shot bucket bootstrap. Behind a profile deliberately: `docker compose up --wait` treats a
+  # one-shot container that exited 0 as neither running nor healthy, which makes services:up flaky.
+  # The profile keeps it out of `up`; services:up runs it explicitly afterwards with `run --rm`,
+  # which propagates its exit code deterministically.
+  #
+  # The script is inline, not a bind-mounted .sh. A shell script checked out on Windows with CRLF
+  # endings fails with "/bin/sh^M: bad interpreter" and exit 126; an inline script never crosses
+  # the filesystem boundary as an executable.
+  minio-init:
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
+    restart: 'no'
+    profiles: ['init']
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?MINIO_ROOT_USER is not set}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is not set}
+      S3_BUCKET: ${S3_BUCKET:?S3_BUCKET is not set}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:?S3_ACCESS_KEY_ID is not set}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:?S3_SECRET_ACCESS_KEY is not set}
+    entrypoint: ['/bin/sh', '-c']
+    command:
+      - |
+        set -eu
+
+        # $$VAR is a literal $$VAR after Compose interpolation, expanded by this shell at runtime.
+        # Keeping it out of Compose interpolation keeps credentials out of `docker compose config`.
+        # Note the doubling applies to comments too: this block is a YAML scalar, so Compose
+        # interpolates every $$ in it including inside comment lines.
+        mc alias set hr "http://minio:9000" "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD" >/dev/null
+        echo "[init] connected to minio"
+
+        # --ignore-existing exits 0 on re-run; a bare `mc mb` exits 1 and would break set -eu.
+        mc mb --ignore-existing "hr/$$S3_BUCKET"
+        echo "[init] bucket ready: $$S3_BUCKET"
+
+        # PRD §21.3: no publicly readable file buckets. Set it unconditionally so a bucket that was
+        # opened up by hand is repaired on the next services:up, then PROVE it below.
+        mc anonymous set none "hr/$$S3_BUCKET"
+
+        # NOTE: verified, this image has no grep, no awk and no sed. A `grep -q private` assertion
+        # would exit non-zero for the wrong reason and get "fixed" by deleting the check. POSIX
+        # case needs no external binary.
+        POLICY="$$(mc anonymous get "hr/$$S3_BUCKET")"
+        echo "[init] policy: $$POLICY"
+        case "$$POLICY" in
+          *private*|*none*) echo "[init] policy assertion passed" ;;
+          *) echo "[init] FATAL bucket is not private: $$POLICY" >&2 ; exit 1 ;;
+        esac
+
+        # The policy string is MinIO's own account of itself. This is the independent check: an
+        # unauthenticated HTTP request must be refused. This is what turns §21.3 from a default
+        # nobody re-reads into a gate that fails `pnpm services:up`. (curl IS in this image.)
+        CODE="$$(curl -s -o /dev/null -w '%{http_code}' "http://minio:9000/$$S3_BUCKET/")"
+        echo "[init] anonymous list http status: $$CODE"
+        if [ "$$CODE" != "403" ]; then
+          echo "[init] FATAL anonymous access to $$S3_BUCKET is not denied (got $$CODE)" >&2
+          exit 1
+        fi
+
+        # The application never uses the root credential. A scoped service account gives local
+        # wiring the same shape as a deployed S3 key, so the storage adapter needs no local-only
+        # path. An unguarded re-add exits 1 with "access key already taken" and would break set -eu.
+        if mc admin user svcacct info hr "$$S3_ACCESS_KEY_ID" >/dev/null 2>&1; then
+          echo "[init] service account already present"
+        else
+          mc admin user svcacct add \
+            --access-key "$$S3_ACCESS_KEY_ID" \
+            --secret-key "$$S3_SECRET_ACCESS_KEY" \
+            hr "$$MINIO_ROOT_USER" >/dev/null
+          echo "[init] service account created"
+        fi
+
+        echo "[init] MINIO_INIT_OK"
+
+# Named volumes, never a bind mount into the repo. A Windows bind mount costs roughly 5x on
+# small-file writes, exposes database files to antivirus scanning, and puts them one
+# `git clean -xfd` away from deletion. `pnpm services:reset` is the sanctioned way to destroy data.
+volumes:
+  postgres-data:
+  redis-data:
+  minio-data:

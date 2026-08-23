@@ -1,14 +1,14 @@
 # Implementation Plan: HelloReview Reviewer Campaign Automation Platform
 
-| Field | Value |
-|---|---|
-| Plan version | 1.0 |
-| Status | Draft — awaiting approval before implementation |
-| Spec | [SPEC.md](../SPEC.md) (capability map in §3) |
-| Requirements | [PRD v1.0](../HelloReview%20Reviewer%20Campaign%20Automation%20Platform%20—%20Product%20Requirements%20Document.md) |
-| Task list | [tasks/todo.md](todo.md) — markdown checklist, no external tracker designated |
-| Detailed scope | Milestone 1 (Core Spine), 56 tasks across 8 phases |
-| Outlined scope | Milestones 2–4, broken down at their checkpoints |
+| Field          | Value                                                                                                               |
+| -------------- | ------------------------------------------------------------------------------------------------------------------- |
+| Plan version   | 1.0                                                                                                                 |
+| Status         | Draft — awaiting approval before implementation                                                                     |
+| Spec           | [SPEC.md](../SPEC.md) (capability map in §3)                                                                        |
+| Requirements   | [PRD v1.0](../HelloReview%20Reviewer%20Campaign%20Automation%20Platform%20—%20Product%20Requirements%20Document.md) |
+| Task list      | [tasks/todo.md](todo.md) — markdown checklist, no external tracker designated                                       |
+| Detailed scope | Milestone 1 (Core Spine), 56 tasks across 8 phases                                                                  |
+| Outlined scope | Milestones 2–4, broken down at their checkpoints                                                                    |
 
 ---
 
@@ -119,16 +119,16 @@ concurrently once Phase 2 closes, provided the applications schema lands after c
 Full task detail — description, acceptance criteria, verification, dependencies, files, size — is in
 [tasks/todo.md](todo.md). Index:
 
-| Phase | Tasks | Delivers | Ends on |
-|---|---|---|---|
-| 0. Foundation | T1–T9 | Buildable, testable, lintable workspace with a database | Checkpoint A |
-| 1. Observability and audit | T10–T13 | Correlation IDs, masked structured logs, append-only audit | — |
-| 2. Idempotency spine | T14–T20 | Signed webhook → deduplicated inbox, with fakes | **AC-02** · Checkpoint B |
-| 3. Configuration and source of truth | T21–T27 | Versioned campaign rules; synchronized applications | — |
-| 4. Identity | T28–T33 | Deterministic matching, ambiguity → human task | **AC-04** · Checkpoint C |
-| 5. Workflow core | T34–T40 | State machine, optimistic locking, pauses, corrections | Checkpoint D |
-| 6. Outbound and deduplication | T41–T47 | Transactional outbox, dedupe keys, ownership lock | **AC-06** |
-| 7. The gates | T48–T56 | Rules engine, Visit C hard gate, guideline readiness | **AC-01 · AC-03 · AC-08** · Checkpoint E |
+| Phase                                | Tasks   | Delivers                                                   | Ends on                                  |
+| ------------------------------------ | ------- | ---------------------------------------------------------- | ---------------------------------------- |
+| 0. Foundation                        | T1–T9   | Buildable, testable, lintable workspace with a database    | Checkpoint A                             |
+| 1. Observability and audit           | T10–T13 | Correlation IDs, masked structured logs, append-only audit | —                                        |
+| 2. Idempotency spine                 | T14–T20 | Signed webhook → deduplicated inbox, with fakes            | **AC-02** · Checkpoint B                 |
+| 3. Configuration and source of truth | T21–T27 | Versioned campaign rules; synchronized applications        | —                                        |
+| 4. Identity                          | T28–T33 | Deterministic matching, ambiguity → human task             | **AC-04** · Checkpoint C                 |
+| 5. Workflow core                     | T34–T40 | State machine, optimistic locking, pauses, corrections     | Checkpoint D                             |
+| 6. Outbound and deduplication        | T41–T47 | Transactional outbox, dedupe keys, ownership lock          | **AC-06**                                |
+| 7. The gates                         | T48–T56 | Rules engine, Visit C hard gate, guideline readiness       | **AC-01 · AC-03 · AC-08** · Checkpoint E |
 
 Three of the eight `§26.3` acceptance tests are deferred with their modules: AC-05 (payback consent
 versioning) to Milestone 2, AC-07 (screenshot prompt injection) to Milestone 4 with `ocr-extraction`.
@@ -159,20 +159,20 @@ accuracy, or legal approval per PRD `§27` phases 5–8.
 
 Plan-level risks — what could derail this task sequence, as distinct from the product risks in PRD `§30`.
 
-| Risk | Impact | Mitigation |
-|---|---|---|
-| Kakao 상담톡 exposes no stable user or conversation identifier | High — `identity-resolution` (T28–T31) and channel persistence are built on the assumption one exists | The fake defines the port we need. T19's conformance suite becomes the exact question list for the dealer. If no stable id exists, the fallback is per-conversation re-verification, and we learn the cost in Phase 4 rather than at integration |
-| The website cannot emit source event ids | High — the entire inbox idempotency model (T15–T18) assumes them | T27 builds the reconciliation path alongside the event path, so `application-sync` works in polling mode if events never arrive. Slower, not blocked |
-| `workflow-core` (T34–T40) is underestimated | Medium — it is the largest single module and everything after Phase 5 waits on it | It is split into seven tasks with the transition table (T36) and illegal transitions (T37) separated, so the guard logic can be reviewed before the full `§14.5` table is encoded. Checkpoint D exists specifically to catch overrun here |
-| The guideline gate turns out to need flow-module state | Medium — would invalidate the SPEC.md §3.3 boundary decision and reorder Milestone 2 | This is why the gate is in Milestone 1. T53 constructs snapshots directly; if a required fact is not on the snapshot, the map is wrong and we revise it with one module built, not six |
-| Coverage thresholds on pure modules (100% branch on `rules-engine`, gates, validators) slow delivery | Low | These modules are pure and small by construction. If a threshold is fighting the work rather than the risk, that is a signal the module is not actually pure — treat it as a design smell, not a threshold to lower |
-| 56 tasks is a large batch to review before any of it runs | Medium | Checkpoints A–E each leave the system in a working, demonstrable state. Checkpoint B (AC-02 green) is the first real proof and arrives at task 20 |
+| Risk                                                                                                 | Impact                                                                                                | Mitigation                                                                                                                                                                                                                                       |
+| ---------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Kakao 상담톡 exposes no stable user or conversation identifier                                       | High — `identity-resolution` (T28–T31) and channel persistence are built on the assumption one exists | The fake defines the port we need. T19's conformance suite becomes the exact question list for the dealer. If no stable id exists, the fallback is per-conversation re-verification, and we learn the cost in Phase 4 rather than at integration |
+| The website cannot emit source event ids                                                             | High — the entire inbox idempotency model (T15–T18) assumes them                                      | T27 builds the reconciliation path alongside the event path, so `application-sync` works in polling mode if events never arrive. Slower, not blocked                                                                                             |
+| `workflow-core` (T34–T40) is underestimated                                                          | Medium — it is the largest single module and everything after Phase 5 waits on it                     | It is split into seven tasks with the transition table (T36) and illegal transitions (T37) separated, so the guard logic can be reviewed before the full `§14.5` table is encoded. Checkpoint D exists specifically to catch overrun here        |
+| The guideline gate turns out to need flow-module state                                               | Medium — would invalidate the SPEC.md §3.3 boundary decision and reorder Milestone 2                  | This is why the gate is in Milestone 1. T53 constructs snapshots directly; if a required fact is not on the snapshot, the map is wrong and we revise it with one module built, not six                                                           |
+| Coverage thresholds on pure modules (100% branch on `rules-engine`, gates, validators) slow delivery | Low                                                                                                   | These modules are pure and small by construction. If a threshold is fighting the work rather than the risk, that is a signal the module is not actually pure — treat it as a design smell, not a threshold to lower                              |
+| 56 tasks is a large batch to review before any of it runs                                            | Medium                                                                                                | Checkpoints A–E each leave the system in a working, demonstrable state. Checkpoint B (AC-02 green) is the first real proof and arrives at task 20                                                                                                |
 
 ---
 
 ## Open questions
 
-Carried forward from SPEC.md §10 — restated here only where they change *this plan's* task ordering.
+Carried forward from SPEC.md §10 — restated here only where they change _this plan's_ task ordering.
 
 1. **Capability-map approval was implicit.** This plan proceeds on the map in SPEC.md §3 as written.
    If the four boundary decisions in §3.3 are contested — particularly `guideline-delivery` not

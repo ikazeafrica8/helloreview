@@ -1,0 +1,27 @@
+packages:
+  - 'apps/*'
+  - 'packages/*'
+
+# Build scripts we have deliberately NOT approved.
+#
+# pnpm 10 blocks a dependency's postinstall by default and then exits 0 with a warning, so an
+# unrecorded decision here looks identical to nobody having noticed. Listing it makes the choice
+# explicit and silences the prompt.
+#
+# msgpackr-extract is an optional native accelerator for msgpackr, which BullMQ uses to serialize
+# job payloads. msgpackr falls back to a pure-JavaScript path without it, so the only cost is
+# throughput — and the benefit is that no developer needs a native build toolchain to install this
+# repo. Revisit if job serialization ever shows up in a profile.
+# cpu-features / ssh2 back Testcontainers' remote-Docker-over-SSH transport, which this project does
+# not use — local Docker Desktop is reached over its own socket. protobufjs's script is build-time
+# codegen with a runtime fallback. All three are optional, and none is worth requiring every
+# developer to have a native toolchain.
+# drizzle-kit pulls three separate esbuild copies (via its own dependency, via tsx, and via a
+# deprecated loader). All three postinstalls are blocked and drizzle-kit works regardless — verified
+# by generating and applying a migration with them un-run.
+ignoredBuiltDependencies:
+  - cpu-features
+  - esbuild
+  - msgpackr-extract
+  - protobufjs
+  - ssh2
