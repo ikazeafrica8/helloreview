@@ -61,6 +61,21 @@ const { applyMigrations } = await import(
 await applyMigrations(url)
 log('migrations applied')
 
+// The application's role, for the same reason seeding is a subprocess: `pnpm db:migrate` and the
+// reset path must not be able to diverge.
+//
+// The ROLE itself survives a reset — roles are cluster-wide and `drop schema` does not touch them —
+// but its schema privileges do not. `drop schema public cascade` destroys every pg_default_acl row
+// and leaves the recreated schema with a NULL ACL, so the app role loses even USAGE. Replaying
+// migration 0009 above puts the grants back; this line makes sure the password and the group
+// membership are re-asserted too, so a reset can never be the reason the app cannot log in.
+const provision = spawnSync(process.execPath, [join(ROOT, 'tools', 'db-provision-role.mjs')], { encoding: 'utf8' })
+process.stdout.write(provision.stdout ?? '')
+if (provision.status !== 0) {
+  process.stderr.write(provision.stderr ?? '')
+  process.exit(1)
+}
+
 // Seeding is its own script so `pnpm db:seed` and the reset path can never diverge.
 const seed = spawnSync(process.execPath, [join(ROOT, 'tools', 'db-seed.mjs')], { encoding: 'utf8' })
 process.stdout.write(seed.stdout ?? '')

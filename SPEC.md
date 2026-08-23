@@ -159,9 +159,10 @@ shell chaining, so PowerShell and Git Bash behave identically.
 pnpm install                      Install all workspace dependencies
 pnpm services:up                  Start PostgreSQL + Redis + MinIO via Docker Compose
 pnpm services:down                Stop and remove local service containers
-pnpm db:migrate                   Apply Drizzle migrations
+pnpm db:migrate                   Apply Drizzle migrations, then provision the app's database role
+pnpm db:provision-role            Create/refresh the restricted role the api and worker connect as
 pnpm db:seed                      Load fixture campaigns, rules, and templates
-pnpm db:reset                     Drop, recreate, migrate, seed  (development/test + localhost only)
+pnpm db:reset                     Drop, recreate, migrate, provision, seed  (development/test + localhost only)
 
 # Protect
 pnpm db:backup                    Dump roles + database to backups/<timestamp>/

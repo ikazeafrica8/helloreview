@@ -930,7 +930,9 @@ acceptance criteria were untrue. Everything below was verified by measurement, n
       then deleting wiped it with no DDL at all, because the triggers were `O` (origin). Migration
       `0002` sets them `ENABLE ALWAYS`, and the bypass is now rejected — verified against a live
       database. The second route, `ALTER TABLE ... DISABLE TRIGGER ALL`, is only available to the
-      table owner and needs role separation to close. **See the open decision below.**
+      table owner; **migration `0009` closes it for the application** by connecting it as a non-owner
+      role. It remains open to the operator's own superuser session, deliberately. See
+      "Decided — least-privilege database roles" below.
 - [x] **The worker exited 545 ms after logging "ready".** With no processors registered nothing
       referenced the event loop, so `pnpm dev:worker` handed back a worker that was already gone and
       T5's drain path was unreachable. A `keepAlive` interval holds it open; verified still running
@@ -1014,19 +1016,94 @@ No privilege change at all, so nothing could break. Pays most of the plumbing co
       loudly. The real hazard is the reflex fix, `GRANT ALL ON ALL TABLES`, which does re-grant
       `DELETE`. `db:verify-audit-protection` catches exactly that, verified by simulating it.
 
-### Commit B — before T15 creates `event_inbox`
+### Commit B — done
 
-Migration `0003` (idempotent, because `db:reset` replays it), a `NOLOGIN` group role holding the
-grants, a separate `LOGIN` role provisioned from the environment (a password may never enter a
-committed migration), the `REVOKE` carve-out on `audit_logs`, an assertion block inside the
-migration that raises if a privilege is ever silently restored, and an integration test on a **real
-app-role connection** — `SET ROLE` inside a superuser session proves nothing, since the session can
-`SET ROLE` back.
+Landed as migration `0009` rather than `0003`: Phase 2 shipped first, so the number moved but
+nothing else did. The application now connects as `helloreview_api`, which owns nothing.
 
-Keep 0002's `ENABLE ALWAYS` triggers: they are the backstop that still catches the operator's own
-superuser session, which is the one actor an ACL cannot constrain.
+- [x] **Migration `0009`** — a `NOLOGIN` group (`helloreview_app`) holding the grants, `USAGE` but
+      never `CREATE` on the schema, DML on all tables, the carve-out revoking
+      `UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER` on `audit_logs`, and `ALTER DEFAULT PRIVILEGES`
+      so no future migration has to write a `GRANT`. Idempotent, because `db:reset` replays it —
+      which is the only thing that restores the schema ACL that `DROP SCHEMA` destroys.
+- [x] **An assertion block inside the migration.** It raises if the app role ever holds a rewrite
+      privilege, loses `INSERT`/`SELECT`, gains membership in the owner, becomes superuser, if an
+      `audit_logs` trigger stops being `ENABLE ALWAYS`, if the table stops being logged, if a
+      `SECURITY DEFINER` function becomes executable by it, or if it is granted
+      `SET ON PARAMETER session_replication_role`. A silently restored privilege is otherwise
+      invisible — a broken carve-out looks exactly like a working one.
+- [x] **`tools/db-provision-role.mjs`**, run by `db:migrate` and by `db:reset`. Creates the `LOGIN`
+      role from `APP_DB_USER`/`APP_DB_PASSWORD` (a password may never enter a committed migration),
+      and **re-asserts the password on every run** — roles are cluster-wide, nothing in this repo
+      can drop one, so a typo'd password would otherwise outlive every correction to `.env`.
+- [x] **Preflight refuses a mismatch.** `DATABASE_URL` must carry `APP_DB_USER`/`APP_DB_PASSWORD`,
+      and must not connect as the owner. Without this the stack starts healthy and every query
+      fails with "password authentication failed", which points at the password rather than at the
+      mismatch.
+- [x] **`db:verify-audit-protection` gained checks 3 and 4.** Checks 1 and 2 exclude superusers and
+      the owner — correctly, since no ACL constrains them, and that exclusion was the blind spot:
+      pointing `DATABASE_URL` back at the owner passed every check while leaving the table freely
+      deletable. Check 3 fails if the application's role is the owner, is superuser, inherits the
+      owner, or can `SET ROLE` to it. Check 4 fails if any `SECURITY DEFINER` function in `public` is
+      executable by the application role — a detector, because prevention cannot reach functions a
+      later migration creates.
+- [x] **`tests/integration/db-privileges.test.mjs`** — thirteen tests on a **real authenticated
+      app-role connection**, not `SET ROLE`, and driving the **shipped** tools as subprocesses rather
+      than a copy of their SQL. Covers all ten refusal routes, the ordinary work that must keep
+      working (including `citext` and `pg_trgm`), that the immutability triggers still fire for a
+      non-owner, both repair paths, and every guard listed below.
+- [x] **Mutation-checked, and each guard is tied to a named test.** Removing any one of these makes
+      exactly one test fail: the migration's revoke loop, the provisioning `pg_has_role` guard, the
+      password redaction, the `SECURITY DEFINER` detector, the verifier's owner/superuser check, its
+      `MEMBER` predicate, the grant re-assertion, and the provisioning revoke loop.
 
-Estimated 20–28 hours, mostly the Testcontainers harness and tooling — not the SQL.
+### Commit B — what the pre-commit review found
+
+Five review lenses over the changeset raised 27 findings; 8 survived adversarial refutation. The
+suite was 432/432 green throughout, which is the point: **the lens aimed at test vacuity found the
+most.** Everything below was then measured, not reasoned about.
+
+- [x] **`ALTER DEFAULT PRIVILEGES ... REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC` silently did nothing.**
+      On PostgreSQL 16.15 it records no `pg_default_acl` row, and even after forcing one to exist a
+      new function still came back with `proacl` NULL — PUBLIC keeps `EXECUTE`. **The identical
+      construct for TABLES does work**, verified the same way, which is exactly what made the
+      function version look right. Proven end to end: the app role called a `SECURITY DEFINER`
+      function, which ran `ALTER TABLE audit_logs DISABLE TRIGGER ALL; DELETE FROM audit_logs;` and
+      succeeded. Replaced with an explicit loop that skips extension-owned functions, so `citext`
+      and `pg_trgm` survive.
+- [x] **`pnpm db:migrate` can never re-apply migration 0009**, so the documented recovery was a
+      no-op. drizzle records a migration and only applies files newer than the recorded timestamp;
+      after 0009 lands that comparison is false forever. Measured: after a broad `GRANT ALL`,
+      `db:migrate` alone left `DELETE` on `audit_logs` still granted. The only replay path,
+      `db:reset`, refuses off loopback — precisely where a restore happens. **Fixed by moving the
+      grants into `db-provision-role.mjs`**, which `db:migrate` runs every time. That also closes
+      the `SECURITY DEFINER` gap for later migrations, since provisioning runs after all of them.
+      Both repair paths now have tests that first assert the damage is real.
+- [x] **Four of the new tests proved nothing.** The owner-refusal test exited on a JavaScript string
+      compare before opening a connection, so the `pg_has_role` membership guard — which the code
+      itself calls "the trap that voids the entire scheme" — had zero coverage, its `withPostgres`
+      setup was decoration, and the SPEC.md §8 password assertion passed because no error object
+      ever existed. Split into a name-check test and a real membership test, plus a redaction test
+      that provokes a genuine PostgreSQL failure (a reserved role name) carrying the password in
+      the error's `CONTEXT`.
+- [x] **The verifier's membership check missed the `SET ROLE` route.** It tested only
+      `pg_has_role(..., 'USAGE')`, which is false for a member created `WITH INHERIT FALSE` — who
+      can still `SET ROLE` to the owner and acquire ownership on demand. The comment already claimed
+      `SET ROLE` was covered. Now tests `MEMBER` as well, with a test asserting both predicates.
+- [x] **Stale documentation corrected.** `db-target.mjs` still said the two URLs hold the same value;
+      `backup-and-restore.md` still described the split as forthcoming and documented a recovery
+      that did not work; the verifier's header said "Two properties are checked" above a list of
+      four.
+
+Verified against a real login role: `DELETE`/`UPDATE`/`TRUNCATE` → `permission denied`;
+`ALTER TABLE ... DISABLE TRIGGER`, `DROP TABLE`, `DROP TRIGGER`, `ALTER TABLE ... RENAME` → `must be
+owner`; `SET session_replication_role` → `permission denied to set parameter`; `SET ROLE helloreview`
+→ `permission denied to set role`; `CREATE TABLE` → `permission denied for schema`. `INSERT`/`SELECT`
+on `audit_logs`, full DML elsewhere, and both extensions are unaffected.
+
+0002's `ENABLE ALWAYS` triggers are kept: they are the backstop that still catches the operator's own
+superuser session, which is the one actor an ACL cannot constrain. That residual gap is unchanged and
+deliberate — the operator is trusted; the daemon is not.
 
 ### Deliberately deferred
 

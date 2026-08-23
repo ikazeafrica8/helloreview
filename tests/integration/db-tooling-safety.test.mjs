@@ -124,16 +124,39 @@ describe('DATABASE_MIGRATION_URL', () => {
     assert.notEqual(env.get('DATABASE_MIGRATION_URL'), '', '.env.example gives no value for DATABASE_MIGRATION_URL')
   })
 
-  test('it is identical to DATABASE_URL today, because this step changes no privileges', () => {
-    // The whole value of introducing it now is that it is a no-op. When they diverge, that is the
-    // deliberate privilege split — and this assertion is the thing that will fail to announce it,
-    // at which point it should be updated rather than deleted.
+  test('it is NO LONGER identical to DATABASE_URL — the privilege split has landed', () => {
+    // Commit A asserted the opposite, on purpose: introducing DATABASE_MIGRATION_URL as a byte-
+    // identical no-op meant nothing could break, and the equality assertion was left as the thing
+    // that would fail to announce the split. This is that update. Reverting the two to the same
+    // value would put the application back to owning every table it writes to.
     const env = EXAMPLE()
-    assert.equal(
+    assert.notEqual(
       env.get('DATABASE_MIGRATION_URL'),
       env.get('DATABASE_URL'),
-      'Commit A introduces DATABASE_MIGRATION_URL as plumbing only. If you are splitting the roles, ' +
-        'update this test deliberately — do not let the values drift silently.',
+      'The application must not connect with the owner credential. The owner can always run ' +
+        'ALTER TABLE audit_logs DISABLE TRIGGER ALL and then DELETE, whatever migration 0009 revokes.',
+    )
+
+    // And specifically: it must carry the role db:provision-role creates, or the app cannot log in.
+    const appUrl = new URL(env.get('DATABASE_URL') ?? '')
+    assert.equal(
+      decodeURIComponent(appUrl.username),
+      env.get('APP_DB_USER'),
+      'DATABASE_URL must connect as APP_DB_USER — the role tools/db-provision-role.mjs provisions',
+    )
+    assert.equal(
+      decodeURIComponent(appUrl.password),
+      env.get('APP_DB_PASSWORD'),
+      'DATABASE_URL must carry APP_DB_PASSWORD — the password db:provision-role sets on every run',
+    )
+
+    // The owner's username must differ from the app's. Comparing the whole URLs above would pass
+    // for two URLs that differ only in password while sharing a username, which is the same role.
+    const ownerUrl = new URL(env.get('DATABASE_MIGRATION_URL') ?? '')
+    assert.notEqual(
+      decodeURIComponent(appUrl.username),
+      decodeURIComponent(ownerUrl.username),
+      'the application and the schema owner must be different roles, not one role with two passwords',
     )
   })
 
@@ -145,7 +168,10 @@ describe('DATABASE_MIGRATION_URL', () => {
     // Asserted as an ABSENCE plus a route, rather than as the presence of a literal string: the
     // tools resolve the URL through tools/db-target.mjs, and an assertion that demanded the literal
     // would be pushing them back towards three copies of the policy.
-    for (const tool of ['db-migrate.mjs', 'db-reset.mjs', 'db-seed.mjs']) {
+    // db-provision-role.mjs is in this list because it is the tool that CREATES the application's
+    // credential. If it ever connected with that credential it could not create it, and the failure
+    // would be a chicken-and-egg that only shows up on a fresh database.
+    for (const tool of ['db-migrate.mjs', 'db-reset.mjs', 'db-seed.mjs', 'db-provision-role.mjs']) {
       const source = readText(`tools/${tool}`)
       assert.ok(
         !/process\.env\.DATABASE_URL/.test(source),

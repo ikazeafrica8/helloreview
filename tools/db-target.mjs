@@ -6,13 +6,16 @@
 // WHY A SEPARATE VARIABLE FROM DATABASE_URL
 //
 // DATABASE_URL means "what the application connects as". DATABASE_MIGRATION_URL means "what owns
-// the schema". Today they hold the same value and nothing behaves differently — that is deliberate.
-// Introducing the distinction while it is a no-op means the later privilege split (an application
-// role that cannot rewrite audit_logs) is one .env line rather than a refactor of every tool,
-// performed under whatever pressure prompted it.
+// the schema". They now hold DIFFERENT credentials: migration 0009 gave the api and worker a
+// restricted role that cannot rewrite audit_logs, cannot create a table, and owns nothing, while
+// this variable keeps the owner.
 //
-// Splitting them later would also fail in the worst possible way: the tools would keep reading
-// DATABASE_URL, and the failure would surface as "permission denied" in the middle of a migration.
+// The distinction was introduced earlier, deliberately, while the two values were still identical
+// and the split was a no-op that could not break anything. That is why landing it was a one-line
+// change to .env rather than a refactor of every tool under whatever pressure prompted it — and why
+// the failure mode it would otherwise have had (a tool still reading DATABASE_URL, surfacing as
+// "permission denied" halfway through a migration) never happened. A test asserts no
+// schema-changing tool reads DATABASE_URL, and that this module has no fallback to it.
 
 /**
  * Environments in which destroying the database is a normal thing to do.
