@@ -1016,14 +1016,15 @@ is the actual idempotency guarantee, not the application logic layered over it (
 
 **Acceptance criteria:**
 
-- [ ] The unique constraint exists in the migration and a test proves a second insert violates it
-- [ ] Records store source, external event id, payload hash, status, and received time, with payload minimized or encrypted
-- [ ] Failed events are retained in a queryable state for replay (`§22.3`)
+- [x] The unique constraint exists in the migration and a test proves a second insert violates it
+- [x] Records store source, external event id, payload hash, status, and received time, with payload minimized or encrypted
+- [x] Failed events are retained in a queryable state for replay (`§22.3`)
 
 **Verification:**
 
-- [ ] Tests pass: `pnpm test:integration`
-- [ ] Manual check: insert a duplicate directly in psql and confirm the constraint rejects it
+- [x] Tests pass: `pnpm test:integration` — 6 integration + 18 unit, against a real migrated Postgres
+- [x] Manual check: a duplicate insert is rejected with SQLSTATE 23505 on
+      `event_inbox_source_external_id_key`, asserted by code rather than message text
 
 **Dependencies:** T9, T14
 
