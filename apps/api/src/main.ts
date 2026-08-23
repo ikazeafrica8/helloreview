@@ -10,7 +10,22 @@ import { APP_CONFIG } from './modules/platform-core/index.js'
 import { ConfigurationError, type ApiConfig } from './modules/platform-core/index.js'
 
 const bootstrap = async (): Promise<void> => {
-  const app = await NestFactory.create(AppModule, { logger: ['error', 'warn', 'log'] })
+  // bodyParser: false — PARSE EXPLICITLY, NEVER IMPLICITLY.
+  //
+  // Nest installs body-parser globally by default, which CONSUMES the request stream before any
+  // middleware of ours runs. Two consequences, one of them measured the hard way:
+  //
+  //   1. The provider gateway's raw-body middleware never saw an 'end' event, because the stream
+  //      was already drained — so every webhook POST hung until the client timed out. It looked
+  //      like a deadlock and was really an ordering problem.
+  //   2. Even had it worked, the body would have been parsed BEFORE the signature was verified,
+  //      which is precisely what PRD §18.3 and T16 forbid: JSON.parse on unauthenticated,
+  //      unbounded input is a denial-of-service surface reachable by anyone.
+  //
+  // So parsing is opt-in per route. `/health` is a GET and needs none. Any future endpoint that
+  // wants a parsed body must say so, which is the right default for a service whose only untrusted
+  // input arrives over HTTP.
+  const app = await NestFactory.create(AppModule, { logger: ['error', 'warn', 'log'], bodyParser: false })
 
   // Without this, SIGTERM kills the process before onApplicationShutdown runs and the Postgres pool
   // and Redis connection are abandoned rather than closed.

@@ -17,6 +17,9 @@ export type ApiConfig = Readonly<{
   environment: Environment
   /** Secret. Keys maskIdentifier(); never logged (see SECRET_KEYS). */
   maskingPepper: string
+  /** Per-provider webhook signing secrets, keyed by the §18.1 `source` value. */
+  webhookSecrets: Readonly<Record<string, string>>
+  webhookReplayWindowSeconds: number
 }>
 
 export type WorkerConfig = Readonly<{
@@ -80,6 +83,10 @@ export const loadApiConfig = (source: EnvironmentSource): ApiConfig =>
     apiPort: parsed.API_PORT,
     environment: parsed.NODE_ENV,
     maskingPepper: parsed.MASKING_PEPPER,
+    // Keyed by the PRD §18.1 `source` value, so the gateway looks a verifier up by the same string
+    // the envelope carries rather than by a second name that has to be kept in step.
+    webhookSecrets: Object.freeze({ helloreview_website: parsed.WEBHOOK_SECRET_WEBSITE }),
+    webhookReplayWindowSeconds: parsed.WEBHOOK_REPLAY_WINDOW_SECONDS,
   }))
 
 export const loadWorkerConfig = (source: EnvironmentSource): WorkerConfig =>

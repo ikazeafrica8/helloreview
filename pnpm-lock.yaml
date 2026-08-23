@@ -65,6 +65,9 @@ importers:
       '@helloreview/config':
         specifier: workspace:*
         version: link:../../packages/config
+      '@helloreview/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
       '@helloreview/db':
         specifier: workspace:*
         version: link:../../packages/db

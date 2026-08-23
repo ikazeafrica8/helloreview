@@ -35,6 +35,7 @@ const VALID = {
   REDIS_URL: 'redis://default:pw@127.0.0.1:16379/0',
   API_PORT: '13000',
   MASKING_PEPPER: 'a-test-pepper-at-least-16-chars',
+  WEBHOOK_SECRET_WEBSITE: 'a-test-webhook-secret-of-at-least-32-characters',
 }
 
 describe('loadApiConfig', () => {
@@ -53,12 +54,15 @@ describe('loadApiConfig', () => {
     // values around until something works.
     const { problems } = expectConfigurationError(() => loadApiConfig({}))
 
-    expect(problems).toHaveLength(4)
+    // Five required keys today. The count is asserted as well as the names so that adding a key
+    // without adding it here fails loudly rather than silently leaving it unchecked.
+    expect(problems).toHaveLength(5)
     const joined = problems.join('\n')
     expect(joined).toMatch(/DATABASE_URL/)
     expect(joined).toMatch(/REDIS_URL/)
     expect(joined).toMatch(/API_PORT/)
     expect(joined).toMatch(/MASKING_PEPPER/)
+    expect(joined).toMatch(/WEBHOOK_SECRET_WEBSITE/)
   })
 
   test('never echoes a value, because a malformed URL still carries a password', () => {
@@ -90,6 +94,49 @@ describe('loadApiConfig', () => {
   test('accepts the boundary ports', () => {
     expect(loadApiConfig({ ...VALID, API_PORT: '1' }).apiPort).toBe(1)
     expect(loadApiConfig({ ...VALID, API_PORT: '65535' }).apiPort).toBe(65535)
+  })
+})
+
+describe('webhook signing configuration (T16)', () => {
+  test('the signing secret is keyed by the §18.1 source value the envelope carries', () => {
+    // The gateway looks a verifier up by the `source` in the envelope. Keying the map by anything
+    // else would need a second name kept in step by hand, which is a mapping that drifts.
+    const config = loadApiConfig(VALID)
+    expect(config.webhookSecrets.helloreview_website).toBe(VALID.WEBHOOK_SECRET_WEBSITE)
+  })
+
+  test('a short secret is refused', () => {
+    // This secret is the only thing between the internet and the ability to write business state.
+    // An attacker who captures one signed request can grind candidates against it offline, so a
+    // short one is not "slightly weaker", it is breakable without touching us.
+    expect(() => loadApiConfig({ ...VALID, WEBHOOK_SECRET_WEBSITE: 'too-short' })).toThrow(ConfigurationError)
+  })
+
+  test('the secret is marked as a secret, so redaction covers it', () => {
+    expect(isSecret('WEBHOOK_SECRET_WEBSITE')).toBe(true)
+    expect(redactEnvironment(VALID).WEBHOOK_SECRET_WEBSITE).toBe('[redacted]')
+  })
+
+  test('the replay window defaults to five minutes when unset', () => {
+    const { WEBHOOK_REPLAY_WINDOW_SECONDS: _omitted, ...withoutWindow } = {
+      ...VALID,
+      WEBHOOK_REPLAY_WINDOW_SECONDS: '',
+    }
+    expect(loadApiConfig(withoutWindow).webhookReplayWindowSeconds).toBe(300)
+  })
+
+  test.each([
+    ['below the floor', '10'],
+    ['above the ceiling', '99999'],
+    ['not a number', 'five minutes'],
+  ])('a replay window %s is refused', (_label, value) => {
+    // Bounded at BOTH ends. Too tight refuses a provider's legitimate retry; too loose leaves a
+    // captured request replayable for that long, which is the one that is a security problem.
+    expect(() => loadApiConfig({ ...VALID, WEBHOOK_REPLAY_WINDOW_SECONDS: value })).toThrow(ConfigurationError)
+  })
+
+  test('a supplied window is used', () => {
+    expect(loadApiConfig({ ...VALID, WEBHOOK_REPLAY_WINDOW_SECONDS: '900' }).webhookReplayWindowSeconds).toBe(900)
   })
 })
 

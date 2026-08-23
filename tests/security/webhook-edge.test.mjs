@@ -1,0 +1,201 @@
+// Security tier: the webhook edge as an actual HTTP server (T16, PRD §18.3).
+//
+// The verifier's own tests prove the algorithm. These prove the WIRING, which is where this kind of
+// control usually fails: a correct verifier that the request never reaches, a guard registered on
+// the wrong route, a body parser that ran first anyway.
+//
+// So this boots the real compiled API and sends real requests over a socket.
+
+import { test, describe, beforeAll, afterAll, expect } from 'vitest'
+import { createHmac } from 'node:crypto'
+import { readFileSync } from 'node:fs'
+import { join, dirname } from 'node:path'
+import { spawn } from 'node:child_process'
+
+const ROOT = dirname(dirname(import.meta.dirname))
+const PORT = 13098
+const BASE = `http://127.0.0.1:${String(PORT)}`
+
+const parseEnv = (text) => {
+  const out = new Map()
+  for (const raw of text.split('\n')) {
+    const line = raw.trim()
+    if (line === '' || line.startsWith('#')) continue
+    const eq = line.indexOf('=')
+    if (eq === -1) continue
+    out.set(line.slice(0, eq).trim(), line.slice(eq + 1).trim())
+  }
+  return out
+}
+
+const ENV = parseEnv(readFileSync(join(ROOT, '.env.example'), 'utf8'))
+const SECRET = ENV.get('WEBHOOK_SECRET_WEBSITE')
+
+const sign = (body, timestamp, secret = SECRET) =>
+  createHmac('sha256', secret).update(`${timestamp}.${body}`).digest('hex')
+
+/** A well-formed §18.1 envelope for the website provider. */
+const envelope = (overrides = {}) =>
+  JSON.stringify({
+    event_id: 'evt_edge_test',
+    event_type: 'application.created',
+    event_version: 1,
+    source: 'helloreview_website',
+    occurred_at: '2026-08-22T10:30:00+09:00',
+    idempotency_key: 'helloreview_website:application:app_123:create:v1',
+    payload: {
+      application_id: 'app_123',
+      campaign_id: 'camp_456',
+      application_status: 'completed',
+      application_source: 'website',
+      applicant: { name: '홍길동', phone_normalized: '+821012345678' },
+      submitted_at: '2026-08-22T10:30:00+09:00',
+    },
+    ...overrides,
+  })
+
+/** POST to the webhook route, signing correctly unless told otherwise. */
+const post = async (body, { signature, timestamp, provider = 'helloreview_website', headers = {} } = {}) => {
+  const ts = timestamp ?? Math.floor(Date.now() / 1000).toString()
+  const response = await fetch(`${BASE}/webhooks/${provider}`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-helloreview-timestamp': ts,
+      'x-helloreview-signature': signature ?? sign(body, ts),
+      ...headers,
+    },
+    body,
+  })
+  const text = await response.text()
+  return { status: response.status, text, json: text === '' ? undefined : JSON.parse(text) }
+}
+
+let child
+let output = ''
+
+describe('the webhook edge', () => {
+  beforeAll(async () => {
+    child = spawn(process.execPath, [join(ROOT, 'apps', 'api', 'dist', 'main.js')], {
+      cwd: ROOT,
+      env: { ...process.env, ...Object.fromEntries(ENV), API_PORT: String(PORT) },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+    child.stdout.on('data', (chunk) => (output += String(chunk)))
+    child.stderr.on('data', (chunk) => (output += String(chunk)))
+
+    for (let attempt = 0; attempt < 80; attempt += 1) {
+      if (child.exitCode !== null) throw new Error(`api exited early:\n${output}`)
+      try {
+        await fetch(`${BASE}/health`)
+        return
+      } catch {
+        await new Promise((resolve) => setTimeout(resolve, 250))
+      }
+    }
+    throw new Error(`api never became reachable:\n${output}`)
+  }, 60_000)
+
+  afterAll(() => {
+    child?.kill()
+  })
+
+  test('a correctly signed envelope is accepted with 202-style acknowledgement', async () => {
+    const body = envelope()
+    const result = await post(body)
+
+    expect(result.status, `expected acceptance, got ${result.text}`).toBeLessThan(300)
+    expect(result.json).toMatchObject({ accepted: true, event_id: 'evt_edge_test', duplicate: false })
+  })
+
+  test('T16 criterion 1: an unsigned request is refused 401', async () => {
+    const response = await fetch(`${BASE}/webhooks/helloreview_website`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: envelope(),
+    })
+    expect(response.status).toBe(401)
+  })
+
+  test('a wrongly signed request is refused 401', async () => {
+    const result = await post(envelope(), { signature: 'f'.repeat(64) })
+    expect(result.status).toBe(401)
+  })
+
+  test('an unknown provider is refused 401, not 404 — the name is not disclosed', async () => {
+    // A 404 would confirm which provider names are unregistered, which is free reconnaissance.
+    const result = await post(envelope(), { provider: 'not_a_real_provider' })
+    expect(result.status).toBe(401)
+  })
+
+  test('the rejection is IDENTICAL for a bad signature and an unknown provider', async () => {
+    const badSignature = await post(envelope(), { signature: 'f'.repeat(64) })
+    const unknownProvider = await post(envelope(), { provider: 'not_a_real_provider' })
+
+    expect(badSignature.status).toBe(unknownProvider.status)
+    // Same shape and same code: an attacker cannot tell the two apart, so they cannot enumerate
+    // provider names by watching which failure they get.
+    expect(Object.keys(badSignature.json ?? {}).sort()).toEqual(Object.keys(unknownProvider.json ?? {}).sort())
+  })
+
+  test('T16 criterion 1: malformed JSON with a BAD signature is 401, not 400', async () => {
+    // The proof that verification runs before parsing. If the body were parsed first, this would be
+    // a 400 — the parser would fail before the signature was ever checked.
+    const result = await post('{ this is not json', { signature: 'f'.repeat(64) })
+    expect(result.status).toBe(401)
+  })
+
+  test('malformed JSON with a GOOD signature is 400 — parsing happens, just later', async () => {
+    const result = await post('{ this is not json')
+    expect(result.status).toBe(400)
+    expect(result.json).toMatchObject({ reason_code: 'MALFORMED_JSON' })
+  })
+
+  test('a replayed request outside the window is refused 401', async () => {
+    const body = envelope()
+    const stale = (Math.floor(Date.now() / 1000) - 4000).toString()
+    const result = await post(body, { timestamp: stale, signature: sign(body, stale) })
+    expect(result.status).toBe(401)
+  })
+
+  test('an envelope whose source disagrees with the authenticated provider is refused', async () => {
+    // Signed correctly with the website's secret, but claiming to be Kakao. Accepting it would let
+    // one provider's credential write another provider's events.
+    const body = envelope({ source: 'official_kakao_provider' })
+    const result = await post(body)
+    expect(result.status).toBe(400)
+    expect(result.json).toMatchObject({ reason_code: 'SOURCE_MISMATCH' })
+  })
+
+  test('an envelope failing schema validation is refused 400 without detail', async () => {
+    const body = JSON.stringify({ event_type: 'application.created', payload: {} })
+    const result = await post(body)
+
+    expect(result.status).toBe(400)
+    expect(result.json).toMatchObject({ reason_code: 'ENVELOPE_SCHEMA_INVALID' })
+    // No field paths, no expected types, no echoed values — a caller learns it was rejected, not
+    // what would make it pass.
+    expect(result.text).not.toMatch(/payload|application_id|expected|required/i)
+  })
+
+  test('T17 preview: an oversized body is refused 413', async () => {
+    const huge = `{"padding":"${'x'.repeat(2 * 1024 * 1024)}"}`
+    const result = await post(huge)
+    expect(result.status).toBe(413)
+  })
+
+  test('T16 criterion 3: no signature, secret, or participant data reaches the logs', async () => {
+    const body = envelope()
+    await post(body, { signature: 'f'.repeat(64) })
+    await post(body)
+    await new Promise((resolve) => setTimeout(resolve, 250))
+
+    expect(output).not.toContain(SECRET)
+    expect(output).not.toContain('f'.repeat(64))
+    // The signature over a valid request is equally a secret-adjacent value.
+    expect(output).not.toContain(sign(body, Math.floor(Date.now() / 1000).toString()))
+    // And the payload's participant data must never have been logged either (PRD §21.4).
+    expect(output).not.toContain('홍길동')
+    expect(output).not.toContain('821012345678')
+  })
+})

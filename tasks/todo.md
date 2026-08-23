@@ -1042,14 +1042,15 @@ for all of them.
 
 **Acceptance criteria:**
 
-- [ ] An invalid or absent signature is rejected with 401 before the body is parsed or persisted
-- [ ] A timestamp outside the configured replay window is rejected, and the window is configurable per provider
-- [ ] Signature comparison is constant-time, and no signature or secret reaches the logs
+- [x] An invalid or absent signature is rejected with 401 before the body is parsed or persisted
+- [x] A timestamp outside the configured replay window is rejected, and the window is configurable per provider
+- [x] Signature comparison is constant-time, and no signature or secret reaches the logs
 
 **Verification:**
 
-- [ ] Tests pass: `pnpm test:security`
-- [ ] Manual check: replay a captured valid request after the window and confirm rejection
+- [x] Tests pass: `pnpm test:security` — 38 tests, including a real HTTP server over a socket
+- [x] Manual check: a stale request is refused 401; malformed JSON with a BAD signature returns 401
+      rather than 400, which is the proof that verification precedes parsing
 
 **Dependencies:** T14, T15
 

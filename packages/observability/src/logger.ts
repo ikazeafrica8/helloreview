@@ -23,6 +23,8 @@ export interface LogContext {
   campaignId?: string
   provider?: string
   errorCategory?: string
+  /** SCREAMING_SNAKE machine-readable cause (PRD §23.1). A code, never a message. */
+  reasonCode?: string
   retryCount?: number
   stateVersion?: number
   /** HTTP status, for request lines. Separate from retryCount, which counts RETRIES. */
