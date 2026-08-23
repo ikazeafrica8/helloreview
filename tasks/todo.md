@@ -50,10 +50,24 @@ its own acceptance criteria. `pnpm verify` must pass before every commit.
 
 ### Checkpoint B — Idempotency proven
 
-- [ ] AC-02 passes: the same source event id twice yields one transition and one message
-- [ ] The conformance suite passes against the fake, and is the question list for the Kakao dealer
-- [ ] No PII appears in any log emitted during the suite
+- [x] AC-02 passes: the same source event id twice yields one transition and one message
+- [x] The conformance suite passes against the fake, and is the question list for the Kakao dealer
+- [x] No PII appears in any log emitted during the suite — asserted inside AC-02 itself against the
+      running process's actual output, which is the only place a unit-level matcher cannot see
 - [ ] Review with human before proceeding
+
+> **What AC-02 proves today, and what it does not.** Two of its three Gherkin clauses reference
+> artifacts that do not exist yet, and the test says so rather than quietly asserting less:
+>
+> | Clause                           | Status                                                                                                                                                                                                                                                                                            |
+> | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+> | acknowledged as a duplicate      | **Proven.** The response carries `duplicate: true`.                                                                                                                                                                                                                                               |
+> | no second state transition       | **Proven at today's boundary.** The inbox row IS the platform's state for an inbound event until T34 adds workflow instances. The test asserts the row is not merely singular but byte-identical — a duplicate that bumped `received_at` would be a second transition wearing the first one's id. |
+> | no second acknowledgment message | **Proven by proxy.** Outbound messages arrive with T41's `outbound_notifications` and T45's sender. Today the evidence is that no second job was enqueued, so nothing downstream was ever asked to send anything.                                                                                 |
+>
+> The proxy is guarded by a FORCING FUNCTION rather than a comment: the last test in the file fails
+> the moment `outbound_notifications` exists, so this file cannot be left asserting less than its
+> Gherkin claims once the real artifact is available.
 
 ### Phase 3 — Configuration and source of truth
 
@@ -1151,14 +1165,19 @@ with no second transition and no second acknowledgment message.
 
 **Acceptance criteria:**
 
-- [ ] The Gherkin scenario is implemented as written and passes
-- [ ] The test asserts on persisted state and outbound intents, not on HTTP response alone
-- [ ] The test runs in the e2e tier and gates release
+- [x] The Gherkin scenario is implemented as written and passes
+- [x] The test asserts on persisted state and outbound intents, not on HTTP response alone
+- [x] The test runs in the e2e tier and gates release
 
 **Verification:**
 
-- [ ] Tests pass: `pnpm test:e2e`
-- [ ] Manual check: the test fails if the inbox unique constraint is dropped
+- [x] Tests pass: `pnpm test:e2e` — 4 tests against the real API over a socket, with a real
+      Postgres and a real Redis
+- [x] Manual check: dropping the inbox unique constraint DOES change the outcome — and revealed a
+      better property than the check was written for. `ON CONFLICT (source, external_event_id)`
+      names the constraint, so without it Postgres rejects the statement outright rather than
+      inserting a second row: remove the guarantee and ingestion stops loudly, instead of quietly
+      processing every duplicate twice. The test now asserts that.
 
 **Dependencies:** T19
 
