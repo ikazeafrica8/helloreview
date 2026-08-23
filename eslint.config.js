@@ -88,10 +88,20 @@ const TOOLING = [
 // `'no-restricted-syntax': 'off'` to excuse one selector silently drops all the others. Naming
 // each group and composing with restrict() makes every exemption say exactly what it gives up.
 //
-// SELECTOR MECHANICS, verified rather than remembered: esquery's `:has()` does NOT support a
-// leading child combinator — `:has(> Foo)` matches nothing and fails SILENTLY. Every selector
-// below therefore uses attribute paths (`[typeAnnotation.typeName.name="const"]`,
-// `[arguments.0.name!="tx"]`), which are verified working. Do not "simplify" one into `:has(>`.
+// SELECTOR MECHANICS, verified rather than remembered. Two constructs fail SILENTLY here — they
+// parse, they match nothing, and the rule quietly stops protecting anything:
+//
+//   1. `:has()` with a leading child combinator. `:has(> Foo)` matches nothing. Use attribute paths
+//      instead — `[typeAnnotation.typeName.name="const"]`, `[arguments.0.name!="tx"]`.
+//
+//   2. `!=` with a REGEX value. `[value.callee.name!=/^mask/]` does not do what it reads like;
+//      measured, it excluded nothing, so the piiLogger rule rejected every purpose-built masker —
+//      i.e. it errored on correct code. `:not([value.callee.name=/^mask/])` is the form that works.
+//      A literal `!=` comparison (`[arguments.0.name!="tx"]`) is fine; only the regex form is not.
+//
+// Anything non-obvious below is fixture-tested in tests/integration/lint-contract.test.mjs. Add a
+// fixture before changing a selector — a rule that silently matches nothing looks identical to a
+// rule that passes.
 
 /**
  * SPEC.md §6 PII / §8 Never: "Log full phone numbers, addresses, ... secrets, or authorization
@@ -172,9 +182,9 @@ const SELECTORS = {
    */
   piiLogger: [
     {
-      selector: `CallExpression[callee.property.name=/^(trace|debug|info|warn|error|fatal)$/] > ObjectExpression > Property:matches([key.name=/^(${SENSITIVE_KEYS})$/],[key.value=/^(${SENSITIVE_KEYS})$/])[value.callee.name!="mask"]`,
+      selector: `CallExpression[callee.property.name=/^(trace|debug|info|warn|error|fatal)$/] > ObjectExpression > Property:matches([key.name=/^(${SENSITIVE_KEYS})$/],[key.value=/^(${SENSITIVE_KEYS})$/]):not([value.callee.name=/^mask/])`,
       message:
-        'Personal data must be masked before it reaches the logger: use mask(...) or a pseudonymous workflow/participant id (SPEC.md §6 PII, §8 Never).',
+        'Personal data must be masked before it reaches the logger: use maskPhone/maskName/maskAddress/maskIdentifier, or a pseudonymous id (SPEC.md §6 PII, §8 Never).',
     },
   ],
 
@@ -298,7 +308,7 @@ export default defineConfig([
     '**/.vitest/**',
     // Drizzle emits these; they are generated SQL wrappers, reviewed as migrations (T9).
     'packages/db/migrations/**',
-    // Throwaway fixtures written by tests/toolchain/lint-contract.test.mjs. They must live inside a
+    // Throwaway fixtures written by tests/integration/lint-contract.test.mjs. They must live inside a
     // workspace src/ to get a real TypeScript program, and they contain deliberate violations — so
     // a leaked one would otherwise fail every subsequent `pnpm lint`. The test lints them by
     // explicit path with --no-ignore, so ignoring them here costs the tests nothing.
@@ -580,11 +590,13 @@ export default defineConfig([
   // { selector: 'BinaryExpression[operator=/^([=!]==?)$/]:matches([left.name=/[Ss]ignature$|[Ss]ecret$|[Tt]oken$/],[right.name=/[Ss]ignature$|[Ss]ecret$|[Tt]oken$/])',
   //   message: 'Compare secrets with crypto.timingSafeEqual (T16, T30).' }
   //
-  // T8 appends the config-loader exemption HERE, as a block scoped to
-  // apps/api/src/modules/platform-core/config/** that re-lists BASE_SELECTORS minus 'processEnv'.
-  // T42 appends the same shape for packages/contracts/src/dedupe-key.ts minus 'dedupeKey'.
-  // Compose both with restrict() — never `'no-restricted-syntax': 'off'`, which would silently
-  // drop every other convention.
+  // T8 LANDED: its config-loader exemption is the `**/env-source.ts` block above, not here. It ended
+  // up scoped to a filename rather than the folder this note originally predicted, because T8 moved
+  // configuration into packages/config and the path named here no longer exists.
+  //
+  // T42 still appends the dedupe-key builder exemption for packages/contracts/src/dedupe-key.ts,
+  // minus 'dedupeKey'. Compose it with restrict() — never `'no-restricted-syntax': 'off'`, which
+  // would silently drop every other convention.
 
   // LAST, ALWAYS. Switches off the core rules that would argue with Prettier. Against this exact
   // rule set it disables very little — typescript-eslint v8 deleted all its formatting rules —

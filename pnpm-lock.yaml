@@ -148,9 +148,6 @@ importers:
 
   packages/testing:
     dependencies:
-      '@helloreview/observability':
-        specifier: workspace:*
-        version: link:../observability
       '@testcontainers/postgresql':
         specifier: ^12.1.0
         version: 12.1.0

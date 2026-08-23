@@ -77,12 +77,33 @@ const parseUrl = (key, shape) => {
   }
 }
 
+/**
+ * Keys whose VALUE must never be printed, even inside a failure message.
+ *
+ * Mirrors SECRET_KEYS in packages/config. Duplicated rather than imported because this script has
+ * to run before `pnpm install` ever has — but the two lists must be kept in agreement.
+ */
+const SECRET_PARTS = new Set(['POSTGRES_PASSWORD', 'REDIS_PASSWORD', 'MASKING_PEPPER'])
+
+/**
+ * Describe a value without disclosing it.
+ *
+ * A mismatch between DATABASE_URL and POSTGRES_PASSWORD used to print BOTH passwords in full — to a
+ * terminal, a CI log, or whatever scrollback someone later pastes into a bug report. That is a
+ * SPEC.md §8 "Never", in the very script written to protect configuration. What actually helps
+ * diagnose a mismatch is that the two differ and how long each is; the characters do not.
+ */
+const describeValue = (key, value) => {
+  if (value === '') return '(empty)'
+  return SECRET_PARTS.has(key) ? `(set, ${String(value.length)} characters)` : value
+}
+
 const disagree = (urlKey, partKey, inUrl, inParts) => {
   const column = Math.max(urlKey.length, partKey.length) + 12
   fail(
     `${urlKey} disagrees with ${partKey}.\n\n` +
-      `    ${`${urlKey} carries`.padEnd(column)}${inUrl === '' ? '(empty)' : inUrl}\n` +
-      `    ${`${partKey} is`.padEnd(column)}${inParts}\n\n` +
+      `    ${`${urlKey} carries`.padEnd(column)}${describeValue(partKey, inUrl)}\n` +
+      `    ${`${partKey} is`.padEnd(column)}${describeValue(partKey, inParts)}\n\n` +
       `  Compose builds the container from ${partKey}; the app connects with ${urlKey}.\n` +
       `  While they disagree the stack starts healthy and the app cannot connect.`,
   )

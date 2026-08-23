@@ -20,13 +20,26 @@ const ROOT = dirname(dirname(import.meta.dirname))
 // the name is unique per process, stale matches are swept before the first write, and the glob is
 // in .gitignore and .prettierignore so a leak can neither be committed nor break `pnpm format`.
 const FIXTURE_DIR = join(ROOT, 'apps', 'api', 'src')
+// tsc emits into dist alongside src, so a build that races a live fixture leaves a .js, .js.map,
+// .d.ts and .d.ts.map behind that deleting the .ts does not remove. 88 such artifacts had
+// accumulated, and because vitest.config.ts includes dist/**/*.js in coverage they were being
+// measured as real application modules.
+//
+// Excluding the glob in apps/api/tsconfig.json looks like the tidier fix and is WRONG: the
+// type-aware rules under test need the fixture to be part of a real TypeScript program, so
+// excluding it silently stops every one of them from firing — measured, three tests below went
+// green against code they were supposed to reject. Sweeping the output is the fix that keeps both
+// properties. tests/integration/build-output.test.mjs fails if one ever escapes.
+const FIXTURE_OUT_DIR = join(ROOT, 'apps', 'api', 'dist')
 const FIXTURE_PREFIX = '__lint-fixture-'
 
 let fixtureCounter = 0
 
 const sweepStaleFixtures = () => {
-  for (const entry of readdirSync(FIXTURE_DIR)) {
-    if (entry.startsWith(FIXTURE_PREFIX)) rmSync(join(FIXTURE_DIR, entry), { force: true })
+  for (const directory of [FIXTURE_DIR, FIXTURE_OUT_DIR]) {
+    for (const entry of readdirSync(directory)) {
+      if (entry.startsWith(FIXTURE_PREFIX)) rmSync(join(directory, entry), { force: true })
+    }
   }
 }
 
@@ -177,6 +190,38 @@ describe('lint and format toolchain', () => {
     // asserting on the general case here and on the scoped case in the next test.
     const result = runEslintOnFixture(relative)
     assert.equal(result.status, 0, `a valid SCREAMING_SNAKE registry must lint clean:\n${result.stdout}`)
+  })
+
+  test('the PII logger rule accepts the purpose-built maskers and still rejects a raw value', () => {
+    // Regression: the selector used `[value.callee.name!=/^mask/]`, and esquery's `!=` with a REGEX
+    // silently excludes nothing — so the rule errored on maskPhone/maskName/maskIdentifier, i.e. on
+    // exactly the code it exists to encourage. Both directions are asserted, because a rule that
+    // matches nothing looks identical to a rule that passes.
+    const accepted = withFixture(
+      [
+        "import { maskPhone, maskName } from '@helloreview/observability'",
+        'export const ok = (logger: { info: (m: string, c: unknown) => void }, p: string, n: string): void => {',
+        "  logger.info('m', { operation: 'o', phone: maskPhone(p), realName: maskName(n) })",
+        '}',
+        '',
+      ].join('\n'),
+    )
+    const clean = runEslintOnFixture(accepted)
+    assert.ok(
+      !clean.stdout.includes('masked before it reaches'),
+      `the specific maskers must be accepted:\n${clean.stdout}`,
+    )
+
+    const leaking = withFixture(
+      [
+        'export const bad = (logger: { info: (m: string, c: unknown) => void }, phone: string): void => {',
+        "  logger.info('m', { operation: 'o', phone })",
+        '}',
+        '',
+      ].join('\n'),
+    )
+    const flagged = runEslintOnFixture(leaking)
+    assert.match(flagged.stdout, /masked before it reaches/, `a raw value must be rejected:\n${flagged.stdout}`)
   })
 
   test('a generic .enqueue() is not mistaken for a transactional-outbox violation', () => {

@@ -117,25 +117,39 @@ export default defineConfig({
         '**/config/env-source.ts',
       ],
 
+      // Apply `exclude` to the REMAPPED paths, not the raw ones.
+      //
+      // Without this the exclusions above were almost entirely inert. `include` deliberately covers
+      // `dist/**/*.js` so the integration tier's measurements can be remapped through the source
+      // maps back onto TypeScript — but the exclusion globs are all written against `.ts` paths, so
+      // by default they were tested against `main.js`, `app.module.js`, `index.js` and matched
+      // nothing. Every composition root the list names was still being counted.
+      //
+      // The default is false, which is why this needed saying out loud rather than assuming.
+      excludeAfterRemap: true,
+
       // SPEC.md §7. Coverage is a floor, not the goal: a module at 95% with no test for its illegal
       // transitions fails review, and one at 82% with the full §26.2 matrix covered passes.
       thresholds: {
-        // SPEC.md §7 sets this at 80%, and that is still the target. It is deliberately lower for
-        // now, as a RATCHET rather than a goal, because 80% is currently unreachable for a reason
-        // that is a measurement artifact and not a testing gap:
+        // SPEC.md §7's value, restored. This sat at 40 as a "documented deviation needing a
+        // decision", on the reasoning that 80 was unreachable because v8 cannot observe a child
+        // process and most code today is bootstrap exercised by the integration tier.
         //
-        //   v8 coverage cannot observe a child process. Almost all the code that exists today is
-        //   bootstrap and wiring exercised by the integration tier, which boots the compiled app —
-        //   so it is genuinely tested and reports as zero.
+        // That reasoning was mostly wrong, and two measurement bugs were hiding it:
         //
-        // Leaving it at 80 would make `pnpm test:coverage` red from the day it was created, which
-        // is how a gate stops being read. Raise this as in-process unit tests land: T29's matching
-        // table, T36/T37's transitions, T48/T49's rules engine and T53's readiness gate are all
-        // pure functions, and between them they are most of Milestone 1's logic.
+        //   1. `excludeAfterRemap` defaults to FALSE, so every exclusion above was inert — the
+        //      globs are written against .ts paths but were being matched against the emitted .js.
+        //      Composition roots the list explicitly names were still counted as uncovered.
+        //   2. dist held 28 orphaned modules from the T8 refactor and 88 leaked lint fixtures, all
+        //      counted as real, uncovered application code.
         //
-        // **This is a documented deviation from SPEC.md §7 and needs a decision, not a default.**
-        lines: 40,
-        statements: 40,
+        // With both fixed the same test suite reports 82% lines and 84% statements, no new tests
+        // written. The deviation was an artifact, so there is nothing left to decide.
+        //
+        // The margin over 80 is thin on purpose: this is a floor that should bite when Phase 2 adds
+        // logic without tests. If it goes red, the fix is a test, not a lower number.
+        lines: 80,
+        statements: 80,
 
         // Pure, small, and where the safety guarantees live — so 100% branch is reachable and
         // cheap. You cannot hit 100% branch on a function that reads a clock, which is exactly why

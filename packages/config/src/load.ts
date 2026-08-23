@@ -15,11 +15,15 @@ export type ApiConfig = Readonly<{
   redisUrl: string
   apiPort: number
   environment: Environment
+  /** Secret. Keys maskIdentifier(); never logged (see SECRET_KEYS). */
+  maskingPepper: string
 }>
 
 export type WorkerConfig = Readonly<{
   redisUrl: string
   environment: Environment
+  /** Secret. Keys maskIdentifier(); never logged (see SECRET_KEYS). */
+  maskingPepper: string
 }>
 
 /** Thrown at startup and never caught: a misconfigured process must not begin serving. */
@@ -75,10 +79,15 @@ export const loadApiConfig = (source: EnvironmentSource): ApiConfig =>
     redisUrl: parsed.REDIS_URL,
     apiPort: parsed.API_PORT,
     environment: parsed.NODE_ENV,
+    maskingPepper: parsed.MASKING_PEPPER,
   }))
 
 export const loadWorkerConfig = (source: EnvironmentSource): WorkerConfig =>
-  load(workerConfigSchema, source, (parsed) => ({ redisUrl: parsed.REDIS_URL, environment: parsed.NODE_ENV }))
+  load(workerConfigSchema, source, (parsed) => ({
+    redisUrl: parsed.REDIS_URL,
+    environment: parsed.NODE_ENV,
+    maskingPepper: parsed.MASKING_PEPPER,
+  }))
 
 /**
  * A representation of the environment that is safe to log.

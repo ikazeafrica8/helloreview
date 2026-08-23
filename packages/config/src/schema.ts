@@ -45,12 +45,22 @@ const port = z
  */
 const environment = z.enum(['development', 'test', 'staging', 'production']).default('development')
 
+/**
+ * The key that makes a masked identifier unlinkable.
+ *
+ * maskIdentifier() HMACs with this rather than hashing plainly, because an unsalted digest of a
+ * low-entropy identifier — a phone number, a provider id following a guessable scheme — is
+ * reversible by brute force. A minimum length is enforced so a placeholder cannot quietly weaken it.
+ */
+const pepper = z.string().min(16, { message: 'must be at least 16 characters' })
+
 /** Everything the api reads. */
 export const apiConfigSchema = z.object({
   DATABASE_URL: connectableUrl(['postgres:', 'postgresql:']),
   REDIS_URL: connectableUrl(['redis:', 'rediss:']),
   API_PORT: port,
   NODE_ENV: environment,
+  MASKING_PEPPER: pepper,
 })
 
 /**
@@ -60,7 +70,7 @@ export const apiConfigSchema = z.object({
  * validated changes it for both deployables in one edit. The worker never reads API_PORT, and a
  * worker that refuses to start over a value it does not use is a confusing failure on call.
  */
-export const workerConfigSchema = apiConfigSchema.pick({ REDIS_URL: true, NODE_ENV: true })
+export const workerConfigSchema = apiConfigSchema.pick({ REDIS_URL: true, NODE_ENV: true, MASKING_PEPPER: true })
 
 /**
  * Keys whose VALUE must never appear in a log line, an error message, or a diagnostic dump.
@@ -69,6 +79,6 @@ export const workerConfigSchema = apiConfigSchema.pick({ REDIS_URL: true, NODE_E
  * readable at a glance by someone auditing what the platform can leak — not reconstructed by
  * walking a schema. Anything carrying credentials belongs here.
  */
-export const SECRET_KEYS: ReadonlySet<string> = new Set(['DATABASE_URL', 'REDIS_URL'])
+export const SECRET_KEYS: ReadonlySet<string> = new Set(['DATABASE_URL', 'REDIS_URL', 'MASKING_PEPPER'])
 
 export const isSecret = (key: string): boolean => SECRET_KEYS.has(key)

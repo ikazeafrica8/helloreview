@@ -3,11 +3,22 @@ import { tstz } from '../columns.js'
 
 // The audit log (PRD §17.2, §21.4, T13).
 //
-// APPEND-ONLY, ENFORCED IN THE DATABASE. Application-level discipline is not enough for a table
-// whose entire purpose is to be trustworthy after the fact: if a bug, a migration or an operator
-// with psql can rewrite history, the log answers "what happened" with "whatever survived". Triggers
-// in the migration reject UPDATE, DELETE and TRUNCATE — see 0001. TRUNCATE needs its own trigger
+// APPEND-ONLY, ENFORCED BY TRIGGERS — and it is worth being precise about what that does and does
+// not buy, because the earlier wording here overclaimed.
+//
+// The triggers in 0001 reject UPDATE, DELETE and TRUNCATE, and 0002 makes them ENABLE ALWAYS so a
+// session cannot skip them with `SET session_replication_role = replica` (measured: before 0002,
+// that one session variable plus a DELETE emptied the table). TRUNCATE needs its own trigger
 // because it does not fire DELETE triggers.
+//
+// What triggers CANNOT do is defend against the role that owns the table: an owner can still run
+// `ALTER TABLE audit_logs DISABLE TRIGGER ALL`, and a superuser can do anything. Closing that needs
+// privilege separation — a distinct owner/migration role, with UPDATE, DELETE and TRUNCATE revoked
+// from the application role — which is a deployment decision about role provisioning. It is
+// recorded as an open decision in tasks/todo.md rather than assumed here.
+//
+// So: accidental rewrites and the cheap deliberate bypass are closed. A determined operator with
+// the application's own credentials is not, until the role work lands.
 //
 // NOTHING HERE HOLDS RAW PERSONAL DATA. Actor and target identifiers are masked or pseudonymous
 // before they arrive (SPEC.md §21.4), and `detail` is for masked evidence references, never for a

@@ -489,12 +489,15 @@ a `packages/testing` home for fixtures and builders.
 > 2. **Per-tier timeouts were needed.** Vitest defaults to 5s, which is right for a pure function and
 >    wrong for compiling a workspace or starting a container. The slow tiers get 180s; the unit tier
 >    keeps the tight default so a genuinely hung unit test still fails fast.
-> 3. **The global coverage threshold is 30%, not SPEC.md §7's 80% — a documented deviation needing a
->    decision.** v8 coverage cannot observe a child process, and nearly all code today is bootstrap
->    exercised by the integration tier booting the compiled app. It is genuinely tested and reports as
->    zero. Leaving 80 would make `test:coverage` red from creation, which is how a gate stops being
->    read. The per-glob 100%-branch entries for gates, predicates, validators and the rules engine are
->    unchanged and will bite the moment those files exist.
+> 3. ~~**The global coverage threshold is 30%, not SPEC.md §7's 80% — a documented deviation needing a
+>    decision.**~~ **RESOLVED in the Phase 0/1 audit — it is SPEC.md §7's 80%, and the suite passes at
+>    82% lines / 84% statements with no new tests.** The deviation was a measurement artifact, twice
+>    over: `excludeAfterRemap` defaults to `false`, so every coverage exclusion was inert (the globs
+>    are written against `.ts` paths and were being matched against emitted `.js`); and `dist` held 28
+>    orphaned modules from the T8 refactor plus 88 leaked lint fixtures, all counted as real uncovered
+>    code. Fixing both moved lines from 57% to 82%. The per-glob 100%-branch entries for gates,
+>    predicates, validators and the rules engine are unchanged and will bite the moment those files
+>    exist.
 >
 > **Two findings from a parallel recon agent, both acted on.** First, excluding `dist/` from coverage
 > silently discarded real measurements: v8 _does_ remap through the tsc source maps back to
@@ -796,6 +799,75 @@ swallowed (`§23.3`).
 >    rows is rejected too — the intent was still wrong.
 
 **Estimated scope:** M
+
+---
+
+# Audit — Phase 0 and Phase 1 (before Phase 2)
+
+A full review of everything T1–T13 delivered, run before starting Phase 2. 50 raw findings, triaged
+to 30 confirmed / 17 overstated / 3 refuted. The central criticism was not about the code but about
+its comments: eight comments asserted guarantees the code did not provide, and four checked
+acceptance criteria were untrue. Everything below was verified by measurement, not by reading.
+
+## Fixed and verified
+
+- [x] **The audit log was bypassable two ways.** Setting `session_replication_role` to `replica` and
+      then deleting wiped it with no DDL at all, because the triggers were `O` (origin). Migration
+      `0002` sets them `ENABLE ALWAYS`, and the bypass is now rejected — verified against a live
+      database. The second route, `ALTER TABLE ... DISABLE TRIGGER ALL`, is only available to the
+      table owner and needs role separation to close. **See the open decision below.**
+- [x] **The worker exited 545 ms after logging "ready".** With no processors registered nothing
+      referenced the event loop, so `pnpm dev:worker` handed back a worker that was already gone and
+      T5's drain path was unreachable. A `keepAlive` interval holds it open; verified still running
+      after 10 s. T5's own test passed only because it killed the child on seeing "ready".
+- [x] **Request logs carried the query string**, which is where an id or a phone number ends up. The
+      path is now split off before logging.
+- [x] **`maskIdentifier` was an unkeyed SHA-256 of a low-entropy id — reversible by brute force.** It
+      is now HMAC-SHA-256 keyed with `MASKING_PEPPER`, and throws rather than degrading if no pepper
+      is supplied. `MASKING_PEPPER` was added to the config schema and to `SECRET_KEYS`.
+- [x] **`maskAddress` failed open**, returning the input unchanged when it matched no administrative
+      unit. It now returns a fully-masked value in that case.
+- [x] **`preflight.mjs` printed passwords in cleartext** on a `DATABASE_URL`/`POSTGRES_PASSWORD`
+      mismatch — a SPEC.md §8 "Never", in the script written to protect configuration. It now reports
+      length only for secret parts; non-secret mismatches still show values.
+- [x] **`dev-runner.mjs` never built the workspace packages**, so a fresh clone failed on first run.
+- [x] **The PII lint rule rejected all four purpose-built maskers** — it errored on exactly the code
+      it exists to encourage. Cause: esquery's `!=` with a REGEX value silently excludes nothing.
+      `:not([attr=/re/])` is the form that works. Now fixture-tested in both directions.
+- [x] **The integration suite was destructive against the developer's own Redis.** Three tests ran on
+      database 0 under real queue names; one bound a Worker with a no-op handler, which SILENTLY
+      CONSUMED queued jobs — measured, a job planted on `send-outbound` was gone by the end of the
+      run. All three now use database 15 and per-process queue names derived from the registry.
+      Verified: db 0 is byte-identical after a full run, planted job and payload intact.
+- [x] **Coverage was measuring files that do not exist.** `excludeAfterRemap` defaults to `false`, so
+      every exclusion was inert; and `dist` held 28 orphaned modules from the T8 refactor plus 88
+      leaked lint fixtures. Fixing both moved lines from 57% to 82%, which **closed the documented
+      deviation from SPEC.md §7** — the threshold is back at 80 and passes. Added `pnpm clean` and
+      `tests/integration/build-output.test.mjs`, which fails if `dist` goes stale again.
+- [x] **The root program was not typechecked.** `pnpm typecheck` now runs it before the workspaces.
+
+## Open decision for the user — least-privilege database roles
+
+The application connects as a SUPERUSER that also OWNS `audit_logs`. `ENABLE ALWAYS` closes the
+replication-role bypass, but an owner can still `ALTER TABLE ... DISABLE TRIGGER ALL` and then
+delete history. No trigger can defend against its own table's owner; only role separation can.
+
+This needs deciding **before Phase 2 provisions a real role**, because it changes what the migration
+runner and the application connect as:
+
+- a migration/owner role that owns the schema and runs DDL, and
+- an application role with `UPDATE`, `DELETE` and `TRUNCATE` revoked on `audit_logs`.
+
+Until then, SPEC.md §8's "never delete business history" is enforced by convention, not by the
+database.
+
+## Not yet fixed — backlog
+
+Roughly 15 medium and 13 low findings remain, none of which block Phase 2. The ones most worth
+scheduling: the PII detector misses 02/070/03x Korean landlines and every non-Korean number, and
+false-positives on the prose "Basic authentication"; the PII gate runs in no aggregate command;
+`db:reset` has no environment guard; `createQueue` registers no error listener; `verifyRedis`
+discards the underlying error; and the worker's `stop()` releases nothing when the drain times out.
 
 ---
 

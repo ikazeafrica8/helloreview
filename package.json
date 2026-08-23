@@ -10,7 +10,7 @@
   "type": "module",
   "scripts": {
     "build": "turbo run build",
-    "typecheck": "turbo run typecheck",
+    "typecheck": "tsc -p tsconfig.json --noEmit && turbo run typecheck",
     "dev": "node tools/dev-runner.mjs api worker",
     "dev:api": "node tools/dev-runner.mjs api",
     "dev:worker": "node tools/dev-runner.mjs worker",
@@ -26,6 +26,7 @@
     "db:reset": "node --env-file-if-exists=.env tools/db-reset.mjs",
     "db:seed": "node --env-file-if-exists=.env tools/db-seed.mjs",
     "db:check": "pnpm --filter @helloreview/db exec drizzle-kit check",
+    "clean": "node tools/clean.mjs",
     "test": "vitest run --project unit --project transitions --project integration",
     "test:unit": "vitest run --project unit",
     "test:transitions": "vitest run --project transitions",

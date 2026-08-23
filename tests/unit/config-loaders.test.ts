@@ -34,6 +34,7 @@ const VALID = {
   DATABASE_URL: 'postgres://user:pw@127.0.0.1:15432/helloreview',
   REDIS_URL: 'redis://default:pw@127.0.0.1:16379/0',
   API_PORT: '13000',
+  MASKING_PEPPER: 'a-test-pepper-at-least-16-chars',
 }
 
 describe('loadApiConfig', () => {
@@ -52,11 +53,12 @@ describe('loadApiConfig', () => {
     // values around until something works.
     const { problems } = expectConfigurationError(() => loadApiConfig({}))
 
-    expect(problems).toHaveLength(3)
+    expect(problems).toHaveLength(4)
     const joined = problems.join('\n')
     expect(joined).toMatch(/DATABASE_URL/)
     expect(joined).toMatch(/REDIS_URL/)
     expect(joined).toMatch(/API_PORT/)
+    expect(joined).toMatch(/MASKING_PEPPER/)
   })
 
   test('never echoes a value, because a malformed URL still carries a password', () => {
@@ -92,17 +94,19 @@ describe('loadApiConfig', () => {
 })
 
 describe('loadWorkerConfig', () => {
-  test('needs only REDIS_URL, because the worker never reads the others', () => {
-    // A worker that refuses to start over a value it does not use is a confusing failure on call.
-    const config = loadWorkerConfig({ REDIS_URL: VALID.REDIS_URL })
+  test('needs only what the worker actually reads, not the whole api surface', () => {
+    // A worker that refuses to start over a value it does not use is a confusing failure on call —
+    // API_PORT and DATABASE_URL are deliberately absent here.
+    const config = loadWorkerConfig({ REDIS_URL: VALID.REDIS_URL, MASKING_PEPPER: VALID.MASKING_PEPPER })
     expect(config.redisUrl).toBe(VALID.REDIS_URL)
     expect(Object.isFrozen(config)).toBe(true)
   })
 
   test('applies the same REDIS_URL rule as the api, because the schema is picked not copied', () => {
-    expect(() => loadWorkerConfig({ REDIS_URL: 'http://127.0.0.1:16379' })).toThrow(ConfigurationError)
-    expect(() => loadWorkerConfig({ REDIS_URL: 'redis://' })).toThrow(ConfigurationError)
-    expect(() => loadWorkerConfig({})).toThrow(/REDIS_URL is not set/)
+    const withPepper = { MASKING_PEPPER: VALID.MASKING_PEPPER }
+    expect(() => loadWorkerConfig({ ...withPepper, REDIS_URL: 'http://127.0.0.1:16379' })).toThrow(ConfigurationError)
+    expect(() => loadWorkerConfig({ ...withPepper, REDIS_URL: 'redis://' })).toThrow(ConfigurationError)
+    expect(() => loadWorkerConfig(withPepper)).toThrow(/REDIS_URL is not set/)
   })
 })
 
@@ -110,6 +114,8 @@ describe('redaction', () => {
   test('every credential-bearing key is marked secret', () => {
     expect(isSecret('DATABASE_URL')).toBe(true)
     expect(isSecret('REDIS_URL')).toBe(true)
+    // The pepper is what makes a masked identifier unlinkable; leaking it undoes the masking.
+    expect(isSecret('MASKING_PEPPER')).toBe(true)
     expect(isSecret('API_PORT')).toBe(false)
   })
 
@@ -120,6 +126,7 @@ describe('redaction', () => {
     // characters" is how credentials reach a log aggregator.
     expect(redacted.DATABASE_URL).toBe('[redacted]')
     expect(redacted.REDIS_URL).toBe('[redacted]')
+    expect(redacted.MASKING_PEPPER).toBe('[redacted]')
     expect(JSON.stringify(redacted)).not.toContain('pw')
     expect(JSON.stringify(redacted)).not.toContain('127.0.0.1:15432')
 

@@ -10,7 +10,6 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@helloreview/observability": "workspace:*",
     "@testcontainers/postgresql": "^12.1.0",
     "@testcontainers/redis": "^12.1.0",
     "testcontainers": "^12.1.0"

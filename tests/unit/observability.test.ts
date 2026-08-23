@@ -42,11 +42,12 @@ describe('maskPhone', () => {
     expect(maskPhone('010-1234-5678')).not.toBe(maskPhone('010-1234-9999'))
   })
 
-  test('never returns the input unchanged, even for something unrecognizable', () => {
-    // A mask that silently passes through on an unexpected format is worse than no mask: the caller
-    // believes the value is safe.
-    expect(maskPhone('not a phone at all')).not.toBe('not a phone at all')
-    expect(maskPhone('')).not.toContain('undefined')
+  test('produces an exact, known shape rather than merely "something different"', () => {
+    // Pinning the output is what makes the digits-kept count a decision rather than an accident: a
+    // regression that kept four digits instead of two would pass a "not equal to the input" check.
+    expect(maskPhone('010-1234-5678')).toBe('010******78')
+    expect(maskPhone('not a phone at all')).toBe('[masked]')
+    expect(maskPhone('')).toBe('[empty]')
   })
 })
 
@@ -62,11 +63,13 @@ describe('maskName', () => {
   })
 
   test.each([
-    ['a single character', '홍'],
-    ['empty', ''],
-    ['whitespace', '   '],
-  ])('does not leak on %s', (_label, raw) => {
-    expect(maskName(raw)).not.toContain('undefined')
+    ['a single character — the whole name, so it must be masked entirely', '홍', '[masked]'],
+    ['empty', '', '[empty]'],
+    ['whitespace', '   ', '[empty]'],
+  ])('masks %s', (_label, raw, expected) => {
+    // Asserting the OUTCOME. The previous form only checked the result did not contain the word
+    // "undefined", which is true of every implementation including one that returns the input.
+    expect(maskName(raw)).toBe(expected)
   })
 })
 
@@ -85,13 +88,33 @@ describe('maskAddress', () => {
 })
 
 describe('maskIdentifier', () => {
+  const PEPPER = 'a-test-pepper-at-least-16-chars'
+
   test('is stable and short, and never returns the original', () => {
     const kakaoUserId = 'provider-user-789'
-    const masked = maskIdentifier(kakaoUserId)
+    const masked = maskIdentifier(kakaoUserId, PEPPER)
 
     expect(masked).not.toContain(kakaoUserId)
-    expect(masked).toBe(maskIdentifier(kakaoUserId))
-    expect(maskIdentifier('provider-user-790')).not.toBe(masked)
+    expect(masked).toBe(maskIdentifier(kakaoUserId, PEPPER))
+    expect(maskIdentifier('provider-user-790', PEPPER)).not.toBe(masked)
+  })
+
+  test('is KEYED — a different pepper gives a different tag for the same input', () => {
+    // This is the property that makes it unlinkable. An unsalted digest of a low-entropy id is
+    // brute-forceable, so a mask that ignored the pepper would be reversible.
+    const a = maskIdentifier('provider-user-789', PEPPER)
+    const b = maskIdentifier('provider-user-789', 'a-different-pepper-16-chars')
+    expect(a).not.toBe(b)
+  })
+
+  test('refuses to run without a pepper rather than degrading to an unkeyed digest', () => {
+    expect(() => maskIdentifier('provider-user-789', '')).toThrow(/pepper/)
+    expect(() => maskIdentifier('provider-user-789', '   ')).toThrow(/pepper/)
+  })
+
+  test('is wide enough that collisions are not a practical concern', () => {
+    // 64 bits. A 40-bit tag (the original 10 hex chars) is small enough to be worth attacking.
+    expect(maskIdentifier('x', PEPPER)).toMatch(/^id_[0-9a-f]{16}$/)
   })
 })
 

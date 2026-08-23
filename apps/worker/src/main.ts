@@ -58,6 +58,20 @@ const bootstrap = async (): Promise<void> => {
     { operation: 'worker.ready', result: 'ok', count: queues.length },
   )
 
+  /**
+   * Hold the event loop open.
+   *
+   * A BullMQ Worker refs the loop, so with processors registered the process stays up on its own.
+   * With NONE registered — which is the shipped state until T27 — nothing refs it: the Redis probe
+   * already disconnected, and Node does not count signal handlers. The process therefore printed
+   * "ready" and exited 0 about half a second later, which meant `pnpm dev:worker` handed the
+   * developer a worker that was already gone AND made T5's SIGTERM drain path unreachable, because
+   * there was no process left to signal.
+   *
+   * Cleared in the shutdown path so a drained worker exits promptly instead of hanging on this.
+   */
+  const keepAlive = setInterval(() => undefined, 1 << 30)
+
   let stopping = false
   const shutdown = (signal: string): void => {
     // A second signal while draining must not start a second shutdown; BullMQ's close() is not
@@ -67,6 +81,9 @@ const bootstrap = async (): Promise<void> => {
       return
     }
     stopping = true
+    // Released here, not after stop() resolves: the drain must not be the only thing keeping the
+    // process alive, or a failed drain would hang forever instead of exiting non-zero.
+    clearInterval(keepAlive)
     logger.info(`${signal} received — draining in-flight jobs`, { operation: 'worker.shutdown', result: 'started' })
 
     runtime.stop().then(

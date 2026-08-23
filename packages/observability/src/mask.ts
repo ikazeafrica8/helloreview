@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto'
+import { createHmac } from 'node:crypto'
 
 // Masking for personal data, per SPEC.md §21.4 and §6.
 //
@@ -70,24 +70,45 @@ export const maskName = (raw: string): string => {
  * Enough to know which region a fulfilment problem is in; not enough to find the door. A one-token
  * address has no broad part to keep, so it is masked entirely.
  */
+const ADMINISTRATIVE_UNIT = /[가-힣]+(?:특별시|광역시|특별자치시|특별자치도|시|도)$/
+
 export const maskAddress = (raw: string): string => {
   if (isBlank(raw)) return EMPTY
   const tokens = raw.trim().split(/\s+/)
-  const [region] = tokens
-  if (tokens.length < 2 || region === undefined) return FULLY_MASKED
+
+  // Keep a token only if it IS an administrative unit. Keeping tokens[0] unconditionally — which is
+  // what this did before — leaked whatever happened to come first: Korean addresses are commonly
+  // written leading with a postal code ("06236 서울특별시 …") or, in a delivery form, with the
+  // building and unit. That is the door, not the region.
+  const region = tokens.find((token) => ADMINISTRATIVE_UNIT.test(token))
+  if (region === undefined) return FULLY_MASKED
+
   return `${region} ***`
 }
 
 /**
  * An opaque identifier — a Kakao user id, a provider conversation id — reduced to a stable tag.
  *
- * SPEC.md §21.1 treats these as persistent identifiers, so the raw value never reaches a log. A
- * truncating mask would still leak a recognizable prefix, so this hashes instead: unlinkable to the
- * original, stable across processes, and short enough to read.
+ * KEYED, not a plain digest. An unsalted hash of a LOW-ENTROPY value is reversible by anybody who
+ * can guess the input space, and these inputs are exactly that: a phone number is ~10^8 candidates
+ * and a provider id often follows a guessable scheme, so a plain SHA-256 can be brute-forced back
+ * to the original in seconds on a laptop. SPEC.md §21.4 permits a pseudonymous identifier in a log
+ * precisely because it is supposed to be unlinkable, and an unkeyed digest is not.
+ *
+ * The pepper is passed in rather than read here so this stays a pure function, and so a caller
+ * cannot accidentally use it without one. It belongs in the secret set — see SECRET_KEYS in
+ * packages/config — and unlinkability holds only for as long as it stays secret.
+ *
+ * Truncated to 16 hex characters (64 bits): long enough that collisions are not a practical concern
+ * across the platform's identifier volume, short enough to read in a terminal.
  */
-export const maskIdentifier = (raw: string): string => {
+export const maskIdentifier = (raw: string, pepper: string): string => {
   if (isBlank(raw)) return EMPTY
-  return `id_${createHash('sha256').update(raw).digest('hex').slice(0, 10)}`
+  if (isBlank(pepper)) {
+    // Fail loudly rather than silently degrading to an unkeyed — and therefore reversible — digest.
+    throw new Error('maskIdentifier requires a pepper; an unkeyed digest of a low-entropy id is reversible')
+  }
+  return `id_${createHmac('sha256', pepper).update(raw).digest('hex').slice(0, 16)}`
 }
 
 /**

@@ -11,7 +11,7 @@
 // Two processes, no dependency. `concurrently` would do the same job, and SPEC.md §8 puts adding a
 // dependency under Ask first for a reason.
 
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 
@@ -46,6 +46,38 @@ if (!existsSync(join(ROOT, '.env'))) {
   process.stderr.write('\n  No .env found. Run `pnpm services:up` first — it creates one from .env.example.\n\n')
   process.exit(1)
 }
+
+/**
+ * Build the workspace packages before starting anything.
+ *
+ * apps/api and apps/worker import @helloreview/config, /contracts, /db and /observability, whose
+ * package.json `main` and `types` point at dist/. On a fresh clone those dist/ folders do not exist,
+ * so `tsc --watch` on the app fails to resolve them and `node --watch` has nothing to run — the
+ * developer sees a wall of TS2307 in their first five minutes.
+ *
+ * Only the PACKAGES are built here: the apps are the thing being watched, and building them twice
+ * would just delay the first run.
+ */
+const buildPackages = () => {
+  process.stdout.write('  building workspace packages...\n')
+
+  const build = spawnSync(
+    process.execPath,
+    [join(ROOT, 'node_modules', 'turbo', 'bin', 'turbo'), 'run', 'build', '--filter=./packages/*'],
+    { cwd: ROOT, encoding: 'utf8', timeout: 300_000 },
+  )
+
+  if (build.status !== 0) {
+    process.stderr.write(
+      `\n  Workspace packages failed to build; not starting.\n\n${build.stdout ?? ''}${build.stderr ?? ''}\n`,
+    )
+    process.exit(1)
+  }
+
+  process.stdout.write('  packages built\n')
+}
+
+buildPackages()
 
 const children = []
 

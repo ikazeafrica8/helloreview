@@ -43,10 +43,17 @@ export class CorrelationMiddleware implements NestMiddleware {
       // ended with. The listener is registered INSIDE the scope, so it still sees the id when it runs.
       response.on('finish', () => {
         const status = response.statusCode ?? 0
-        this.logger.info(`${request.method ?? 'UNKNOWN'} ${request.url ?? '/'}`, {
+
+        // PATH ONLY — the query string is stripped, not merely "not intended to be logged".
+        // `request.url` is the raw request target and INCLUDES the query string, so logging it
+        // verbatim put whatever a caller passed in `?phone=…` into every request line. This line is
+        // written on every single request, so it is the highest-volume place a participant
+        // identifier could reach a log (SPEC.md §21.4).
+        const path = (request.url ?? '/').split('?')[0] ?? '/'
+
+        this.logger.info(`${request.method ?? 'UNKNOWN'} ${path}`, {
           operation: 'http.request',
-          // Only the class, never the URL's query string: a participant identifier could travel
-          // there, and this line is written on every single request (SPEC.md §21.4).
+          // The status CLASS, so a dashboard can group without parsing.
           result: status >= 500 ? 'server_error' : status >= 400 ? 'client_error' : 'ok',
           statusCode: status,
         })

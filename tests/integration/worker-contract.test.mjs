@@ -41,10 +41,19 @@ const parseEnv = (text) => {
  * Signals cannot be delivered to a child on Windows, so the process is killed outright once the
  * expected line appears — this asserts on boot behaviour, not on shutdown, which the drain test
  * covers by calling stop() directly.
+ *
+ * REDIS_URL is isolated by default. Today `HANDLERS` is empty so this worker binds nothing and
+ * could not consume a job if it tried; from T27 onward it will bind real processors, and a boot
+ * test that quietly ran them against the developer's own queues would process real work as a side
+ * effect of `pnpm test`. Isolating now means that never becomes true. `overrides` still wins, so
+ * the unreachable-Redis test below can supply its own deliberately broken URL.
  */
-const runWorker = async (overrides, until) =>
-  new Promise((resolve, reject) => {
-    const env = { ...process.env, ...Object.fromEntries(parseEnv(readText('.env.example'))), ...overrides }
+const runWorker = async (overrides, until) => {
+  const { isolatedRedisUrl } = await import('../../packages/testing/dist/index.js')
+  const base = Object.fromEntries(parseEnv(readText('.env.example')))
+
+  return new Promise((resolve, reject) => {
+    const env = { ...process.env, ...base, REDIS_URL: isolatedRedisUrl(base.REDIS_URL), ...overrides }
     const child = spawn(process.execPath, [join(WORKER_DIR, 'dist', 'main.js')], {
       cwd: ROOT,
       env,
@@ -72,6 +81,7 @@ const runWorker = async (overrides, until) =>
     child.stderr.on('data', onData)
     child.once('exit', settle)
   })
+}
 
 describe('worker app', () => {
   test('the workspace declares the queue runtime', () => {
@@ -131,9 +141,12 @@ describe('worker app', () => {
     // because Node resolves a dependency relative to the importing file.
     const { createWorkerRuntime, createQueue } = await import('../../apps/worker/dist/runtime.js')
     const { QUEUE_NAMES } = await import('../../packages/contracts/dist/queues.js')
+    const { isolatedRedisUrl, isolatedQueueName } = await import('../../packages/testing/dist/index.js')
 
-    const redisUrl = parseEnv(readText('.env.example')).get('REDIS_URL')
-    const queueName = QUEUE_NAMES.SEND_OUTBOUND
+    // Isolated database AND isolated queue name — the obliterate() below must never be able to
+    // reach the developer's real work once T43/T45 give this queue jobs. See queue-isolation.ts.
+    const redisUrl = isolatedRedisUrl(parseEnv(readText('.env.example')).get('REDIS_URL'))
+    const queueName = isolatedQueueName(QUEUE_NAMES.SEND_OUTBOUND, 'drain-on-stop')
 
     let started = false
     let finished = false
@@ -193,19 +206,33 @@ describe('worker app', () => {
 
   test('the runtime reports ready once connected', async () => {
     const { createWorkerRuntime } = await import('../../apps/worker/dist/runtime.js')
-    const redisUrl = parseEnv(readText('.env.example')).get('REDIS_URL')
     const { QUEUE_NAMES } = await import('../../packages/contracts/dist/queues.js')
+    const { isolatedRedisUrl, isolatedQueueName } = await import('../../packages/testing/dist/index.js')
+
+    // This test binds a real BullMQ Worker whose handler does NOTHING, so on the application
+    // database it would silently consume and discard real queued jobs — measured: a job planted on
+    // `send-outbound` in database 0 was gone by the end of the run. Silent consumption is worse
+    // than the obliterate() the other tests do, because it leaves no trace at all.
+    const redisUrl = isolatedRedisUrl(parseEnv(readText('.env.example')).get('REDIS_URL'))
+    const queueName = isolatedQueueName(QUEUE_NAMES.SEND_OUTBOUND, 'ready-probe')
 
     const runtime = createWorkerRuntime({
       redisUrl,
-      queues: [QUEUE_NAMES.SEND_OUTBOUND],
-      handlers: { [QUEUE_NAMES.SEND_OUTBOUND]: async () => undefined },
+      queues: [queueName],
+      handlers: { [queueName]: async () => undefined },
     })
     try {
       await runtime.start()
       assert.equal(runtime.isReady(), true, 'runtime.start() resolved but the runtime does not report ready')
     } finally {
       await runtime.stop()
+      // Binding a Worker creates `:meta` and `:stalled-check` even with no job, and the queue name
+      // is unique per run — so without this the isolation database grows by two dead keys every
+      // time the suite runs. Safe to obliterate precisely because the name is this run's own.
+      const { createQueue } = await import('../../apps/worker/dist/runtime.js')
+      const queue = createQueue(redisUrl, queueName)
+      await queue.obliterate({ force: true }).catch(() => undefined)
+      await queue.close()
     }
   })
 })

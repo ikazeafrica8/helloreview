@@ -63,7 +63,7 @@ describe('the masks from T11 survive the detector', () => {
     ['phone', maskPhone('010-1234-5678')],
     ['name', maskName('홍길동')],
     ['address', maskAddress('서울특별시 강남구 테헤란로 123 4층')],
-    ['identifier', maskIdentifier('provider-user-789')],
+    ['identifier', maskIdentifier('provider-user-789', 'a-test-pepper-at-least-16-chars')],
   ])('a masked %s is clean', (_label, masked) => {
     expect(detectPii(masked)).toEqual([])
     expect(masked).toContainNoPii()

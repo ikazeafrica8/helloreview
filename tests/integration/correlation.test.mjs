@@ -106,9 +106,12 @@ describe('correlation propagation', () => {
     const { runWithCorrelation } = await importBuilt('packages/observability/dist/index.js')
     const { createWorkerRuntime, createQueue, enqueueJob } = await importBuilt('apps/worker/dist/runtime.js')
     const { QUEUE_NAMES } = await importBuilt('packages/contracts/dist/index.js')
+    const { isolatedRedisUrl, isolatedQueueName } = await importBuilt('packages/testing/dist/index.js')
 
-    const redisUrl = envExample().get('REDIS_URL')
-    const queueName = QUEUE_NAMES.RECONCILE_APPLICATIONS
+    // Isolated database AND isolated queue name — the obliterate() below must never be able to
+    // reach the developer's real work once T27/T43 give this queue jobs. See queue-isolation.ts.
+    const redisUrl = isolatedRedisUrl(envExample().get('REDIS_URL'))
+    const queueName = isolatedQueueName(QUEUE_NAMES.RECONCILE_APPLICATIONS, 'correlation-hop')
     const producerId = 'cor_producer_side'
 
     const seen = Promise.withResolvers()
