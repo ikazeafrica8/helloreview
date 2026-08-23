@@ -3,6 +3,7 @@ import { InvalidEnvelopeError, platformEventSchema, type AcceptanceResponse } fr
 import { currentCorrelationId } from '@helloreview/observability'
 import { ContractErrorFilter } from './contract-error.filter.js'
 import { SignatureGuard } from './signature.guard.js'
+import { RateLimitGuard } from './rate-limit.guard.js'
 import { RAW_BODY, type RequestWithRawBody } from './raw-body.middleware.js'
 
 // The webhook edge (PRD §18.3, T16).
@@ -20,7 +21,10 @@ import { RAW_BODY, type RequestWithRawBody } from './raw-body.middleware.js'
 @UseFilters(ContractErrorFilter)
 export class WebhookController {
   @Post(':provider')
-  @UseGuards(SignatureGuard)
+  // Order is significant: authenticate FIRST, then limit. Limiting first would let an
+  // unauthenticated attacker drain a named provider's bucket — a denial of service against that
+  // provider, using the rate limiter as the weapon. Nest runs guards left to right.
+  @UseGuards(SignatureGuard, RateLimitGuard)
   accept(@Param('provider') provider: string, @Req() request: RequestWithRawBody): AcceptanceResponse {
     const rawBody = request[RAW_BODY]
     if (rawBody === undefined) throw new InvalidEnvelopeError('request body was not read')

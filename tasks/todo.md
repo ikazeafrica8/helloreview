@@ -1067,14 +1067,18 @@ applied after signature verification and before inbox insertion (`§18.3`).
 
 **Acceptance criteria:**
 
-- [ ] A body failing envelope schema validation is rejected 400 without side effects
-- [ ] Payloads over the configured limit are rejected 413 without being buffered entirely into memory
-- [ ] Rate limiting is per provider and returns 429 with no partial processing
+- [x] A body failing envelope schema validation is rejected 400 without side effects
+- [x] Payloads over the configured limit are rejected 413 without being buffered entirely into memory
+- [x] Rate limiting is per provider and returns 429 with no partial processing
 
 **Verification:**
 
-- [ ] Tests pass: `pnpm test:security`
-- [ ] Manual check: send an oversized body and confirm 413 with bounded memory use
+- [x] Tests pass: `pnpm test:security` — 14 HTTP-level tests; plus 8 integration tests for the
+      limiter against a real Redis, including a 40-way concurrency test that a read-then-write
+      implementation fails
+- [x] Manual check: a 2 MB body returns 413. Memory is bounded by PAUSING the stream rather than
+      destroying it — the first version destroyed the socket before the 413 could be written, so the
+      client saw ECONNRESET and never learned why
 
 **Dependencies:** T16
 

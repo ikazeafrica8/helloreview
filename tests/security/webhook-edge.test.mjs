@@ -78,7 +78,14 @@ describe('the webhook edge', () => {
   beforeAll(async () => {
     child = spawn(process.execPath, [join(ROOT, 'apps', 'api', 'dist', 'main.js')], {
       cwd: ROOT,
-      env: { ...process.env, ...Object.fromEntries(ENV), API_PORT: String(PORT) },
+      // Redis isolated to database 15, the same policy the queue tests follow: this suite drives
+      // the rate limiter hard, and its bucket keys have no business landing beside real work.
+      env: {
+        ...process.env,
+        ...Object.fromEntries(ENV),
+        API_PORT: String(PORT),
+        REDIS_URL: ENV.get('REDIS_URL').replace(/\/\d+$/, '/15'),
+      },
       stdio: ['ignore', 'pipe', 'pipe'],
     })
     child.stdout.on('data', (chunk) => (output += String(chunk)))
@@ -183,6 +190,32 @@ describe('the webhook edge', () => {
     const result = await post(huge)
     expect(result.status).toBe(413)
   })
+
+  test('T17: a non-JSON content type is refused 415 before a token is spent', async () => {
+    const result = await post(envelope(), { headers: { 'content-type': 'text/plain' } })
+    expect(result.status).toBe(415)
+    expect(result.json).toMatchObject({ reason_code: 'UNSUPPORTED_MEDIA_TYPE' })
+  })
+
+  test('T17 criterion 3: sustained traffic is refused 429 with Retry-After, per provider', async () => {
+    // The default bucket is 120 with a 2/second refill, so a burst past it must be refused. Sent
+    // sequentially rather than in parallel: the assertion is about the limit, and a parallel flood
+    // would also be testing the HTTP server's accept queue.
+    const body = envelope({ event_id: 'evt_rate_probe' })
+    let limited
+    for (let attempt = 0; attempt < 200 && limited === undefined; attempt += 1) {
+      const result = await post(body)
+      if (result.status === 429) limited = result
+    }
+
+    expect(limited, 'the rate limiter never refused anything in 200 requests').toBeDefined()
+    expect(limited.json).toMatchObject({ reason_code: 'RATE_LIMITED' })
+
+    // A different provider is unaffected — but it has no registered secret, so it is refused for
+    // authentication instead. 401 rather than 429 is the proof its bucket was never touched.
+    const other = await post(body, { provider: 'official_kakao_provider' })
+    expect(other.status).toBe(401)
+  }, 120_000)
 
   test('T16 criterion 3: no signature, secret, or participant data reaches the logs', async () => {
     const body = envelope()
