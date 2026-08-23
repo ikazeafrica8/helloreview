@@ -1197,14 +1197,16 @@ the exact version it used.
 
 **Acceptance criteria:**
 
-- [ ] `UNIQUE(campaign_id, rule_type, version)` holds, and published versions reject updates
-- [ ] Campaign type (Shipping, Payback, Visit) and visit method (A, B, C) are stored as enums, never inferred from text (`FR-CAM-001`, `FR-CAM-002`)
-- [ ] Resolving the rule version effective at a given instant is a tested query, not caller arithmetic
+- [x] `UNIQUE(campaign_id, rule_type, version)` holds, and published versions reject updates
+- [x] Campaign type (Shipping, Payback, Visit) and visit method (A, B, C) are stored as enums, never inferred from text (`FR-CAM-001`, `FR-CAM-002`)
+- [x] Resolving the rule version effective at a given instant is a tested query, not caller arithmetic
 
 **Verification:**
 
-- [ ] Tests pass: `pnpm test:integration`
-- [ ] Manual check: attempt to mutate a published rule version and confirm rejection
+- [x] Tests pass: `pnpm test:integration` — 11 tests against a real migrated Postgres
+- [x] Manual check: verified against a live database. A published version rejects a configuration
+      edit, an `effective_from` move, a revert to draft, and a delete; a draft stays editable;
+      closing a version is permitted exactly once and its end can never be moved afterwards
 
 **Dependencies:** T9, T13
 

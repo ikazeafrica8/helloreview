@@ -29,6 +29,20 @@
       "when": 1787470866038,
       "tag": "0003_add_event_inbox",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1787488669654,
+      "tag": "0004_add_campaigns_and_rules",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1787488670654,
+      "tag": "0005_freeze_published_rule_versions",
+      "breakpoints": true
     }
   ]
 }
