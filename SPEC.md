@@ -161,7 +161,11 @@ pnpm services:up                  Start PostgreSQL + Redis + MinIO via Docker Co
 pnpm services:down                Stop and remove local service containers
 pnpm db:migrate                   Apply Drizzle migrations
 pnpm db:seed                      Load fixture campaigns, rules, and templates
-pnpm db:reset                     Drop, recreate, migrate, seed
+pnpm db:reset                     Drop, recreate, migrate, seed  (development/test + localhost only)
+
+# Protect
+pnpm db:backup                    Dump roles + database to backups/<timestamp>/
+pnpm db:verify-audit-protection   Assert audit_logs is still append-only — run after any restore
 
 # Develop
 pnpm dev                          api + worker + admin, all with fake providers

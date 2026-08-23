@@ -7,14 +7,15 @@
 import { spawnSync } from 'node:child_process'
 import { join, dirname } from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { requireMigrationUrl } from './db-target.mjs'
 
 const ROOT = dirname(import.meta.dirname)
 
-const url = process.env.DATABASE_URL
-if (url === undefined || url === '') {
-  process.stderr.write('\n  db:migrate failed\n\n  DATABASE_URL is not set. Run `pnpm services:up` first.\n\n')
-  process.exit(1)
-}
+// DATABASE_MIGRATION_URL, not DATABASE_URL: applying a migration is schema ownership work, and it
+// is deliberately kept on a different variable from the one the api and worker connect with. There
+// is NO disposable-environment guard here — unlike db:reset, migrating production is the whole
+// point of the command.
+const url = requireMigrationUrl('db:migrate')
 
 const build = spawnSync(
   process.execPath,

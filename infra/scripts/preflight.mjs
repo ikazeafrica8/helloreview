@@ -109,15 +109,45 @@ const disagree = (urlKey, partKey, inUrl, inParts) => {
   )
 }
 
-// --- DATABASE_URL must agree with the POSTGRES_* parts Compose uses ---
-const db = parseUrl('DATABASE_URL', 'postgres://user:password@127.0.0.1:port/database')
+// --- DATABASE_MIGRATION_URL must agree with the POSTGRES_* parts Compose uses ---
+//
+// The OWNER credential is checked against the POSTGRES_* parts, because those are what Compose
+// actually creates the superuser from. DATABASE_URL is checked separately below: once the
+// application gets its own restricted role, its username and password will deliberately NOT match
+// POSTGRES_USER, and a check written the other way round would have to be unpicked at exactly the
+// moment it was doing something useful.
+const migration = parseUrl('DATABASE_MIGRATION_URL', 'postgres://user:password@127.0.0.1:port/database')
 for (const [partKey, inUrl, inParts] of [
-  ['POSTGRES_USER', decodeURIComponent(db.username), need('POSTGRES_USER')],
-  ['POSTGRES_PASSWORD', decodeURIComponent(db.password), need('POSTGRES_PASSWORD')],
-  ['POSTGRES_PORT', db.port, need('POSTGRES_PORT')],
-  ['POSTGRES_DB', decodeURIComponent(db.pathname.replace(/^\//, '')), need('POSTGRES_DB')],
+  ['POSTGRES_USER', decodeURIComponent(migration.username), need('POSTGRES_USER')],
+  ['POSTGRES_PASSWORD', decodeURIComponent(migration.password), need('POSTGRES_PASSWORD')],
+  ['POSTGRES_PORT', migration.port, need('POSTGRES_PORT')],
+  ['POSTGRES_DB', decodeURIComponent(migration.pathname.replace(/^\//, '')), need('POSTGRES_DB')],
 ]) {
-  if (inUrl !== inParts) disagree('DATABASE_URL', partKey, inUrl, inParts)
+  if (inUrl !== inParts) disagree('DATABASE_MIGRATION_URL', partKey, inUrl, inParts)
+}
+
+// --- DATABASE_URL must reach the same database, whatever it connects as ---
+//
+// Only the parts that must ALWAYS match: the port and the database name. The credentials are
+// deliberately not compared, so that the later privilege split needs no edit here — but pointing
+// the application at a different database or a different port is always a mistake, and it produces
+// a stack that starts healthy with an app that reads an empty schema.
+const db = parseUrl('DATABASE_URL', 'postgres://user:password@127.0.0.1:port/database')
+if (db.port !== need('POSTGRES_PORT')) {
+  disagree('DATABASE_URL', 'POSTGRES_PORT', db.port, need('POSTGRES_PORT'))
+}
+const appDatabase = decodeURIComponent(db.pathname.replace(/^\//, ''))
+if (appDatabase !== need('POSTGRES_DB')) {
+  disagree('DATABASE_URL', 'POSTGRES_DB', appDatabase, need('POSTGRES_DB'))
+}
+if (db.hostname !== migration.hostname) {
+  fail(
+    'DATABASE_URL and DATABASE_MIGRATION_URL point at different hosts.\n\n' +
+      `    DATABASE_URL host            ${db.hostname}\n` +
+      `    DATABASE_MIGRATION_URL host  ${migration.hostname}\n\n` +
+      '  They may legitimately differ in CREDENTIALS — that is the point of separating them — but\n' +
+      '  they must address the same database, or migrations land somewhere the app never reads.',
+  )
 }
 
 // --- REDIS_URL must agree with the REDIS_* parts ---

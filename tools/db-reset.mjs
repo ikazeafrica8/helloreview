@@ -9,14 +9,18 @@ import { spawnSync } from 'node:child_process'
 import { join, dirname } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { Client } from 'pg'
+import { requireMigrationUrl, assertDisposable } from './db-target.mjs'
 
 const ROOT = dirname(import.meta.dirname)
 
-const url = process.env.DATABASE_URL
-if (url === undefined || url === '') {
-  process.stderr.write('\n  db:reset failed\n\n  DATABASE_URL is not set. Run `pnpm services:up` first.\n\n')
-  process.exit(1)
-}
+// GUARDED, because this is the most destructive command in the repo and the easiest to run by
+// reflex. It drops every schema against whatever the environment points at — and this machine runs
+// several project stacks whose .env files look alike. Until this guard existed, a test that merely
+// CHECKED for the guard performed a real reset of the developer's database as a side effect.
+//
+// It refuses unless NODE_ENV is disposable AND the host is loopback. See tools/db-target.mjs.
+const url = requireMigrationUrl('db:reset')
+assertDisposable('db:reset', url)
 
 const log = (message) => {
   process.stdout.write(`  ${message}\n`)

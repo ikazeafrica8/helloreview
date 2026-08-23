@@ -846,7 +846,87 @@ acceptance criteria were untrue. Everything below was verified by measurement, n
       `tests/integration/build-output.test.mjs`, which fails if `dist` goes stale again.
 - [x] **The root program was not typechecked.** `pnpm typecheck` now runs it before the workspaces.
 
-## Open decision for the user — least-privilege database roles
+## Decided — least-privilege database roles
+
+**Hosting: self-hosted Postgres (Docker/VPS).** Settled 2026-08-23. This was upstream of the role
+design: on managed Postgres (Supabase/RDS/Neon) there is no superuser at all, so the split would
+have been imposed rather than chosen, and `CREATE ROLE` would need `CREATEROLE` from a role that is
+itself not owner. Self-hosting means the shape below is ours to pick.
+
+**Approach: split the credential in two commits.** The operator keeps the `helloreview` superuser
+and loses nothing. What gets restricted is the credential `apps/api` and `apps/worker` read from
+`.env` — two long-running, internet-reachable processes that have never needed to drop a table or
+rewrite an audit row.
+
+### Measured, before committing to the design
+
+- A non-owner application role is refused on every route: `DELETE`/`UPDATE`/`TRUNCATE` →
+  `permission denied`; `ALTER TABLE ... DISABLE TRIGGER` and `DROP TABLE` → `must be owner`;
+  `SET session_replication_role` → `permission denied to set parameter`. `INSERT`/`SELECT` on
+  `audit_logs` and full DML on ordinary tables are unaffected.
+- `ALTER DEFAULT PRIVILEGES` means **no future migration has to write a `GRANT`** — a table created
+  afterwards was immediately usable by the app role with no grant statement.
+- **Three traps found by measurement, each of which would have silently voided the scheme:**
+  1. `GRANT owner TO app` — one line — let the app disable the triggers and wipe the table
+     **despite never being granted `DELETE`**, because ownership checks follow role inheritance.
+     `WITH INHERIT FALSE` does not help: `SET ROLE` still works.
+  2. `pnpm db:reset` destroys it. `DROP SCHEMA public CASCADE` wipes every `pg_default_acl` row and
+     leaves the recreated schema with a `NULL` ACL, so the app loses even `USAGE`. **Grants must
+     therefore live in a replayed migration, never in one-time setup.**
+  3. Drop-and-recreate silently re-grants `DELETE` from default privileges — and
+     `tools/db-generate.mjs` explicitly instructs expressing renames as drop+add.
+
+### Commit A — done (this commit)
+
+No privilege change at all, so nothing could break. Pays most of the plumbing cost up front.
+
+- [x] **`db:reset` guarded.** It dropped every schema against whatever the environment pointed at,
+      with no check. Now refuses unless `NODE_ENV` is in an allow-list (`development`, `test` — an
+      allow-list, not a "not production" deny-list, which would do nothing against `staging`) **and**
+      the host is loopback. Both, because `NODE_ENV` is a claim and the host is a fact. The refusal
+      never echoes the connection string. Verified: exits 1 on production, 1 on a remote host, 0 in
+      development.
+- [x] **`DATABASE_MIGRATION_URL` introduced**, byte-identical to `DATABASE_URL`. `db:migrate`,
+      `db:reset`, `db:seed` and `drizzle.config.ts` all read it; a test asserts none of them reads
+      `process.env.DATABASE_URL`, and that `db-target.mjs` has no fallback to it. The later split is
+      now a value change rather than a refactor.
+- [x] **`pnpm db:backup` and `pnpm db:verify-audit-protection`** added, plus
+      [docs/backup-and-restore.md](../docs/backup-and-restore.md). **The restore was actually
+      drilled**, not just documented: data and all three `ENABLE ALWAYS` triggers survived a
+      `pg_dump`/`pg_restore` round trip.
+- [x] **A documented claim was measured and found wrong before shipping.** `--no-owner --no-acl` does
+      _not_ silently reopen the audit log — it strips every grant, so the app fails closed and
+      loudly. The real hazard is the reflex fix, `GRANT ALL ON ALL TABLES`, which does re-grant
+      `DELETE`. `db:verify-audit-protection` catches exactly that, verified by simulating it.
+
+### Commit B — before T15 creates `event_inbox`
+
+Migration `0003` (idempotent, because `db:reset` replays it), a `NOLOGIN` group role holding the
+grants, a separate `LOGIN` role provisioned from the environment (a password may never enter a
+committed migration), the `REVOKE` carve-out on `audit_logs`, an assertion block inside the
+migration that raises if a privilege is ever silently restored, and an integration test on a **real
+app-role connection** — `SET ROLE` inside a superuser session proves nothing, since the session can
+`SET ROLE` back.
+
+Keep 0002's `ENABLE ALWAYS` triggers: they are the backstop that still catches the operator's own
+superuser session, which is the one actor an ACL cannot constrain.
+
+Estimated 20–28 hours, mostly the Testcontainers harness and tooling — not the SQL.
+
+### Deliberately deferred
+
+Hash chain on `audit_logs` (the obvious implementation has a real concurrency defect around
+sequence ordering, and only detects rather than recovers — the dump diff gets most of the value);
+a separate migrator login (the operator _is_ the migrator); a read-only analytics role (no consumer
+until Phase 8); RLS (the owner is exempt from its own RLS anyway).
+
+### What this will and will not buy — stated plainly so it is never overclaimed
+
+It stops the _application_ rewriting history. It does **not** stop the operator, who keeps the
+superuser. It does not stop **forged** audit rows (the app must keep `INSERT`), and it does not stop
+**omitted** ones — a forgotten `record()` call is invisible and is the larger real risk.
+
+## Superseded — the original open question
 
 The application connects as a SUPERUSER that also OWNS `audit_logs`. `ENABLE ALWAYS` closes the
 replication-role bypass, but an owner can still `ALTER TABLE ... DISABLE TRIGGER ALL` and then

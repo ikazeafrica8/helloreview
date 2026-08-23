@@ -26,6 +26,8 @@
     "db:reset": "node --env-file-if-exists=.env tools/db-reset.mjs",
     "db:seed": "node --env-file-if-exists=.env tools/db-seed.mjs",
     "db:check": "pnpm --filter @helloreview/db exec drizzle-kit check",
+    "db:backup": "node --env-file-if-exists=.env tools/db-backup.mjs",
+    "db:verify-audit-protection": "node --env-file-if-exists=.env tools/db-verify-audit-protection.mjs",
     "clean": "node tools/clean.mjs",
     "test": "vitest run --project unit --project transitions --project integration",
     "test:unit": "vitest run --project unit",

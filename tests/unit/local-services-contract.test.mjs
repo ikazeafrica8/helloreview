@@ -148,6 +148,9 @@ describe('local service stack', () => {
       'S3_SECRET_ACCESS_KEY',
       'S3_ENDPOINT',
       'DATABASE_URL',
+      // The owner credential, kept separate from the application's. Identical in value today; the
+      // separation exists so the later privilege split is a value change, not a refactor.
+      'DATABASE_MIGRATION_URL',
       'REDIS_URL',
     ]
     for (const key of required) {
