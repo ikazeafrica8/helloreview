@@ -6,3 +6,5 @@
 
 export { campaignTypeEnum, visitMethodEnum } from './enums.js'
 export { auditLogs, auditActorTypeEnum, auditResultEnum } from './audit-logs.js'
+export { eventInbox, eventInboxStatusEnum } from './event-inbox.js'
+export type { EventInboxRow, NewEventInboxRow } from './event-inbox.js'

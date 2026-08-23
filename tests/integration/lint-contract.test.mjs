@@ -243,6 +243,83 @@ describe('lint and format toolchain', () => {
     )
   })
 
+  test('a later block never silently switches off an earlier restriction', () => {
+    // The trap this file's own header warns about, caught twice while T19 landed. Both
+    // `no-restricted-syntax` and `no-restricted-imports` REPLACE their value in a later block
+    // rather than merging — so adding the adapter-boundary rules switched off the PII logger check
+    // across all application code, and then switched off the tstz() guard on db schema files. The
+    // only thing that noticed was this suite.
+    //
+    // Asserted against the RESOLVED config, not the source text: that is the only place the
+    // question "is this rule actually on for this file?" has an answer.
+    const resolved = (relativePath) => {
+      const result = spawnSync(
+        process.execPath,
+        [join(ROOT, 'node_modules', 'eslint', 'bin', 'eslint.js'), '--print-config', relativePath],
+        { cwd: ROOT, encoding: 'utf8', timeout: 180_000 },
+      )
+      assert.equal(
+        result.status,
+        0,
+        `--print-config failed for ${relativePath}:
+${result.stderr}`,
+      )
+      return JSON.parse(result.stdout)
+    }
+
+    // A db schema file must keep BOTH the timestamptz guard and the adapter boundary.
+    const dbSchema = resolved('packages/db/src/schema/audit-logs.ts')
+    const dbImports = dbSchema.rules['no-restricted-imports']
+    assert.ok(Array.isArray(dbImports), 'no-restricted-imports is not configured for db schema files')
+    assert.ok(
+      (dbImports[1].paths ?? []).some((entry) => entry.name === 'drizzle-orm/pg-core'),
+      'the tstz() guard (SPEC.md §8: store timestamptz) has been switched off for db schema files',
+    )
+    assert.ok(
+      (dbImports[1].patterns ?? []).length > 0,
+      'the adapter boundary has been switched off for db schema files',
+    )
+
+    // Application source must keep the full base selector set, PII logger included.
+    const appSource = resolved('apps/api/src/main.ts')
+    const selectors = appSource.rules['no-restricted-syntax'].slice(1).map((entry) => entry.selector)
+    // Matched on `trace|debug|info|warn` — the logger method names the piiLogger selector keys on.
+    // The word "logger" does not appear in the selector itself, which is why the first version of
+    // this assertion failed against a config where the rule WAS active.
+    assert.ok(
+      selectors.some((selector) => selector.includes('trace|debug|info|warn')),
+      'the PII logger selector is not active on application source',
+    )
+    assert.ok(
+      selectors.some((selector) => selector.includes('createFake')),
+      'the provider-fake selector is not active on application source',
+    )
+    assert.ok(selectors.length >= 8, `expected the full base selector set, found ${String(selectors.length)}`)
+  })
+
+  test('fakes are banned in application code and permitted in tests', () => {
+    // Both halves. A ban that also fired on tests would be removed within a week, because the
+    // conformance suite cannot do its job without importing the fake.
+    const leaking = withFixture(
+      [
+        "import { createFakeInboundAdapter } from '@helloreview/adapters'",
+        'export const probe: unknown = createFakeInboundAdapter',
+        '',
+      ].join('\n'),
+    )
+    assert.match(
+      runEslintOnFixture(leaking).stdout,
+      /fake adapter must not be imported/,
+      'application code must not be allowed to import a fake adapter',
+    )
+
+    const suite = runEslint('--no-ignore', 'tests/unit/inbound-conformance.test.ts', '--format', 'json')
+    assert.ok(
+      !suite.stdout.includes('fake adapter must not be imported'),
+      'the conformance suite must be allowed to import the fake — that is what fakes are for',
+    )
+  })
+
   test('ESLint runs clean on the current tree', () => {
     const result = runEslint('.', '--max-warnings=0')
     assert.equal(

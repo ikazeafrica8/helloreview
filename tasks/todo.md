@@ -50,10 +50,24 @@ its own acceptance criteria. `pnpm verify` must pass before every commit.
 
 ### Checkpoint B — Idempotency proven
 
-- [ ] AC-02 passes: the same source event id twice yields one transition and one message
-- [ ] The conformance suite passes against the fake, and is the question list for the Kakao dealer
-- [ ] No PII appears in any log emitted during the suite
+- [x] AC-02 passes: the same source event id twice yields one transition and one message
+- [x] The conformance suite passes against the fake, and is the question list for the Kakao dealer
+- [x] No PII appears in any log emitted during the suite — asserted inside AC-02 itself against the
+      running process's actual output, which is the only place a unit-level matcher cannot see
 - [ ] Review with human before proceeding
+
+> **What AC-02 proves today, and what it does not.** Two of its three Gherkin clauses reference
+> artifacts that do not exist yet, and the test says so rather than quietly asserting less:
+>
+> | Clause                           | Status                                                                                                                                                                                                                                                                                            |
+> | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+> | acknowledged as a duplicate      | **Proven.** The response carries `duplicate: true`.                                                                                                                                                                                                                                               |
+> | no second state transition       | **Proven at today's boundary.** The inbox row IS the platform's state for an inbound event until T34 adds workflow instances. The test asserts the row is not merely singular but byte-identical — a duplicate that bumped `received_at` would be a second transition wearing the first one's id. |
+> | no second acknowledgment message | **Proven by proxy.** Outbound messages arrive with T41's `outbound_notifications` and T45's sender. Today the evidence is that no second job was enqueued, so nothing downstream was ever asked to send anything.                                                                                 |
+>
+> The proxy is guarded by a FORCING FUNCTION rather than a comment: the last test in the file fails
+> the moment `outbound_notifications` exists, so this file cannot be left asserting less than its
+> Gherkin claims once the real artifact is available.
 
 ### Phase 3 — Configuration and source of truth
 
@@ -961,20 +975,51 @@ registries. These types are the only shape core modules ever see.
 
 **Acceptance criteria:**
 
-- [ ] Envelope, acceptance response, and each `§18.5`–`§18.15` payload have a schema and a derived type
-- [ ] The `§18.4` status table is a typed exception hierarchy mapping to HTTP status codes
-- [ ] Message purpose codes are a single `as const` registry with a derived union
+- [x] Envelope, acceptance response, and each `§18.5`–`§18.15` payload have a schema and a derived type
+- [x] The `§18.4` status table is a typed exception hierarchy mapping to HTTP status codes
+- [x] Message purpose codes are a single `as const` registry with a derived union
 
 **Verification:**
 
-- [ ] Tests pass: `pnpm test:unit`
-- [ ] Manual check: every payload example in PRD `§18` parses against its schema as a fixture
+- [x] Tests pass: `pnpm test:unit` — 45 new tests, 204 total across 18 files
+- [x] Manual check: every payload example in PRD `§18` parses against its schema as a fixture —
+      all eleven are copied **verbatim** from the document, and a twelfth test asserts the fixture
+      count matches `EVENT_TYPES` so a deleted schema cannot shrink the loop into a green run
 
 **Dependencies:** T1
 
 **Files likely touched:** `packages/contracts/src/events/*`, `packages/contracts/src/errors.ts`, `packages/contracts/src/purposes.ts`
 
 **Estimated scope:** S
+
+> **Notes.**
+>
+> 1. **The wire format is snake_case; the domain shape is camelCase.** Each schema validates the PRD
+>    shape exactly and transforms it. Same boundary decision `packages/config` already makes with
+>    `DATABASE_URL` → `config.databaseUrl`. A provider renaming a field then changes one line in the
+>    schema rather than every call site, which is what SPEC.md §3.1's adapters boundary is for.
+> 2. **`z.union`, not `z.discriminatedUnion`.** Every member is a transforming schema (a `ZodPipe`),
+>    and `discriminatedUnion` needs to read a literal discriminant directly off its members. The
+>    OUTPUT is still a discriminated union, which is what call sites need; the cost is that a bad
+>    payload reports issues from all eleven branches rather than one.
+> 3. **Zod 4 cannot infer through a generic payload schema.** A generic `eventOf(type, payload)`
+>    helper made `raw.payload` stop existing — TS2339, its optional-key detection collapsing to an
+>    unresolved mapped type. Fixed by spreading the envelope fields at each concrete call site and
+>    absorbing the repetition into one generic `toDomain` function instead. Measured, not guessed.
+> 4. **`strictObject` everywhere: an unmodelled field is rejected, not dropped.** A provider sending
+>    something new is a contract change worth failing loudly at the edge. Silently discarding it
+>    means the first symptom is a business rule acting on data it never received.
+> 5. **Parameterised purposes hold the STEM only.** The PRD writes four as
+>    `GUIDELINE_DELIVERY:<version>`. The parameter belongs to the dedupe key T43 builds — a code
+>    with a version baked in is a key, and mixing the two is how `GUIDELINE_DELIVERY:v4` ends up
+>    compared against `GUIDELINE_DELIVERY`.
+> 6. **`VISIT_C_BOOKING_INSTRUCTIONS` is separate from `VISIT_C_APPROVAL_STATUS`.** §26.3 asserts no
+>    notification with the booking purpose exists while approval is pending, and SPEC.md §8 lists
+>    sending it early under "Never" — neither is expressible if the two share one code.
+> 7. **The tests were mutation-checked rather than trusted for passing first time.** Weakening
+>    `strictObject` to `object`, duplicating a purpose code, and loosening the timestamp each
+>    produced a failure. A suite that goes green on the first run is indistinguishable from one that
+>    cannot fail.
 
 ---
 
@@ -985,14 +1030,15 @@ is the actual idempotency guarantee, not the application logic layered over it (
 
 **Acceptance criteria:**
 
-- [ ] The unique constraint exists in the migration and a test proves a second insert violates it
-- [ ] Records store source, external event id, payload hash, status, and received time, with payload minimized or encrypted
-- [ ] Failed events are retained in a queryable state for replay (`§22.3`)
+- [x] The unique constraint exists in the migration and a test proves a second insert violates it
+- [x] Records store source, external event id, payload hash, status, and received time, with payload minimized or encrypted
+- [x] Failed events are retained in a queryable state for replay (`§22.3`)
 
 **Verification:**
 
-- [ ] Tests pass: `pnpm test:integration`
-- [ ] Manual check: insert a duplicate directly in psql and confirm the constraint rejects it
+- [x] Tests pass: `pnpm test:integration` — 6 integration + 18 unit, against a real migrated Postgres
+- [x] Manual check: a duplicate insert is rejected with SQLSTATE 23505 on
+      `event_inbox_source_external_id_key`, asserted by code rather than message text
 
 **Dependencies:** T9, T14
 
@@ -1010,14 +1056,15 @@ for all of them.
 
 **Acceptance criteria:**
 
-- [ ] An invalid or absent signature is rejected with 401 before the body is parsed or persisted
-- [ ] A timestamp outside the configured replay window is rejected, and the window is configurable per provider
-- [ ] Signature comparison is constant-time, and no signature or secret reaches the logs
+- [x] An invalid or absent signature is rejected with 401 before the body is parsed or persisted
+- [x] A timestamp outside the configured replay window is rejected, and the window is configurable per provider
+- [x] Signature comparison is constant-time, and no signature or secret reaches the logs
 
 **Verification:**
 
-- [ ] Tests pass: `pnpm test:security`
-- [ ] Manual check: replay a captured valid request after the window and confirm rejection
+- [x] Tests pass: `pnpm test:security` — 38 tests, including a real HTTP server over a socket
+- [x] Manual check: a stale request is refused 401; malformed JSON with a BAD signature returns 401
+      rather than 400, which is the proof that verification precedes parsing
 
 **Dependencies:** T14, T15
 
@@ -1034,14 +1081,18 @@ applied after signature verification and before inbox insertion (`§18.3`).
 
 **Acceptance criteria:**
 
-- [ ] A body failing envelope schema validation is rejected 400 without side effects
-- [ ] Payloads over the configured limit are rejected 413 without being buffered entirely into memory
-- [ ] Rate limiting is per provider and returns 429 with no partial processing
+- [x] A body failing envelope schema validation is rejected 400 without side effects
+- [x] Payloads over the configured limit are rejected 413 without being buffered entirely into memory
+- [x] Rate limiting is per provider and returns 429 with no partial processing
 
 **Verification:**
 
-- [ ] Tests pass: `pnpm test:security`
-- [ ] Manual check: send an oversized body and confirm 413 with bounded memory use
+- [x] Tests pass: `pnpm test:security` — 14 HTTP-level tests; plus 8 integration tests for the
+      limiter against a real Redis, including a 40-way concurrency test that a read-then-write
+      implementation fails
+- [x] Manual check: a 2 MB body returns 413. Memory is bounded by PAUSING the stream rather than
+      destroying it — the first version destroyed the socket before the 413 could be written, so the
+      client saw ECONNRESET and never learned why
 
 **Dependencies:** T16
 
@@ -1059,14 +1110,16 @@ processing.
 
 **Acceptance criteria:**
 
-- [ ] A duplicate returns the original acceptance response with `duplicate: true` and enqueues nothing
-- [ ] A new event returns 202 and enqueues exactly one processing job
-- [ ] Concurrent delivery of the same event id yields one inbox row and one job, under a concurrency test
+- [x] A duplicate returns the original acceptance response with `duplicate: true` and enqueues nothing
+- [x] A new event returns 202 and enqueues exactly one processing job
+- [x] Concurrent delivery of the same event id yields one inbox row and one job, under a concurrency test
 
 **Verification:**
 
-- [ ] Tests pass: `pnpm test:integration`
-- [ ] Manual check: fire the same event twice concurrently and confirm one job
+- [x] Tests pass: `pnpm test:integration` — 7 tests against a real Postgres and Redis
+- [x] Manual check: 25 concurrent deliveries of the same event id produce exactly one row, one job,
+      and exactly one `duplicate: false` response. A check-then-insert implementation passes every
+      sequential test and fails this one
 
 **Dependencies:** T15, T17
 
@@ -1084,14 +1137,17 @@ the capability question list for the Kakao dealer.
 
 **Acceptance criteria:**
 
-- [ ] The fake emits every inbound event type in `§18`, including duplicates and out-of-order delivery
-- [ ] The conformance suite runs against any adapter via a shared factory and passes for the fake
-- [ ] Provider-specific types do not appear outside `packages/adapters`, enforced by the T6 lint rule
+- [x] The fake emits every inbound event type in `§18`, including duplicates and out-of-order delivery
+- [x] The conformance suite runs against any adapter via a shared factory and passes for the fake
+- [x] Provider-specific types do not appear outside `packages/adapters`, enforced by the T6 lint rule
 
 **Verification:**
 
-- [ ] Tests pass: `pnpm test:integration`
-- [ ] Manual check: the suite's assertions map one-to-one onto the PRD `§33.3` provider checklist
+- [x] Tests pass: `pnpm test:unit` — 20 tests. Six of them feed the suite DELIBERATELY BROKEN
+      adapters and assert it rejects each, because a conformance suite whose checks cannot fail
+      certifies everything, including the adapter that destroys idempotency
+- [x] Manual check: each check is a §33.3 question — does the provider send a stable event id, does
+      it retry, does its timestamp mean when it happened or when it was sent
 
 **Dependencies:** T18
 
@@ -1109,14 +1165,19 @@ with no second transition and no second acknowledgment message.
 
 **Acceptance criteria:**
 
-- [ ] The Gherkin scenario is implemented as written and passes
-- [ ] The test asserts on persisted state and outbound intents, not on HTTP response alone
-- [ ] The test runs in the e2e tier and gates release
+- [x] The Gherkin scenario is implemented as written and passes
+- [x] The test asserts on persisted state and outbound intents, not on HTTP response alone
+- [x] The test runs in the e2e tier and gates release
 
 **Verification:**
 
-- [ ] Tests pass: `pnpm test:e2e`
-- [ ] Manual check: the test fails if the inbox unique constraint is dropped
+- [x] Tests pass: `pnpm test:e2e` — 4 tests against the real API over a socket, with a real
+      Postgres and a real Redis
+- [x] Manual check: dropping the inbox unique constraint DOES change the outcome — and revealed a
+      better property than the check was written for. `ON CONFLICT (source, external_event_id)`
+      names the constraint, so without it Postgres rejects the statement outright rather than
+      inserting a second row: remove the guarantee and ingestion stops loudly, instead of quietly
+      processing every duplicate twice. The test now asserts that.
 
 **Dependencies:** T19
 

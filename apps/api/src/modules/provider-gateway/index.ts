@@ -1,0 +1,17 @@
+// The provider gateway: the authenticated webhook edge (PRD §18.3).
+
+export { ProviderGatewayModule } from './provider-gateway.module.js'
+export { ProviderRegistry } from './provider-registry.js'
+export { SignatureGuard } from './signature.guard.js'
+export { RateLimitGuard } from './rate-limit.guard.js'
+export { WebhookRateLimiter } from './rate-limit.js'
+export { InboxService } from './inbox.service.js'
+export { InboxRepository } from './inbox.repository.js'
+export type { InboxRecord, InboxInsertResult, NewInboxEvent } from './inbox.repository.js'
+export type { RateLimitPolicy, RateLimitDecision } from './rate-limit.js'
+export { ContractErrorFilter } from './contract-error.filter.js'
+export { RAW_BODY, collectRawBody, createRawBodyMiddleware, PayloadTooLargeStreamError } from './raw-body.middleware.js'
+export { singleHeader, flattenHeaders } from './http.js'
+export type { GatewayRequest, GatewayResponse, IncomingHeaders, StreamingRequest } from './http.js'
+export type { RequestWithRawBody } from './raw-body.middleware.js'
+export * from './signature/index.js'

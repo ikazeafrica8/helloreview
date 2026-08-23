@@ -54,6 +54,39 @@ const environment = z.enum(['development', 'test', 'staging', 'production']).def
  */
 const pepper = z.string().min(16, { message: 'must be at least 16 characters' })
 
+/**
+ * The shared secret a provider signs its webhooks with (PRD §18.3, T16).
+ *
+ * A minimum length is enforced because this secret is the ONLY thing standing between the internet
+ * and the ability to write business state — a short one is brute-forceable offline, since an
+ * attacker who captures one signed request can grind candidates against it without touching us.
+ */
+const webhookSecret = z.string().min(32, { message: 'must be at least 32 characters' })
+
+/**
+ * How old a signed webhook may be, in seconds.
+ *
+ * Bounded at both ends deliberately. Too tight and a provider's legitimate retry is refused; too
+ * loose and a captured request stays replayable for that long. Five minutes is the industry
+ * convention and the default here.
+ */
+const replayWindowSeconds = z
+  .string()
+  .optional()
+  // The default is applied to the INPUT, then piped through the same validation a supplied value
+  // gets. Chaining `.default('300')` after `.transform(Number)` does not type-check in Zod 4 — the
+  // default must match the OUTPUT of the chain by then — and the version that does compile,
+  // `.default(300)`, would skip the range check for the default value. This shape means the default
+  // is validated by exactly the rules a real value is.
+  .transform((value) => value ?? '300')
+  .pipe(
+    z
+      .string()
+      .regex(/^\d+$/, { message: 'must be a whole number of seconds' })
+      .transform(Number)
+      .refine((value) => value >= 30 && value <= 3_600, { message: 'must be between 30 and 3600 seconds' }),
+  )
+
 /** Everything the api reads. */
 export const apiConfigSchema = z.object({
   DATABASE_URL: connectableUrl(['postgres:', 'postgresql:']),
@@ -61,6 +94,8 @@ export const apiConfigSchema = z.object({
   API_PORT: port,
   NODE_ENV: environment,
   MASKING_PEPPER: pepper,
+  WEBHOOK_SECRET_WEBSITE: webhookSecret,
+  WEBHOOK_REPLAY_WINDOW_SECONDS: replayWindowSeconds,
 })
 
 /**
@@ -79,6 +114,11 @@ export const workerConfigSchema = apiConfigSchema.pick({ REDIS_URL: true, NODE_E
  * readable at a glance by someone auditing what the platform can leak — not reconstructed by
  * walking a schema. Anything carrying credentials belongs here.
  */
-export const SECRET_KEYS: ReadonlySet<string> = new Set(['DATABASE_URL', 'REDIS_URL', 'MASKING_PEPPER'])
+export const SECRET_KEYS: ReadonlySet<string> = new Set([
+  'DATABASE_URL',
+  'REDIS_URL',
+  'MASKING_PEPPER',
+  'WEBHOOK_SECRET_WEBSITE',
+])
 
 export const isSecret = (key: string): boolean => SECRET_KEYS.has(key)

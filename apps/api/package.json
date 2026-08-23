@@ -11,11 +11,13 @@
   },
   "dependencies": {
     "@helloreview/config": "workspace:*",
+    "@helloreview/contracts": "workspace:*",
     "@helloreview/db": "workspace:*",
     "@helloreview/observability": "workspace:*",
     "@nestjs/common": "^11.2.1",
     "@nestjs/core": "^11.2.1",
     "@nestjs/platform-express": "^11.2.1",
+    "bullmq": "^6.2.0",
     "drizzle-orm": "^0.45.2",
     "ioredis": "^6.0.0",
     "pg": "^8.23.0",

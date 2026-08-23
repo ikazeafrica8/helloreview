@@ -6,4 +6,17 @@
 
 export { tstz } from './columns.js'
 export { applyMigrations, MIGRATIONS_FOLDER } from './migrate.js'
+export { createDbClient } from './client.js'
+export type { DbClient } from './client.js'
+export {
+  isUniqueViolation,
+  isRetryableDatabaseFailure,
+  sqlStateOf,
+  violatedConstraint,
+  describeDatabaseFailure,
+} from './errors.js'
 export * from './schema/index.js'
+
+// Re-exported so callers can build predicates without declaring their own drizzle-orm dependency.
+// Two workspaces on different drizzle versions against one schema is a subtle, miserable failure.
+export { eq, and, or, sql, desc, asc, inArray, isNull, lt, gt, gte, lte } from 'drizzle-orm'

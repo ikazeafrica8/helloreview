@@ -65,6 +65,9 @@ importers:
       '@helloreview/config':
         specifier: workspace:*
         version: link:../../packages/config
+      '@helloreview/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
       '@helloreview/db':
         specifier: workspace:*
         version: link:../../packages/db
@@ -80,6 +83,9 @@ importers:
       '@nestjs/platform-express':
         specifier: ^11.2.1
         version: 11.2.1(@nestjs/common@11.2.1(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.2.1)
+      bullmq:
+        specifier: ^6.2.0
+        version: 6.2.0(ioredis@6.0.0)(pg@8.23.0)
       drizzle-orm:
         specifier: ^0.45.2
         version: 0.45.2(@types/pg@8.23.1)(pg@8.23.0)
@@ -118,7 +124,11 @@ importers:
         specifier: ^6.0.0
         version: 6.0.0
 
-  packages/adapters: {}
+  packages/adapters:
+    dependencies:
+      '@helloreview/contracts':
+        specifier: workspace:*
+        version: link:../contracts
 
   packages/config:
     dependencies:
@@ -126,7 +136,11 @@ importers:
         specifier: ^4.4.3
         version: 4.4.3
 
-  packages/contracts: {}
+  packages/contracts:
+    dependencies:
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
 
   packages/db:
     dependencies:
@@ -154,6 +168,9 @@ importers:
       '@testcontainers/redis':
         specifier: ^12.1.0
         version: 12.1.0
+      bullmq:
+        specifier: ^6.2.0
+        version: 6.2.0(ioredis@6.0.0)(pg@8.23.0)
       testcontainers:
         specifier: ^12.1.0
         version: 12.1.0
