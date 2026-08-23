@@ -5,3 +5,4 @@
 // globs src/schema/*.ts, so a new file needs no configuration change.
 
 export { campaignTypeEnum, visitMethodEnum } from './enums.js'
+export { auditLogs, auditActorTypeEnum, auditResultEnum } from './audit-logs.js'

@@ -1,8 +1,18 @@
-import { Global, Inject, Logger, Module, type OnApplicationShutdown } from '@nestjs/common'
+import {
+  Global,
+  Inject,
+  Logger,
+  Module,
+  type MiddlewareConsumer,
+  type NestModule,
+  type OnApplicationShutdown,
+} from '@nestjs/common'
 import { Pool } from 'pg'
 import { Redis } from 'ioredis'
 import { readEnvironment, loadApiConfig, type ApiConfig } from '@helloreview/config'
-import { APP_CONFIG, POSTGRES_POOL, REDIS_CLIENT } from './tokens.js'
+import { createLogger, type Logger as StructuredLogger } from '@helloreview/observability'
+import { APP_CONFIG, APP_LOGGER, POSTGRES_POOL, REDIS_CLIENT } from './tokens.js'
+import { CorrelationMiddleware } from './correlation/correlation.middleware.js'
 import { HealthController } from './health/health.controller.js'
 import { HealthService } from './health/health.service.js'
 
@@ -72,17 +82,36 @@ const PROBE_TIMEOUT_MS = 2_000
         return redis
       },
     },
+    {
+      provide: APP_LOGGER,
+      inject: [APP_CONFIG],
+      // The environment comes from configuration rather than being read here, so the platform's one
+      // process.env access stays inside packages/config.
+      useFactory: (config: ApiConfig): StructuredLogger =>
+        createLogger({ module: 'api', environment: config.environment }),
+    },
     HealthService,
   ],
-  exports: [APP_CONFIG, POSTGRES_POOL, REDIS_CLIENT],
+  exports: [APP_CONFIG, APP_LOGGER, POSTGRES_POOL, REDIS_CLIENT],
 })
-export class PlatformCoreModule implements OnApplicationShutdown {
+export class PlatformCoreModule implements NestModule, OnApplicationShutdown {
   private readonly logger = new Logger(PlatformCoreModule.name)
 
   constructor(
     @Inject(POSTGRES_POOL) private readonly pool: Pool,
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
   ) {}
+
+  /**
+   * Every route, including ones a guard will reject.
+   *
+   * Middleware runs before guards, pipes and the router, so an unauthorized admin call or a webhook
+   * with a bad signature is still logged under a correlation id — and those are exactly the requests
+   * somebody later wants to trace.
+   */
+  configure(consumer: MiddlewareConsumer): void {
+    consumer.apply(CorrelationMiddleware).forRoutes('*')
+  }
 
   /**
    * Release both connections on SIGTERM so the process exits instead of lingering on open handles.

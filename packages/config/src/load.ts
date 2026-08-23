@@ -8,14 +8,18 @@ import { apiConfigSchema, isSecret, workerConfigSchema } from './schema.js'
  * Deliberately not the raw SCREAMING_SNAKE keys: application code should not care that a value
  * arrived from an environment variable, and renaming a variable should not ripple through consumers.
  */
+export type Environment = 'development' | 'test' | 'staging' | 'production'
+
 export type ApiConfig = Readonly<{
   databaseUrl: string
   redisUrl: string
   apiPort: number
+  environment: Environment
 }>
 
 export type WorkerConfig = Readonly<{
   redisUrl: string
+  environment: Environment
 }>
 
 /** Thrown at startup and never caught: a misconfigured process must not begin serving. */
@@ -70,10 +74,11 @@ export const loadApiConfig = (source: EnvironmentSource): ApiConfig =>
     databaseUrl: parsed.DATABASE_URL,
     redisUrl: parsed.REDIS_URL,
     apiPort: parsed.API_PORT,
+    environment: parsed.NODE_ENV,
   }))
 
 export const loadWorkerConfig = (source: EnvironmentSource): WorkerConfig =>
-  load(workerConfigSchema, source, (parsed) => ({ redisUrl: parsed.REDIS_URL }))
+  load(workerConfigSchema, source, (parsed) => ({ redisUrl: parsed.REDIS_URL, environment: parsed.NODE_ENV }))
 
 /**
  * A representation of the environment that is safe to log.

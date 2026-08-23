@@ -5,7 +5,8 @@
 // reorganized (T8's Zod config, T9's Drizzle connection) without touching a single consumer.
 
 export { PlatformCoreModule } from './platform-core.module.js'
-export { APP_CONFIG, POSTGRES_POOL, REDIS_CLIENT } from './tokens.js'
+export { APP_CONFIG, APP_LOGGER, POSTGRES_POOL, REDIS_CLIENT } from './tokens.js'
+export { CORRELATION_HEADER } from './correlation/correlation.middleware.js'
 export type { ApiConfig } from '@helloreview/config'
 export { ConfigurationError } from '@helloreview/config'
 export type { HealthReport } from './health/health.service.js'

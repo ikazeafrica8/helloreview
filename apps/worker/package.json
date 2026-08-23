@@ -12,6 +12,7 @@
   "dependencies": {
     "@helloreview/config": "workspace:*",
     "@helloreview/contracts": "workspace:*",
+    "@helloreview/observability": "workspace:*",
     "bullmq": "^6.2.0",
     "ioredis": "^6.0.0"
   }

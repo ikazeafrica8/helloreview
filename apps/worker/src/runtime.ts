@@ -1,5 +1,29 @@
 import { Queue, Worker, type ConnectionOptions, type Job } from 'bullmq'
 import type { QueueName } from '@helloreview/contracts'
+import { adoptCorrelationId, currentCorrelationId, runWithCorrelation } from '@helloreview/observability'
+
+/**
+ * The key a job carries its originating correlation id under.
+ *
+ * Prefixed and documented rather than blended into the payload: a job's data is business content,
+ * and a reader should be able to tell at a glance which field is transport metadata.
+ */
+export const CORRELATION_FIELD = '__correlationId'
+
+/**
+ * Read the correlation field off a job payload without asserting anything about it.
+ *
+ * BullMQ types `job.data` as `any`, so a cast here would be exactly the lie
+ * @typescript-eslint/no-unsafe-type-assertion exists to catch — and the value genuinely is
+ * untrusted: it was serialized into Redis by another process. A predicate narrows honestly, and
+ * adoptCorrelationId validates whatever comes back.
+ */
+const readCorrelationField = (data: unknown): unknown => {
+  if (typeof data !== 'object' || data === null) return undefined
+  if (!(CORRELATION_FIELD in data)) return undefined
+  const carrier: Record<string, unknown> = { ...data }
+  return carrier[CORRELATION_FIELD]
+}
 
 export type JobHandler = (job: Job) => Promise<void>
 
@@ -68,7 +92,16 @@ export const createWorkerRuntime = (options: WorkerRuntimeOptions): WorkerRuntim
         // Each Worker gets its own connection — they hold a blocking command open, so sharing one
         // would serialize every queue behind whichever worker is currently blocked. Passing options
         // rather than an instance means BullMQ creates it and therefore also closes it.
-        const worker = new Worker(name, handler, {
+        // Restore the correlation id the producer was running under, so one participant
+        // interaction stays a single trace across the enqueue boundary (T10). A job with no id —
+        // a scheduled reconciliation, say — gets a fresh one rather than none, because the work
+        // still needs to be traceable.
+        const traced = async (job: Job): Promise<void> => {
+          const data: unknown = job.data
+          await runWithCorrelation(adoptCorrelationId(readCorrelationField(data)), async () => handler(job))
+        }
+
+        const worker = new Worker(name, traced, {
           connection: redisConnectionOptions(options.redisUrl),
           autorun: true,
         })
@@ -118,3 +151,14 @@ export const createWorkerRuntime = (options: WorkerRuntimeOptions): WorkerRuntim
  */
 export const createQueue = (redisUrl: string, name: QueueName): Queue =>
   new Queue(name, { connection: redisConnectionOptions(redisUrl) })
+
+/**
+ * Enqueue a job, stamping the current correlation id onto it.
+ *
+ * Prefer this over queue.add() directly: the stamp is what lets the worker continue the producer's
+ * trace, and a bare add() silently starts a new one. Outside a correlation scope it mints an id
+ * rather than omitting the field, so the job is still traceable on its own.
+ */
+export const enqueueJob = async (queue: Queue, jobName: string, data: Record<string, unknown>): Promise<void> => {
+  await queue.add(jobName, { ...data, [CORRELATION_FIELD]: currentCorrelationId() ?? adoptCorrelationId(undefined) })
+}

@@ -26,9 +26,15 @@ interface TierOptions {
   timeoutMs?: number
   /** Share one worker: the tier touches Docker and host ports, which cannot be used concurrently. */
   serial?: boolean
+  /** Files run before each test file in this tier. */
+  setupFiles?: string[]
 }
 
-const tier = (name: string, include: string[], { timeoutMs = 5_000, serial = false }: TierOptions = {}) => ({
+const tier = (
+  name: string,
+  include: string[],
+  { timeoutMs = 5_000, serial = false, setupFiles = [] }: TierOptions = {},
+) => ({
   test: {
     name,
     include,
@@ -38,6 +44,9 @@ const tier = (name: string, include: string[], { timeoutMs = 5_000, serial = fal
     // The later tiers are empty until the tasks that fill them land, and an empty tier must not
     // fail the run — otherwise `pnpm verify` is red from now until T36.
     passWithNoTests: true,
+    // Every tier can use expect(...).toContainNoPii(); the security tier additionally captures all
+    // output automatically (see its setupFiles below).
+    setupFiles: ['./packages/testing/src/matchers/register.ts', ...setupFiles],
     // fileParallelism/maxWorkers rather than poolOptions.forks.singleFork: Vitest 4 deprecates that
     // idiom and ignores it, so the config would look correct and quietly do nothing.
     ...(serial ? { pool: 'forks' as const, fileParallelism: false, maxWorkers: 1 } : {}),
@@ -70,7 +79,11 @@ export default defineConfig({
         serial: true,
       }),
       // Authorization, webhook spoofing and replay, file attacks, PII in logs (T12, T16).
-      tier('security', ['tests/security/**/*.test.{ts,mts,mjs}'], { timeoutMs: SLOW_TIER_TIMEOUT_MS }),
+      // The PII capture applies to EVERY test here, not only ones that remember to ask (T12).
+      tier('security', ['tests/security/**/*.test.{ts,mts,mjs}'], {
+        timeoutMs: SLOW_TIER_TIMEOUT_MS,
+        setupFiles: ['./packages/testing/src/matchers/security-setup.ts'],
+      }),
       // The §26.3 acceptance tests that gate release (T20, T33, T47, T52, T56).
       tier('e2e', ['tests/e2e/**/*.test.{ts,mts,mjs}'], { timeoutMs: SLOW_TIER_TIMEOUT_MS, serial: true }),
     ],

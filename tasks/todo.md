@@ -33,10 +33,10 @@ its own acceptance criteria. `pnpm verify` must pass before every commit.
 
 ### Phase 1 — Observability and audit
 
-- [ ] T10 — Correlation ID propagation
-- [ ] T11 — Structured logger with masking
-- [ ] T12 — PII-leak test matcher
-- [ ] T13 — Append-only audit log
+- [x] T10 — Correlation ID propagation
+- [x] T11 — Structured logger with masking
+- [x] T12 — PII-leak test matcher
+- [x] T13 — Append-only audit log
 
 ### Phase 2 — Idempotency spine
 
@@ -661,14 +661,18 @@ interaction is traceable end to end (`§18.3`, `§23.1`).
 
 **Acceptance criteria:**
 
-- [ ] An inbound request without a correlation id gets one; one with a valid id reuses it
-- [ ] Enqueued jobs inherit the enqueuing context's correlation id and restore it in the worker
-- [ ] The id is retrievable from async context without threading it through every signature
+- [x] An inbound request without a correlation id gets one; one with a valid id reuses it
+- [x] Enqueued jobs inherit the enqueuing context's correlation id and restore it in the worker
+- [x] The id is retrievable from async context without threading it through every signature
 
 **Verification:**
 
-- [ ] Tests pass: `pnpm test:unit` and `pnpm test:integration`
-- [ ] Manual check: trace one request through api and worker logs by its correlation id alone
+- [x] Tests pass — unit covers the async context (nesting, await boundaries, scope leakage);
+      integration covers the two boundaries that matter: the HTTP header and the enqueue hop
+- [x] An inbound id is ADOPTED only if valid. It arrives from outside, so a newline in it would let a
+      caller forge a second JSON log line inside the first; `adoptCorrelationId` mints a fresh id
+      rather than sanitizing, because a forged trace is worse than a discontinuous one
+- [x] `enqueueJob()` stamps the id and the worker restores it — asserted end to end through Redis
 
 **Dependencies:** T4, T5
 
@@ -686,14 +690,18 @@ never receives raw values.
 
 **Acceptance criteria:**
 
-- [ ] Every log line carries timestamp, environment, module, correlation id, operation, and result
-- [ ] `mask()` handles Korean and international phone formats, names, and addresses, preserving enough for debugging
-- [ ] Passing an object containing a known-sensitive key name to the logger fails lint
+- [x] Every log line carries timestamp, environment, module, correlation id, operation, and result
+- [x] `mask()` handles Korean and international phone formats, names, and addresses, preserving enough
+      for debugging — masks are STABLE (one participant stays one identity across lines) and
+      DISTINGUISHING (two participants never collapse into one)
+- [x] Passing an object containing a known-sensitive key name to the logger fails lint — the
+      `piiLogger` selector landed in T2 and is still active
 
 **Verification:**
 
-- [ ] Tests pass: `pnpm test:unit`
-- [ ] Manual check: inspect emitted lines and confirm no unmasked personal data
+- [x] Tests pass: 28 unit tests over masking, correlation and the logger
+- [x] Manual check: a real emitted line, with the name masked to the §20.4 convention —
+      `{"timestamp":"…","level":"info","environment":"test","module":"security-probe","correlationId":"cor_security_probe","message":"matched an applicant","operation":"identity.match","result":"strong_match","actorId":"홍**"}`
 
 **Dependencies:** T10
 
@@ -711,14 +719,20 @@ Wired into `test:security` so `§21.4` is enforced by the build, not by review.
 
 **Acceptance criteria:**
 
-- [ ] The matcher detects Korean local and international phone shapes, address fragments, and `Authorization` values
-- [ ] Any test tier can opt in; `test:security` applies it to every test in the tier
-- [ ] The matcher has its own fixture tests covering both detection and non-detection
+- [x] The matcher detects Korean local and international phone shapes, resident registration numbers,
+      address fragments, and `Authorization` values
+- [x] Any test tier can opt in via `expect(...).toContainNoPii()`; `test:security` additionally
+      captures ALL output automatically, so a leak is caught in a test whose author never thought
+      about PII
+- [x] The matcher has its own fixture tests covering both detection and non-detection
 
 **Verification:**
 
-- [ ] Tests pass: `pnpm test:security`
-- [ ] Manual check: deliberately log a phone number in a test and confirm the suite fails
+- [x] Tests pass: `pnpm test:security`, plus 24 unit fixtures
+- [x] Manual check: a deliberate `logger.warn('applicant 010-1234-5678 called')` in a security test —
+      which asserted nothing about PII — failed with
+      `personal data reached the output of this test (SPEC.md §21.4): korean-phone: 010********78`
+- [x] The failure message does not repeat the leak; the excerpt is itself redacted
 
 **Dependencies:** T7, T11
 
@@ -736,18 +750,50 @@ swallowed (`§23.3`).
 
 **Acceptance criteria:**
 
-- [ ] `UPDATE` and `DELETE` on `audit_logs` are rejected at the database level, not only in application code
-- [ ] Every record carries actor, action, target, result, timestamp, reason, and correlation id, with PII masked or tokenized
-- [ ] A failed write for a protected action emits a critical alert and surfaces the failure to the caller
+- [x] `UPDATE` and `DELETE` on `audit_logs` are rejected at the database level — **and `TRUNCATE`,
+      which does not fire DELETE triggers and would otherwise empty the table in one statement**
+- [x] Every record carries actor, action, target, result, timestamp, reason and correlation id, with
+      PII masked before it arrives. The correlation id is taken from the ambient scope, not passed in
+- [x] A failed write for a protected action emits a critical alert and surfaces the failure to the
+      caller — an unprotected one still throws, but at `error` rather than `fatal`
 
 **Verification:**
 
-- [ ] Tests pass: `pnpm test:integration`
-- [ ] Manual check: attempt a direct `UPDATE` in psql and confirm rejection
+- [x] Tests pass: 4 integration tests against an EPHEMERAL database, so the triggers are exercised
+      from a real migration rather than from whatever state the dev database is in
+- [x] Manual check in psql: `UPDATE`, `DELETE` and `TRUNCATE` each rejected with
+      `audit_logs is append-only: … is not permitted`, and the row survived all three
 
 **Dependencies:** T9, T11
 
-**Files likely touched:** `packages/db/src/schema/audit-logs.ts`, `packages/db/migrations/*`, `apps/api/src/modules/audit-log/*`
+**Files touched (Phase 1 as a whole):** `packages/observability/` (new: correlation, logger, mask),
+`packages/testing/src/matchers/{no-pii,register,security-setup}.ts`,
+`apps/api/src/modules/platform-core/correlation/correlation.middleware.ts`,
+`apps/api/src/modules/audit-log/`, `packages/db/src/schema/audit-logs.ts`,
+`packages/db/migrations/0001_audit_logs.sql`, `packages/config/src/schema.ts` (NODE_ENV),
+`apps/worker/src/{main.ts,runtime.ts}`, `vitest.config.ts`, `.env.example`, and four test files
+
+> **Decisions worth recording for Phase 1.**
+>
+> 1. **`packages/observability` is a THIRD shared package**, after `config` and `contracts`. SPEC.md
+>    §3.1 assigns correlation and structured logging to `platform-core`; §5 says modules live under
+>    `apps/api/src/modules/`, and `apps/worker` cannot import from there. This is now the third time
+>    that gap has forced a package — **§5 needs a sentence about shared modules, and the capability
+>    map arguably needs to say which parts of `platform-core` are shared rather than api-local.**
+> 2. **The logger is hand-written rather than pino or winston.** Two specific reasons, not taste:
+>    §21.4 masks by VALUE SHAPE (Korean phone numbers, address fragments) while those libraries redact
+>    by object PATH, so it would need wrapping regardless; and the api runs under NestJS while the
+>    worker is a plain process, so one small implementation both import beats reconciling two
+>    integrations. Revisit if sampling or transports are ever needed.
+> 3. **The logger deliberately does NOT mask for you.** Masking happens at the call site so a reviewer
+>    can see which field is personal data, and the `piiLogger` lint rule can see it too. A logger that
+>    quietly masked would hide the mistake rather than surface it.
+> 4. **`protected_action` is stored, not derived.** A later change to the protected list must not
+>    retroactively reclassify what was already written — the row says what the rule was at the time.
+> 5. **A trigger that RAISES, not a RULE that discards.** `DO INSTEAD NOTHING` would make an UPDATE
+>    silently succeed while changing nothing: history preserved, but the caller believing it was
+>    rewritten. Raising tells the truth. The triggers are statement-level, so an UPDATE matching zero
+>    rows is rejected too — the intent was still wrong.
 
 **Estimated scope:** M
 

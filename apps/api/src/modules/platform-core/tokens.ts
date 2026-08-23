@@ -4,5 +4,6 @@
 // typo is a compile error rather than a runtime "Nest can't resolve dependencies" at boot.
 
 export const APP_CONFIG = Symbol('APP_CONFIG')
+export const APP_LOGGER = Symbol('APP_LOGGER')
 export const POSTGRES_POOL = Symbol('POSTGRES_POOL')
 export const REDIS_CLIENT = Symbol('REDIS_CLIENT')

@@ -36,11 +36,21 @@ const port = z
   .transform(Number)
   .refine((value) => value >= 1 && value <= 65_535, { message: 'must be between 1 and 65535' })
 
+/**
+ * Which deployment this process belongs to.
+ *
+ * Every log line carries it (§23.1), and SPEC.md's non-functional requirements call for development,
+ * test, staging and production to be separated. Defaulted rather than required so a fresh clone
+ * runs without ceremony; anything other than development must be set deliberately.
+ */
+const environment = z.enum(['development', 'test', 'staging', 'production']).default('development')
+
 /** Everything the api reads. */
 export const apiConfigSchema = z.object({
   DATABASE_URL: connectableUrl(['postgres:', 'postgresql:']),
   REDIS_URL: connectableUrl(['redis:', 'rediss:']),
   API_PORT: port,
+  NODE_ENV: environment,
 })
 
 /**
@@ -50,7 +60,7 @@ export const apiConfigSchema = z.object({
  * validated changes it for both deployables in one edit. The worker never reads API_PORT, and a
  * worker that refuses to start over a value it does not use is a confusing failure on call.
  */
-export const workerConfigSchema = apiConfigSchema.pick({ REDIS_URL: true })
+export const workerConfigSchema = apiConfigSchema.pick({ REDIS_URL: true, NODE_ENV: true })
 
 /**
  * Keys whose VALUE must never appear in a log line, an error message, or a diagnostic dump.

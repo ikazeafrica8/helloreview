@@ -1,21 +1,13 @@
 import { Redis } from 'ioredis'
 import { ALL_QUEUE_NAMES } from '@helloreview/contracts'
 import { readEnvironment, loadWorkerConfig, ConfigurationError } from '@helloreview/config'
+import { createLogger } from '@helloreview/observability'
 import { HANDLERS } from './processors/index.js'
 import { createWorkerRuntime } from './runtime.js'
 
-/**
- * Boot-time logging.
- *
- * process.stdout.write rather than console.log, which `no-console` forbids — but be honest about
- * what that is: the rule exists because console output bypasses the structured logger and T12's PII
- * matcher, and writing to stdout directly bypasses them just the same. It is acceptable only
- * because these lines carry no participant data and the structured logger does not exist yet.
- * T11 replaces this helper; nothing here should grow until it does.
- */
-const log = (message: string): void => {
-  process.stdout.write(`[worker] ${message}\n`)
-}
+// T11 replaced the temporary process.stdout.write helper this file used to carry: every line now
+// goes through the shared structured logger and carries the §23.1 fields. The logger is created
+// after configuration loads, since it needs the environment name.
 
 /**
  * Prove the connection before binding anything.
@@ -47,9 +39,10 @@ const verifyRedis = async (redisUrl: string): Promise<void> => {
 
 const bootstrap = async (): Promise<void> => {
   const config = loadWorkerConfig(readEnvironment())
+  const logger = createLogger({ module: 'worker', environment: config.environment })
 
   await verifyRedis(config.redisUrl)
-  log('connected to redis')
+  logger.info('connected to redis', { operation: 'worker.boot', result: 'ok' })
 
   // Derived by filtering the registry rather than casting Object.keys(): the cast would be a lie
   // the type checker cannot verify, and it is exactly what @typescript-eslint/no-unsafe-type-assertion
@@ -58,10 +51,11 @@ const bootstrap = async (): Promise<void> => {
   const runtime = createWorkerRuntime({ redisUrl: config.redisUrl, queues, handlers: HANDLERS })
   await runtime.start()
 
-  log(
+  logger.info(
     queues.length === 0
       ? 'ready — 0 processors registered (T27, T45 and T55 add them; see src/processors/index.ts)'
       : `ready — ${String(queues.length)} processor(s): ${queues.join(', ')}`,
+    { operation: 'worker.ready', result: 'ok', retryCount: queues.length },
   )
 
   let stopping = false
@@ -69,19 +63,23 @@ const bootstrap = async (): Promise<void> => {
     // A second signal while draining must not start a second shutdown; BullMQ's close() is not
     // re-entrant and the first drain is already doing the right thing.
     if (stopping) {
-      log(`already draining, ignoring ${signal}`)
+      logger.warn(`already draining, ignoring ${signal}`, { operation: 'worker.shutdown', result: 'ignored' })
       return
     }
     stopping = true
-    log(`${signal} received — draining in-flight jobs`)
+    logger.info(`${signal} received — draining in-flight jobs`, { operation: 'worker.shutdown', result: 'started' })
 
     runtime.stop().then(
       () => {
-        log('drained cleanly')
+        logger.info('drained cleanly', { operation: 'worker.shutdown', result: 'ok' })
         process.exit(0)
       },
       (error: unknown) => {
-        log(`shutdown failed: ${error instanceof Error ? error.message : String(error)}`)
+        logger.error('shutdown failed', {
+          operation: 'worker.shutdown',
+          result: 'error',
+          errorCategory: error instanceof Error ? error.name : 'unknown',
+        })
         process.exit(1)
       },
     )

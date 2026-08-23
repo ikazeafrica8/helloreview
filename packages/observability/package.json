@@ -1,5 +1,5 @@
 {
-  "name": "@helloreview/testing",
+  "name": "@helloreview/observability",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -8,11 +8,5 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit"
-  },
-  "dependencies": {
-    "@helloreview/observability": "workspace:*",
-    "@testcontainers/postgresql": "^12.1.0",
-    "@testcontainers/redis": "^12.1.0",
-    "testcontainers": "^12.1.0"
   }
 }

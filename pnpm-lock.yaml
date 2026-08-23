@@ -65,6 +65,12 @@ importers:
       '@helloreview/config':
         specifier: workspace:*
         version: link:../../packages/config
+      '@helloreview/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@helloreview/observability':
+        specifier: workspace:*
+        version: link:../../packages/observability
       '@nestjs/common':
         specifier: ^11.2.1
         version: 11.2.1(reflect-metadata@0.2.2)(rxjs@7.8.2)
@@ -74,6 +80,9 @@ importers:
       '@nestjs/platform-express':
         specifier: ^11.2.1
         version: 11.2.1(@nestjs/common@11.2.1(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.2.1)
+      drizzle-orm:
+        specifier: ^0.45.2
+        version: 0.45.2(@types/pg@8.23.1)(pg@8.23.0)
       ioredis:
         specifier: ^6.0.0
         version: 6.0.0
@@ -99,6 +108,9 @@ importers:
       '@helloreview/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@helloreview/observability':
+        specifier: workspace:*
+        version: link:../../packages/observability
       bullmq:
         specifier: ^6.2.0
         version: 6.2.0(ioredis@6.0.0)(pg@8.23.0)
@@ -132,8 +144,13 @@ importers:
         specifier: ^0.31.10
         version: 0.31.10
 
+  packages/observability: {}
+
   packages/testing:
     dependencies:
+      '@helloreview/observability':
+        specifier: workspace:*
+        version: link:../observability
       '@testcontainers/postgresql':
         specifier: ^12.1.0
         version: 12.1.0
