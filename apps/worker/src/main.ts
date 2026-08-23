@@ -1,9 +1,11 @@
 import { Redis } from 'ioredis'
-import { ALL_QUEUE_NAMES } from '@helloreview/contracts'
+import { ALL_QUEUE_NAMES, QUEUE_NAMES } from '@helloreview/contracts'
 import { readEnvironment, loadWorkerConfig, ConfigurationError } from '@helloreview/config'
 import { createLogger } from '@helloreview/observability'
 import { HANDLERS } from './processors/index.js'
-import { createWorkerRuntime } from './runtime.js'
+import { createWorkerRuntime, createQueue } from './runtime.js'
+import { createDbClient } from '@helloreview/db'
+import { startInboxRelay } from './relay/inbox-relay.js'
 
 // T11 replaced the temporary process.stdout.write helper this file used to carry: every line now
 // goes through the shared structured logger and carries the §23.1 fields. The logger is created
@@ -51,6 +53,15 @@ const bootstrap = async (): Promise<void> => {
   const runtime = createWorkerRuntime({ redisUrl: config.redisUrl, queues, handlers: HANDLERS })
   await runtime.start()
 
+  // THE INBOX RELAY. The accept path's inline enqueue is a latency optimisation; this is the
+  // correctness guarantee — see relay/inbox-relay.ts. It runs whether or not any processor is
+  // registered, because a stranded row must be re-queued now even if nothing consumes the queue
+  // until T27: the job waiting is the difference between a recoverable backlog and a silent loss.
+  const db = createDbClient(config.databaseUrl, 2)
+  const relayQueue = createQueue(config.redisUrl, QUEUE_NAMES.PROCESS_INBOUND_EVENT)
+  const relay = startInboxRelay({ db, queue: relayQueue, logger })
+  logger.info('inbox relay started', { operation: 'inbox_relay.start', result: 'ok' })
+
   logger.info(
     queues.length === 0
       ? 'ready — 0 processors registered (T27, T45 and T55 add them; see src/processors/index.ts)'
@@ -84,12 +95,17 @@ const bootstrap = async (): Promise<void> => {
     // Released here, not after stop() resolves: the drain must not be the only thing keeping the
     // process alive, or a failed drain would hang forever instead of exiting non-zero.
     clearInterval(keepAlive)
+    relay.stop()
     logger.info(`${signal} received — draining in-flight jobs`, { operation: 'worker.shutdown', result: 'started' })
 
     runtime.stop().then(
       () => {
         logger.info('drained cleanly', { operation: 'worker.shutdown', result: 'ok' })
-        process.exit(0)
+        // Close what this process opened. An un-closed pool or queue connection refs the event
+        // loop and would keep a "cleanly drained" worker alive indefinitely.
+        void Promise.allSettled([relayQueue.close(), db.close()]).then(() => {
+          process.exit(0)
+        })
       },
       (error: unknown) => {
         logger.error('shutdown failed', {

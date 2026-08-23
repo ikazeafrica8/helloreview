@@ -114,6 +114,9 @@ importers:
       '@helloreview/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@helloreview/db':
+        specifier: workspace:*
+        version: link:../../packages/db
       '@helloreview/observability':
         specifier: workspace:*
         version: link:../../packages/observability
@@ -162,6 +165,9 @@ importers:
 
   packages/testing:
     dependencies:
+      '@helloreview/config':
+        specifier: workspace:*
+        version: link:../config
       '@testcontainers/postgresql':
         specifier: ^12.1.0
         version: 12.1.0

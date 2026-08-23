@@ -12,10 +12,13 @@ import { createRawBodyMiddleware } from './raw-body.middleware.js'
 /**
  * The provider gateway (SPEC.md §3.1: depends on platform-core only).
  *
- * The raw-body middleware is bound to the webhook route HERE rather than globally. Disabling body
- * parsing for the whole application would make every future endpoint pay for this one's
- * constraints, and re-enabling it selectively later is the kind of change that silently
- * reintroduces a parsed-before-authenticated body.
+ * The raw-body middleware is bound to the webhook route HERE rather than globally, so only this
+ * route pays for streaming its own body.
+ *
+ * Body PARSING, separately, is off application-wide at main.ts (`bodyParser: false`) and no parser
+ * is registered anywhere. Any future route needing a parsed body must add its own middleware —
+ * see the note on createRawBodyMiddleware. An earlier version of this comment implied parsing was
+ * still on elsewhere; it is not.
  */
 const WEBHOOK_BODY_LIMIT_BYTES = 1_048_576
 

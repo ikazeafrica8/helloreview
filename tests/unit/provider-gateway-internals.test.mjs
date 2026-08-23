@@ -84,6 +84,11 @@ describe('build freshness', () => {
             continue
           }
           if (!entry.endsWith('.ts')) continue
+          // The lint-contract tests write throwaway fixtures into apps/api/src and delete them
+          // again. They are transient by design and correctly have no compiled counterpart, so
+          // walking src for a matching dist file trips on them — caught only by a FULL suite run,
+          // where the two files overlap. Skipping them keeps this guard about real modules.
+          if (entry.startsWith('__lint-fixture-')) continue
 
           const compiled = join(distDir, relative(srcDir, absolute).replace(/\.ts$/, '.js'))
           if (!existsSync(compiled)) {

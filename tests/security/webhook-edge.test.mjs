@@ -175,6 +175,31 @@ ${build.stdout}${build.stderr}`,
     expect(result.json).toMatchObject({ accepted: true, event_id: 'evt_edge_test', duplicate: false })
   })
 
+  test('every 401 carries the SAME reason code, whatever actually failed', async () => {
+    // Six distinct checks can refuse a request. If each reported its own code, an attacker could
+    // discover which property to vary next — is the provider registered? is the timestamp the
+    // problem, or the signature? — one request at a time, and SignatureGuard runs before the rate
+    // limiter, so the probing is unlimited.
+    const body = envelope()
+    const stale = (Math.floor(Date.now() / 1000) - 4000).toString()
+
+    const refusals = [
+      await post(body, { signature: 'f'.repeat(64) }),
+      await post(body, { provider: 'not_a_real_provider' }),
+      await post(body, { signature: '' }),
+      await post(body, { timestamp: 'yesterday' }),
+      await post(body, { timestamp: stale, signature: sign(body, stale) }),
+      await post(body, { headers: { 'x-helloreview-signature': 'nothex' } }),
+    ]
+
+    for (const refusal of refusals) {
+      expect(refusal.status).toBe(401)
+      expect(refusal.json).toMatchObject({ reason_code: 'WEBHOOK_AUTH_FAILED' })
+    }
+    // Every body identical — the strongest form of the claim.
+    expect(new Set(refusals.map((r) => JSON.stringify(r.json))).size).toBe(1)
+  })
+
   test('T16 criterion 1: an unsigned request is refused 401', async () => {
     const response = await fetch(`${BASE}/webhooks/helloreview_website`, {
       method: 'POST',
@@ -200,9 +225,11 @@ ${build.stdout}${build.stderr}`,
     const unknownProvider = await post(envelope(), { provider: 'not_a_real_provider' })
 
     expect(badSignature.status).toBe(unknownProvider.status)
-    // Same shape and same code: an attacker cannot tell the two apart, so they cannot enumerate
-    // provider names by watching which failure they get.
-    expect(Object.keys(badSignature.json ?? {}).sort()).toEqual(Object.keys(unknownProvider.json ?? {}).sort())
+    // The WHOLE BODY, not just its keys. Comparing `Object.keys(...)` was the original assertion and
+    // it could not fail: the two responses differed in the VALUE of `reason_code` — one said
+    // SIGNATURE_MISMATCH, the other UNKNOWN_PROVIDER — while their key sets matched exactly. An
+    // attacker reads values, not key sets.
+    expect(badSignature.json).toEqual(unknownProvider.json)
   })
 
   test('T16 criterion 1: malformed JSON with a BAD signature is 401, not 400', async () => {

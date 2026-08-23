@@ -1,4 +1,5 @@
 import { Queue, type Job } from 'bullmq'
+import { redisConnectionOptions } from '@helloreview/config'
 
 // Looking at what is on a queue, from a test.
 //
@@ -11,19 +12,15 @@ import { Queue, type Job } from 'bullmq'
 // These are ASSERTION helpers, deliberately read-mostly. Draining or obliterating a queue belongs
 // in the test that owns it, alongside the isolation policy in queue-isolation.ts.
 
-/** BullMQ connection options from a Redis URL. Options, never an instance — see queue-isolation. */
-const connectionFor = (redisUrl: string) => {
-  const url = new URL(redisUrl)
-  const database = url.pathname.replace(/^\//, '')
-  return {
-    host: url.hostname,
-    port: url.port === '' ? 6379 : Number(url.port),
-    ...(url.username === '' ? {} : { username: decodeURIComponent(url.username) }),
-    ...(url.password === '' ? {} : { password: decodeURIComponent(url.password) }),
-    ...(database === '' ? {} : { db: Number(database) }),
-    maxRetriesPerRequest: null,
-  }
-}
+/**
+ * BullMQ connection options from a Redis URL.
+ *
+ * The shared builder, not a fourth hand-rolled copy — the three that existed all dropped TLS. A
+ * test helper opening a plaintext connection would not itself be a security problem, but it would
+ * be a helper that no longer matches how the application connects, which is how a test stops
+ * testing the thing it names.
+ */
+const connectionFor = (redisUrl: string) => redisConnectionOptions(redisUrl, { blocking: true })
 
 /**
  * Open a queue handle, run `body`, and always close it.

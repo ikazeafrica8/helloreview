@@ -88,6 +88,14 @@ export const createLogger = (options: LoggerOptions): Logger => {
         ...(context.campaignId === undefined ? {} : { campaignId: context.campaignId }),
         ...(context.provider === undefined ? {} : { provider: context.provider }),
         ...(context.errorCategory === undefined ? {} : { errorCategory: context.errorCategory }),
+        // Declared in LogContext since T16 and silently dropped here until an audit caught it. Every
+        // reasonCode a caller passed was discarded, which made RATE_LIMIT_BACKEND_UNAVAILABLE and
+        // RATE_LIMIT_SCRIPT_UNEXPECTED_RESULT indistinguishable, and made RAW_BODY_MISSING — a
+        // route-wiring bug — log byte-identically to an ordinary SIGNATURE_MISMATCH.
+        //
+        // tests/unit/observability.test.ts now asserts that EVERY optional LogContext field
+        // survives, so a field added to the type and forgotten here fails rather than vanishes.
+        ...(context.reasonCode === undefined ? {} : { reasonCode: context.reasonCode }),
         ...(context.retryCount === undefined ? {} : { retryCount: context.retryCount }),
         ...(context.stateVersion === undefined ? {} : { stateVersion: context.stateVersion }),
         ...(context.statusCode === undefined ? {} : { statusCode: context.statusCode }),

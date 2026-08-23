@@ -27,6 +27,15 @@ export type WorkerConfig = Readonly<{
   environment: Environment
   /** Secret. Keys maskIdentifier(); never logged (see SECRET_KEYS). */
   maskingPepper: string
+  /**
+   * Added when the inbox relay landed. The worker was Redis-only before that.
+   *
+   * A genuine widening, not a value that was always present: a deployed worker now refuses to start
+   * without DATABASE_URL. That is the correct behaviour — the relay is a correctness guarantee, and
+   * a worker that silently ran without it would leave stranded events unrepaired — but it is a
+   * change in deployment requirements and is called out here rather than discovered on a rollout.
+   */
+  databaseUrl: string
 }>
 
 /** Thrown at startup and never caught: a misconfigured process must not begin serving. */
@@ -94,6 +103,7 @@ export const loadWorkerConfig = (source: EnvironmentSource): WorkerConfig =>
     redisUrl: parsed.REDIS_URL,
     environment: parsed.NODE_ENV,
     maskingPepper: parsed.MASKING_PEPPER,
+    databaseUrl: parsed.DATABASE_URL,
   }))
 
 /**

@@ -236,6 +236,116 @@ describe('idempotent accept', () => {
     })
   })
 
+  test('a row stranded with NO job is repaired by the next redelivery', async () => {
+    // The hole an audit found. Record-then-enqueue can leave a committed row whose enqueue never
+    // completed — a crash between the two statements, a READONLY reply after failover, Redis OOM.
+    // Before the fix, every redelivery of that event was answered 200/`queued` while no job existed
+    // and none was ever created: the API asserting a state it had not verified, and the provider
+    // stopping its retries on the strength of it.
+    //
+    // Simulated exactly by inserting the row directly and never enqueuing.
+    const { withPostgres, withRedis } = await importBuilt('packages/testing/dist/index.js')
+    const { applyMigrations } = await importBuilt('packages/db/dist/index.js')
+
+    await withPostgres(async (postgres) => {
+      await withRedis(async (redis) => {
+        await applyMigrations(postgres.url)
+        const { service, pool } = await serviceFor(postgres.url, redis.url)
+        try {
+          const event = anEvent({ eventId: 'evt_stranded' })
+          await pool.query(
+            `INSERT INTO event_inbox (source, external_event_id, event_type, payload_hash, payload, occurred_at)
+             VALUES ($1, $2, $3, $4, $5, $6)`,
+            [
+              event.source,
+              event.eventId,
+              event.eventType,
+              'a'.repeat(64),
+              JSON.stringify(event.payload),
+              new Date(event.occurredAt),
+            ],
+          )
+          expect(await queuedJobCount(redis.url), 'the fixture must start with no job').toBe(0)
+
+          // The provider retries, as providers do.
+          const retry = await service.accept(event, RAW)
+
+          expect(retry.duplicate, 'it is still a duplicate — the row was already there').toBe(true)
+          expect(await queuedJobCount(redis.url), 'the redelivery must have repaired the gap').toBe(1)
+
+          const rows = await pool.query('SELECT count(*)::int AS n FROM event_inbox')
+          expect(rows.rows[0].n, 'repairing must not create a second row').toBe(1)
+        } finally {
+          await service.onModuleDestroy()
+          await pool.end()
+        }
+      })
+    })
+  })
+
+  test('repairing is idempotent: repeated redeliveries still yield one job', async () => {
+    // The repair leans on BullMQ deduping by job id. Verified directly rather than assumed — a
+    // second add with the same id returns the existing job and leaves the original payload alone.
+    const { withPostgres, withRedis } = await importBuilt('packages/testing/dist/index.js')
+    const { applyMigrations } = await importBuilt('packages/db/dist/index.js')
+
+    await withPostgres(async (postgres) => {
+      await withRedis(async (redis) => {
+        await applyMigrations(postgres.url)
+        const { service, pool } = await serviceFor(postgres.url, redis.url)
+        try {
+          await service.accept(anEvent(), RAW)
+          for (let attempt = 0; attempt < 5; attempt += 1) await service.accept(anEvent(), RAW)
+
+          expect(await queuedJobCount(redis.url)).toBe(1)
+        } finally {
+          await service.onModuleDestroy()
+          await pool.end()
+        }
+      })
+    })
+  })
+
+  test('an unreachable queue fails the request in bounded time, as a 503', async () => {
+    // `queue.add()` does not reject when Redis is unreachable — measured, still pending after eight
+    // seconds with maxRetriesPerRequest both null and 1, so no retry setting fixes it. Without a
+    // timeout the webhook request holds a socket and its buffered body open indefinitely and the
+    // caller never gets an answer.
+    //
+    // 503 rather than 500 because §18.4 reserves it for a temporary dependency outage, and the
+    // distinction is actionable: a provider retries a 503 and escalates a 500. The retry is also
+    // what repairs the committed row.
+    const { withPostgres } = await importBuilt('packages/testing/dist/index.js')
+    const { applyMigrations } = await importBuilt('packages/db/dist/index.js')
+    const { DependencyUnavailableError } = await importBuilt('packages/contracts/dist/index.js')
+
+    await withPostgres(async (postgres) => {
+      await applyMigrations(postgres.url)
+      // Port 1: nothing is listening, and nothing will be.
+      const { service, pool } = await serviceFor(postgres.url, 'redis://127.0.0.1:1/0')
+      try {
+        const started = Date.now()
+        const failure = await service.accept(anEvent(), RAW).then(
+          () => undefined,
+          (error) => error,
+        )
+        const elapsed = Date.now() - started
+
+        expect(failure, 'accept() must fail rather than hang').toBeInstanceOf(DependencyUnavailableError)
+        expect(failure.status).toBe(503)
+        expect(elapsed, `it must settle promptly; took ${String(elapsed)}ms`).toBeLessThan(15_000)
+
+        // The row IS committed. That is the deliberate trade — the provider's retry repairs it.
+        const rows = await pool.query('SELECT status FROM event_inbox')
+        expect(rows.rows).toHaveLength(1)
+        expect(rows.rows[0].status).toBe('received')
+      } finally {
+        await service.onModuleDestroy().catch(() => undefined)
+        await pool.end()
+      }
+    })
+  }, 60_000)
+
   test('a duplicate event id carrying DIFFERENT content is still refused, and reported', async () => {
     // A provider reusing an event id for different content means their idempotency key does not
     // identify what we think it identifies. The event stays refused — changing our mind would

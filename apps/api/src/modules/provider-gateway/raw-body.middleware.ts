@@ -112,8 +112,17 @@ export const collectRawBody = async (request: StreamingRequest, limitBytes: numb
 /**
  * Express middleware that attaches the raw body and never parses it.
  *
- * Registered for the webhook path only. Everything else keeps the framework's ordinary parsing,
- * because disabling it globally would make every future endpoint pay for this one's constraints.
+ * Registered for the webhook path only — but READ THE NEXT PARAGRAPH BEFORE ADDING A ROUTE.
+ *
+ * Body parsing is disabled APPLICATION-WIDE at main.ts (`bodyParser: false`), not merely bypassed
+ * here. Nothing registers a parser anywhere. An earlier version of this comment said "everything
+ * else keeps the framework's ordinary parsing", which was false and is the single most likely
+ * trap for the next person adding a POST endpoint: `@Body() dto` will arrive `undefined`, with no
+ * error and nothing pointing at the cause.
+ *
+ * A route that wants a parsed body must opt in with its own parsing middleware. That is the right
+ * default for a service whose only untrusted input arrives over HTTP — parse explicitly, never
+ * implicitly — but it is a default that has to be known.
  */
 export const createRawBodyMiddleware =
   (limitBytes: number) =>

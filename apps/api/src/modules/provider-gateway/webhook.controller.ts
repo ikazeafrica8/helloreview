@@ -1,4 +1,4 @@
-import { Controller, Param, Post, Req, UseFilters, UseGuards } from '@nestjs/common'
+import { Controller, HttpCode, Param, Post, Req, UseFilters, UseGuards } from '@nestjs/common'
 import { InvalidEnvelopeError, platformEventSchema, type AcceptanceResponse } from '@helloreview/contracts'
 import { InboxService } from './inbox.service.js'
 import { ContractErrorFilter } from './contract-error.filter.js'
@@ -23,6 +23,11 @@ export class WebhookController {
   constructor(private readonly inbox: InboxService) {}
 
   @Post(':provider')
+  // 202, not Nest's default 201 for a POST. Two acceptance criteria state 202 and nothing enforced
+  // it, because every status assertion in the suite was `toBeLessThan(300)` — including one titled
+  // "202-style acknowledgement". 202 is also the honest code: the event is recorded and queued, and
+  // nothing has been processed yet.
+  @HttpCode(202)
   // Order is significant: authenticate FIRST, then limit. Limiting first would let an
   // unauthenticated attacker drain a named provider's bucket — a denial of service against that
   // provider, using the rate limiter as the weapon. Nest runs guards left to right.
