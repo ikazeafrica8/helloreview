@@ -26,19 +26,21 @@ const parseEnv = (text) => {
 const devEnv = () => parseEnv(readFileSync(join(ROOT, '.env.example'), 'utf8'))
 
 /**
- * Containers Testcontainers is holding open, EXCLUDING Ryuk.
+ * Is THIS container still running?
  *
- * Ryuk is the reaper — it carries the same org.testcontainers label and starts on first use, so
- * counting it makes a clean run look like a leak of exactly one. What we care about is whether a
- * database or Redis container outlived its helper.
+ * By id, deliberately — not by counting how many Testcontainers containers exist globally.
+ *
+ * The first version of this file snapshotted a global count before and after and asserted the two
+ * matched. That is flaky, and it flaked: `docker ps` is a view of the whole daemon, so a container
+ * belonging to a DIFFERENT test file finishing its teardown inside the measurement window moves the
+ * count on its own. Measured — the suite passed 3/3 in isolation and failed once in a full run.
+ *
+ * Asking about one id is both stable and a stronger claim. A balanced count could hide a real leak
+ * that happened to coincide with someone else's cleanup; this says the container we started is
+ * gone, which is the thing the test is actually about.
  */
-const runningTestcontainers = () =>
-  execFileSync('docker', ['ps', '--filter', 'label=org.testcontainers=true', '--format', '{{.Image}}'], {
-    encoding: 'utf8',
-  })
-    .trim()
-    .split('\n')
-    .filter((image) => image !== '' && !image.includes('testcontainers/ryuk')).length
+const isContainerRunning = (id) =>
+  execFileSync('docker', ['ps', '--quiet', '--filter', `id=${id}`], { encoding: 'utf8' }).trim() !== ''
 
 describe('ephemeral container harness', () => {
   beforeAll(() => {
@@ -52,9 +54,13 @@ describe('ephemeral container harness', () => {
 
   test('withPostgres starts a real database, then stops it', async () => {
     const { withPostgres } = await import('../../packages/testing/dist/index.js')
-    const before = runningTestcontainers()
+    let containerId
 
     const observed = await withPostgres(async (postgres) => {
+      containerId = postgres.container.getId()
+      // Asserted INSIDE the callback so the "gone afterwards" check below cannot be vacuous. A
+      // helper that always returned false would satisfy that check against a leaked container.
+      assert.equal(isContainerRunning(containerId), true, 'the container is not running inside withPostgres')
       const { Client } = await import('pg')
       const client = new Client({ connectionString: postgres.url })
       await client.connect()
@@ -79,14 +85,19 @@ describe('ephemeral container harness', () => {
       'the ephemeral database bound the dev stack port — it is not ephemeral',
     )
 
-    assert.equal(runningTestcontainers(), before, 'withPostgres leaked a container')
+    assert.ok(containerId, 'the container id was never captured, so the leak check proves nothing')
+    assert.equal(isContainerRunning(containerId), false, 'withPostgres leaked its container')
   })
 
   test('withRedis starts a real Redis, then stops it', async () => {
     const { withRedis } = await import('../../packages/testing/dist/index.js')
-    const before = runningTestcontainers()
+    let containerId
 
     const port = await withRedis(async (redis) => {
+      containerId = redis.container.getId()
+      // Same reasoning as above: prove the helper can say "running" before trusting it to say
+      // "gone".
+      assert.equal(isContainerRunning(containerId), true, 'the container is not running inside withRedis')
       const { Redis } = await import('ioredis')
       const client = new Redis(redis.url, { lazyConnect: true, retryStrategy: () => null })
       try {
@@ -99,7 +110,8 @@ describe('ephemeral container harness', () => {
     })
 
     assert.notEqual(String(port), devEnv().get('REDIS_PORT'), 'the ephemeral Redis bound the dev stack port')
-    assert.equal(runningTestcontainers(), before, 'withRedis leaked a container')
+    assert.ok(containerId, 'the container id was never captured, so the leak check proves nothing')
+    assert.equal(isContainerRunning(containerId), false, 'withRedis leaked its container')
   })
 
   test('the dev stack is still running and was never disturbed', () => {

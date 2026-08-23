@@ -7,4 +7,19 @@
 export { campaignTypeEnum, visitMethodEnum } from './enums.js'
 export { auditLogs, auditActorTypeEnum, auditResultEnum } from './audit-logs.js'
 export { eventInbox, eventInboxStatusEnum } from './event-inbox.js'
+export { campaigns, campaignStatusEnum } from './campaigns.js'
+export type { CampaignRow, NewCampaignRow } from './campaigns.js'
+export { campaignRules, campaignRuleTypeEnum, campaignRuleStatusEnum } from './campaign-rules.js'
+export type { CampaignRuleRow, NewCampaignRuleRow } from './campaign-rules.js'
+export { campaignTimeWindows, weekdayEnum } from './campaign-time-windows.js'
+export type { CampaignTimeWindowRow, NewCampaignTimeWindowRow } from './campaign-time-windows.js'
+export { campaignBlackouts } from './campaign-blackouts.js'
+export { campaignBusinesses, campaignBusinessAliases } from './campaign-businesses.js'
+export type {
+  CampaignBusinessRow,
+  NewCampaignBusinessRow,
+  CampaignBusinessAliasRow,
+  NewCampaignBusinessAliasRow,
+} from './campaign-businesses.js'
+export type { CampaignBlackoutRow, NewCampaignBlackoutRow } from './campaign-blackouts.js'
 export type { EventInboxRow, NewEventInboxRow } from './event-inbox.js'

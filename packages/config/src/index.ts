@@ -10,3 +10,5 @@ export type { EnvironmentSource } from './env-source.js'
 export { loadApiConfig, loadWorkerConfig, redactEnvironment, ConfigurationError } from './load.js'
 export type { ApiConfig, WorkerConfig, Environment } from './load.js'
 export { apiConfigSchema, workerConfigSchema, SECRET_KEYS, isSecret } from './schema.js'
+
+export { redisConnectionOptions } from './redis-connection.js'

@@ -69,7 +69,108 @@ its own acceptance criteria. `pnpm verify` must pass before every commit.
 > the moment `outbound_notifications` exists, so this file cannot be left asserting less than its
 > Gherkin claims once the real artifact is available.
 
-### Phase 3 — Configuration and source of truth
+### Audit — Phase 2 (before Phase 3)
+
+An adversarial review of T14–T20 after they merged: six independent lenses, every finding then
+handed to a separate agent instructed to REFUTE it. 87 raw findings, 81 survived, 25 confirmed
+outright and 48 downgraded as overstated.
+
+**The verdict, which matches the Phase 0/1 audit almost exactly:** the spine is sound — the
+idempotency mechanism, the HMAC edge, the fail-open rate limiter and the bounded body reader are
+all correctly implemented. What was systematically wrong is the documentation and test layer around
+them, where eight comments and four checked criteria asserted guarantees the code did not provide,
+and six tests could not fail on the property their names claimed.
+
+## Fixed
+
+- [x] **The unit gate was verifying stale compiled output.** `tests/unit/provider-gateway-internals`
+      imports `apps/api/dist` with no build, and `pnpm verify` never builds `apps/api`. Reproduced:
+      gutting the payload size limit by 1000× left typecheck, lint and all 254 unit tests green with
+      `dist` untouched. **This invalidated the verification of every other finding.** Fixed three
+      ways — test scripts build first, a freshness assertion for the `npx vitest` path, and a
+      repo-wide staleness guard. My first attempt was a `beforeAll` rebuild, which **does not work**:
+      static imports resolve at collection time, so it would have reported green while testing the
+      previous build. Caught by re-running the mutation instead of trusting the fix.
+- [x] **`queue.add()` never settles when Redis is unreachable.** Measured: still pending after eight
+      seconds with `maxRetriesPerRequest` set to both `null` and `1` — so no retry setting fixes it,
+      contrary to the finding's own suggestion. The webhook request held a socket and its buffered
+      body open with no answer. Now bounded at 5s and failed as a **503** (§18.4's "temporary
+      dependency outage"), which a provider retries rather than escalates.
+- [x] **A row committed with no job could never be repaired**, while every redelivery was answered
+      `queued` — the API asserting a state it never verified, and the provider stopping its retries
+      on the strength of it. The duplicate path now re-issues the enqueue when the stored status is
+      still `received`. Safe because BullMQ dedupes on job id (verified directly: the second add
+      returns the existing job and leaves the original payload untouched).
+- [x] **The `§22.3` replay path was cited in three comments and does not exist.** No code selects
+      `event_inbox` by status and no task scheduled one. The comments now describe the repair that
+      _is_ implemented, and the bulk replay is recorded as a real task below rather than asserted.
+- [x] **The 401 body named which check failed.** `MISSING_SIGNATURE`, `MALFORMED_TIMESTAMP`,
+      `REPLAY_WINDOW_EXCEEDED`, `SIGNATURE_MISMATCH` and `UNKNOWN_PROVIDER` were all readable off
+      the response — an oracle for tuning attempts one property at a time, unrate-limited because
+      the signature guard runs first. Three comments claimed the opposite, and the test written to
+      pin it compared only the response KEYS, never their values, so it passed while they differed.
+      Now one coarse code to the caller, the specific one to the log.
+- [x] **`reasonCode` was declared in `LogContext` and silently dropped by the logger.** Nine callers
+      passed it; every one was discarded, making `RATE_LIMIT_BACKEND_UNAVAILABLE` indistinguishable
+      from `RATE_LIMIT_SCRIPT_UNEXPECTED_RESULT`. Fixed, plus a guard asserting that **every**
+      optional `LogContext` field survives — a field added to the type and forgotten in the emit
+      block now fails rather than vanishes.
+- [x] **A checked criterion credited the T6 lint rule with enforcing type containment.** It cannot:
+      the rule visits import nodes only. Probed — a `KakaoTalkWebhookBody` interface declared inside
+      `platform-core` lints clean. The criterion and two comments now state what is actually
+      enforced (deep imports, fake imports) and that the rest is a review obligation.
+- [x] **`bodyParser: false` is application-wide, while two comments said parsing continued
+      elsewhere.** The most likely Phase 3 trip-wire: the next `@Body() dto` would arrive
+      `undefined` with nothing pointing at the cause. Corrected in both places.
+- [x] `removeOnFail: false` replaced with a bounded age/count cap.
+
+Every fix carries a test that was verified to FAIL without it.
+
+## Recorded, not yet fixed
+
+- [x] **The inbox relay — the missing half of the transactional outbox.** Not a cleanup job:
+      FR-MSG-004 requires an outbox for outbound, the inbound side has the same shape, and only half
+      was built. The inbox row IS the intent (`status = 'received'` means "needs processing"),
+      Postgres is authoritative (§17.1), so the queue is a DERIVED VIEW — which makes the inline
+      enqueue a latency optimisation and the relay the guarantee. Before it, correctness rested on
+      "a provider retries a 503", a claim about someone else's code.
+      **Three things fall out of one loop:** recovery, DETECTION (a repair is logged — the alert
+      that did not exist; nothing selected `event_inbox` by status, so no operator would ever have
+      learned a row was stranded), and the shape §22.3's operator replay will reuse.
+      It deliberately does not change `status`: marking rows "claimed" before enqueuing would create
+      a new stranded state on a crash between mark and enqueue — the same bug one level up.
+      **Its own test found a real bug in it:** with no status change, a plain `ORDER BY … LIMIT n`
+      re-scans the same oldest rows forever, so a backlog larger than one batch never drained. Now
+      pages with a keyset cursor, and reports when it stops at its per-pass cap rather than
+      truncating silently. The worker gains a database connection, which T27 and T45 need anyway —
+      a deployed worker now requires `DATABASE_URL`, recorded in `WorkerConfig`.
+- [x] `@HttpCode(202)` on the webhook route.
+- [x] **`rediss://` silently lost TLS on every BullMQ connection.** Three call sites decomposed the
+      URL by hand into `{ host, port, … }`; ioredis enables TLS from a `rediss://` STRING or an
+      explicit `tls` option, never from decomposed parts. A TLS-configured deployment would have
+      connected in PLAINTEXT — Redis password and every job payload unencrypted — while the schema
+      accepted the scheme and the health probe (which passes the URL string, so did use TLS) stayed
+      green. One shared builder now, with tests asserting `rediss://` produces TLS and `redis://`
+      does not.
+- [ ] **Operator-triggered replay (`§22.3` proper).** The relay covers unprocessed inbound events
+      automatically. §22.3 also lists failed website sync, failed OCR, failed AI extraction, failed
+      notification delivery and failed delivery-status reconciliation — five subsystems that do not
+      exist yet — and requires an authorization check and a replay audit record. Schedule alongside
+      the subsystem that needs it first, not before.
+- [ ] The `pause()` / `destroy()` doc cluster in `http.ts`: `pause` has zero call sites (memory is
+      bounded by dropping the buffer), and `destroy`'s comment describes the opposite ordering.
+- [ ] Four "timestamp is rejected" cases in the signature suite are decided by a bogus signature —
+      deleting the whole timestamp block leaves them green. Assert the reason code.
+- [ ] The constant-time static check is escapable, and the reason-code lint fixture is written to a
+      path the rule is not scoped to, so it tests nothing.
+- [ ] `Retry-After` is asserted nowhere; the conformance suite's "stamps the provider" check never
+      compares the provider to `adapter.provider`, so a source-lying adapter passes all nine checks.
+- [ ] Roughly 20 further low-severity items — wording precision, missing negative fixtures, a
+      `statement_timeout` on both pools — listed in the audit output.
+
+---
+
+# Phase 3 — Configuration and source of truth
 
 - [ ] T21 — Campaigns and versioned rules
 - [ ] T22 — Time windows and blackouts
@@ -1139,7 +1240,13 @@ the capability question list for the Kakao dealer.
 
 - [x] The fake emits every inbound event type in `§18`, including duplicates and out-of-order delivery
 - [x] The conformance suite runs against any adapter via a shared factory and passes for the fake
-- [x] Provider-specific types do not appear outside `packages/adapters`, enforced by the T6 lint rule
+- [x] Provider-specific types do not appear outside `packages/adapters` — **partly** machine-enforced.
+      The original wording credited the T6 rule with enforcing this and was false: that rule visits
+      only import and export nodes and reports only `deepImport`/`undeclared`, so it cannot see a
+      type DECLARATION at all. Verified by probe — a `KakaoTalkWebhookBody` interface declared inside
+      `apps/api/src/modules/platform-core/` lints clean. What IS enforced, and tested against the
+      resolved config: deep imports into `@helloreview/adapters` are rejected, and application code
+      importing a fake adapter is rejected. Type containment itself is a review obligation
 
 **Verification:**
 
@@ -1197,14 +1304,16 @@ the exact version it used.
 
 **Acceptance criteria:**
 
-- [ ] `UNIQUE(campaign_id, rule_type, version)` holds, and published versions reject updates
-- [ ] Campaign type (Shipping, Payback, Visit) and visit method (A, B, C) are stored as enums, never inferred from text (`FR-CAM-001`, `FR-CAM-002`)
-- [ ] Resolving the rule version effective at a given instant is a tested query, not caller arithmetic
+- [x] `UNIQUE(campaign_id, rule_type, version)` holds, and published versions reject updates
+- [x] Campaign type (Shipping, Payback, Visit) and visit method (A, B, C) are stored as enums, never inferred from text (`FR-CAM-001`, `FR-CAM-002`)
+- [x] Resolving the rule version effective at a given instant is a tested query, not caller arithmetic
 
 **Verification:**
 
-- [ ] Tests pass: `pnpm test:integration`
-- [ ] Manual check: attempt to mutate a published rule version and confirm rejection
+- [x] Tests pass: `pnpm test:integration` — 11 tests against a real migrated Postgres
+- [x] Manual check: verified against a live database. A published version rejects a configuration
+      edit, an `effective_from` move, a revert to draft, and a delete; a draft stays editable;
+      closing a version is permitted exactly once and its end can never be moved afterwards
 
 **Dependencies:** T9, T13
 

@@ -1,4 +1,5 @@
 import { Queue, Worker, type ConnectionOptions, type Job } from 'bullmq'
+import { redisConnectionOptions } from '@helloreview/config'
 import type { QueueName } from '@helloreview/contracts'
 import { adoptCorrelationId, currentCorrelationId, runWithCorrelation } from '@helloreview/observability'
 
@@ -54,21 +55,14 @@ const DEFAULT_DRAIN_TIMEOUT_MS = 30_000
  * sit open for many seconds; under ioredis's default retry limit those count as failures and the
  * worker dies with "Connection is closed" under no load at all.
  */
-const redisConnectionOptions = (redisUrl: string): ConnectionOptions => {
-  const url = new URL(redisUrl)
-  const database = url.pathname.replace(/^\//, '')
-
-  return {
-    host: url.hostname,
-    port: url.port === '' ? 6379 : Number(url.port),
-    ...(url.username === '' ? {} : { username: decodeURIComponent(url.username) }),
-    ...(url.password === '' ? {} : { password: decodeURIComponent(url.password) }),
-    ...(database === '' ? {} : { db: Number(database) }),
-    maxRetriesPerRequest: null,
-    // BullMQ issues its own readiness handshake; ioredis's duplicates it and delays startup.
-    enableReadyCheck: false,
-  }
-}
+const workerConnection = (redisUrl: string): ConnectionOptions => ({
+  // `blocking: true` is what selects maxRetriesPerRequest: null, which a Worker genuinely needs —
+  // it holds blocking commands open for many seconds and ioredis's default retry limit would count
+  // those as failures. A Queue must NOT have it; see packages/config/src/redis-connection.ts.
+  ...redisConnectionOptions(redisUrl, { blocking: true }),
+  // BullMQ issues its own readiness handshake; ioredis's duplicates it and delays startup.
+  enableReadyCheck: false,
+})
 
 /**
  * Bind one BullMQ Worker per queue and manage their lifecycle together.
@@ -102,7 +96,7 @@ export const createWorkerRuntime = (options: WorkerRuntimeOptions): WorkerRuntim
         }
 
         const worker = new Worker(name, traced, {
-          connection: redisConnectionOptions(options.redisUrl),
+          connection: workerConnection(options.redisUrl),
           autorun: true,
         })
         // An unhandled 'error' on a Worker is an uncaught exception, which would take the process
@@ -150,7 +144,7 @@ export const createWorkerRuntime = (options: WorkerRuntimeOptions): WorkerRuntim
  * because BullMQ created it.
  */
 export const createQueue = (redisUrl: string, name: QueueName): Queue =>
-  new Queue(name, { connection: redisConnectionOptions(redisUrl) })
+  new Queue(name, { connection: workerConnection(redisUrl) })
 
 /**
  * Enqueue a job, stamping the current correlation id onto it.

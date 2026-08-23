@@ -1,8 +1,10 @@
 // Provider ports, real adapters, and the in-repo fakes they are proven against.
 //
-// SPEC.md §3.1 puts the provider boundary here: a Kakao or Aligo field name appearing in a core
-// module is a T6 lint error, and this package is the only place one may exist. Everything a core
-// module sees is a §18 PlatformEvent.
+// SPEC.md §3.1 puts the provider boundary here: this package is the only place a Kakao or Aligo
+// field name may exist, and everything a core module sees is a §18 PlatformEvent.
+//
+// Lint enforces the IMPORT half of that — no deep imports past this index, no fakes in application
+// code. It does not enforce the DECLARATION half; see ports/inbound.ts for what that means.
 
 export { INBOUND_TRANSLATION_FAILURES } from './ports/inbound.js'
 export type { InboundAdapter, InboundDelivery, InboundTranslation, InboundTranslationFailure } from './ports/inbound.js'

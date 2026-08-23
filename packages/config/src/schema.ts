@@ -105,7 +105,12 @@ export const apiConfigSchema = z.object({
  * validated changes it for both deployables in one edit. The worker never reads API_PORT, and a
  * worker that refuses to start over a value it does not use is a confusing failure on call.
  */
-export const workerConfigSchema = apiConfigSchema.pick({ REDIS_URL: true, NODE_ENV: true, MASKING_PEPPER: true })
+export const workerConfigSchema = apiConfigSchema.pick({
+  DATABASE_URL: true,
+  REDIS_URL: true,
+  NODE_ENV: true,
+  MASKING_PEPPER: true,
+})
 
 /**
  * Keys whose VALUE must never appear in a log line, an error message, or a diagnostic dump.

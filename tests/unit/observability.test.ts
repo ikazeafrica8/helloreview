@@ -216,3 +216,82 @@ describe('structured logger', () => {
     expect(parsed()[0]?.correlationId).toBeNull()
   })
 })
+
+describe('every declared LogContext field actually reaches the line', () => {
+  // THE GUARD FOR A WHOLE CLASS OF BUG, not just the one that prompted it.
+  //
+  // `reasonCode` was declared in LogContext by T16 and never added to the emit block. It type-
+  // checked at every call site, so nine callers passed it and every one was silently discarded —
+  // making RATE_LIMIT_BACKEND_UNAVAILABLE indistinguishable from RATE_LIMIT_SCRIPT_UNEXPECTED_RESULT
+  // and RAW_BODY_MISSING (a route-wiring bug) identical to an ordinary SIGNATURE_MISMATCH.
+  //
+  // A test naming only `reasonCode` would close that one hole. This one asserts the property: a
+  // field added to the type and forgotten in the emit block fails here. Each field is supplied a
+  // value of the right primitive type, which is why the table is written out rather than derived —
+  // TypeScript types do not survive to runtime, so there is nothing to iterate over.
+  const SAMPLE_CONTEXT = {
+    operation: 'probe.operation',
+    result: 'ok',
+    eventId: 'evt_probe',
+    workflowId: 'wf_probe',
+    campaignId: 'camp_probe',
+    provider: 'probe_provider',
+    errorCategory: 'ProbeError',
+    reasonCode: 'PROBE_REASON_CODE',
+    retryCount: 3,
+    stateVersion: 7,
+    statusCode: 503,
+    count: 11,
+    actorId: 'id_probe',
+  } as const
+
+  test('a line carries every field it was given', () => {
+    const lines: string[] = []
+    const logger = createLogger({ module: 'test-module', environment: 'test', write: (line) => lines.push(line) })
+
+    logger.info('probe', SAMPLE_CONTEXT)
+
+    const emitted: unknown = JSON.parse(lines[0] ?? '{}')
+    const held: Record<string, unknown> = typeof emitted === 'object' && emitted !== null ? { ...emitted } : {}
+
+    const missing = Object.entries(SAMPLE_CONTEXT)
+      .filter(([key, value]) => held[key] !== value)
+      .map(([key]) => key)
+
+    expect(
+      missing,
+      `${String(missing.length)} LogContext field(s) were accepted by the type and dropped by the ` +
+        'logger. A field declared in LogContext but missing from the emit block type-checks at every ' +
+        'call site and vanishes at runtime.',
+    ).toEqual([])
+  })
+
+  test('reasonCode specifically, since that is the one that was dropped', () => {
+    const lines: string[] = []
+    const logger = createLogger({ module: 'test-module', environment: 'test', write: (line) => lines.push(line) })
+
+    logger.warn('rejected', {
+      operation: 'provider_gateway.verify',
+      result: 'rejected',
+      reasonCode: 'SIGNATURE_MISMATCH',
+    })
+
+    expect(lines[0]).toContain('SIGNATURE_MISMATCH')
+    expect(JSON.parse(lines[0] ?? '{}')).toMatchObject({ reasonCode: 'SIGNATURE_MISMATCH' })
+  })
+
+  test('an absent field is omitted rather than emitted as null', () => {
+    // The line stays readable. Asserted so the fix above cannot be "spread everything always".
+    const lines: string[] = []
+    const logger = createLogger({ module: 'test-module', environment: 'test', write: (line) => lines.push(line) })
+
+    logger.info('minimal', { operation: 'probe', result: 'ok' })
+
+    // Narrowed rather than cast: JSON.parse returns `any`, and passing it straight to Object.keys
+    // is the unchecked assumption no-unsafe-argument exists to catch.
+    const emitted: unknown = JSON.parse(lines[0] ?? '{}')
+    const held: Record<string, unknown> = typeof emitted === 'object' && emitted !== null ? { ...emitted } : {}
+
+    expect(Object.keys(held)).not.toContain('reasonCode')
+  })
+})

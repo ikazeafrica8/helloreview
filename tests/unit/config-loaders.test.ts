@@ -142,15 +142,36 @@ describe('webhook signing configuration (T16)', () => {
 
 describe('loadWorkerConfig', () => {
   test('needs only what the worker actually reads, not the whole api surface', () => {
-    // A worker that refuses to start over a value it does not use is a confusing failure on call —
-    // API_PORT and DATABASE_URL are deliberately absent here.
-    const config = loadWorkerConfig({ REDIS_URL: VALID.REDIS_URL, MASKING_PEPPER: VALID.MASKING_PEPPER })
+    // A worker that refuses to start over a value it does not use is a confusing failure on call.
+    // API_PORT and the webhook signing secret are deliberately absent: the worker serves no HTTP
+    // and verifies no signatures.
+    //
+    // DATABASE_URL IS now required, and that is a real change rather than an oversight. The worker
+    // was Redis-only until the inbox relay landed; the relay reads `event_inbox` directly, and it
+    // is a correctness guarantee — a worker that started without a database and silently ran no
+    // relay would leave stranded events unrepaired. Failing at startup is the right behaviour, and
+    // a deployment adding this variable is the intended consequence.
+    const config = loadWorkerConfig({
+      REDIS_URL: VALID.REDIS_URL,
+      MASKING_PEPPER: VALID.MASKING_PEPPER,
+      DATABASE_URL: VALID.DATABASE_URL,
+    })
     expect(config.redisUrl).toBe(VALID.REDIS_URL)
+    expect(config.databaseUrl).toBe(VALID.DATABASE_URL)
     expect(Object.isFrozen(config)).toBe(true)
   })
 
+  test('the worker refuses to start without a database, because the relay needs one', () => {
+    // Asserted rather than implied. The relay is what turns "a provider retried" from the
+    // correctness argument into a mere optimisation, so a worker running without it is degraded in
+    // a way nothing else would report.
+    expect(() => loadWorkerConfig({ REDIS_URL: VALID.REDIS_URL, MASKING_PEPPER: VALID.MASKING_PEPPER })).toThrow(
+      /DATABASE_URL/,
+    )
+  })
+
   test('applies the same REDIS_URL rule as the api, because the schema is picked not copied', () => {
-    const withPepper = { MASKING_PEPPER: VALID.MASKING_PEPPER }
+    const withPepper = { MASKING_PEPPER: VALID.MASKING_PEPPER, DATABASE_URL: VALID.DATABASE_URL }
     expect(() => loadWorkerConfig({ ...withPepper, REDIS_URL: 'http://127.0.0.1:16379' })).toThrow(ConfigurationError)
     expect(() => loadWorkerConfig({ ...withPepper, REDIS_URL: 'redis://' })).toThrow(ConfigurationError)
     expect(() => loadWorkerConfig(withPepper)).toThrow(/REDIS_URL is not set/)

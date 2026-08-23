@@ -3,8 +3,14 @@ import type { PlatformEvent, EventType } from '@helloreview/contracts'
 // The platform-neutral inbound port (SPEC.md §3.1, T19).
 //
 // EVERY provider — the website, the Kakao dealer, Aligo — arrives through this interface, and
-// nothing behind it ever sees a provider's own field names. That is the boundary SPEC.md §3.1 draws
-// and the T6 lint rule enforces: a Kakao-shaped type appearing in a core module is a lint error.
+// nothing behind it ever sees a provider's own field names. That is the boundary SPEC.md §3.1
+// draws.
+//
+// HOW MUCH OF IT A MACHINE CHECKS, stated accurately because the earlier wording here did not: lint
+// rejects a deep import into this package and rejects application code importing a fake, both
+// tested. It does NOT reject a provider-shaped type DECLARED in a core module — the boundary rule
+// visits import nodes only, and a probe interface in platform-core lints clean. Keeping provider
+// vocabulary out of core modules is a review obligation, not an automated one.
 //
 // WHY A PORT RATHER THAN A CLIENT PER PROVIDER. PRD §18 is explicit that its contracts "are not
 // claims about actual Kakao, Aligo, Naver, or website payloads" — every scheme here is unverified,

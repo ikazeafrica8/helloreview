@@ -60,7 +60,21 @@ export class SignatureGuard implements CanActivate {
     return true
   }
 
-  /** Log the refusal with a reason code, then throw the §18.4 401. Never returns. */
+  /**
+   * Log the specific refusal, return a coarse one. Never returns.
+   *
+   * THE ASYMMETRY IS THE POINT, and it was wrong until an audit caught it. The specific code was
+   * being passed to UnauthenticatedError, and ContractErrorFilter renders `reasonCode` into the
+   * response body — so an attacker could read MISSING_SIGNATURE, MALFORMED_TIMESTAMP,
+   * REPLAY_WINDOW_EXCEEDED, SIGNATURE_MISMATCH or UNKNOWN_PROVIDER straight off the 401 and tune
+   * their attempts one property at a time. Three comments in this module asserted the opposite, and
+   * the security test written to pin it compared only the response KEYS, never their values, so it
+   * passed while they differed.
+   *
+   * An operator still needs to know which check failed, and now gets it: the specific code goes to
+   * the log line. (That was also broken until recently — the logger declared `reasonCode` and
+   * dropped it. Both halves had to be fixed for either to be worth anything.)
+   */
   private reject(provider: string, reasonCode: string): never {
     this.logger.warn('webhook signature rejected', {
       operation: 'provider_gateway.verify',
@@ -68,8 +82,7 @@ export class SignatureGuard implements CanActivate {
       reasonCode,
       provider,
     })
-    // The message is what a caller sees. It says only that verification failed — naming which
-    // check failed would let an attacker tune their attempts one property at a time.
-    throw new UnauthenticatedError('signature verification failed', reasonCode)
+    // ONE code for every authentication failure. Deliberately coarse; see above.
+    throw new UnauthenticatedError('signature verification failed', 'WEBHOOK_AUTH_FAILED')
   }
 }
