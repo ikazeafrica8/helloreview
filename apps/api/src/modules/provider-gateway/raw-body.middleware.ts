@@ -35,10 +35,30 @@ export class PayloadTooLargeStreamError extends Error {
  * destroyed as soon as it is exceeded. Checking Content-Length instead would be worse than
  * useless: it is a claim by the sender, and a chunked request need not send one at all.
  */
+/**
+ * How much MORE than the limit we are willing to read and throw away.
+ *
+ * Once the limit is passed the body is refused, but the sender is usually still transmitting. Two
+ * bad options and one good one:
+ *
+ *   - Close the socket immediately: the 413 never reaches the client, which sees ECONNRESET and
+ *     cannot tell a refusal from a network fault. (Measured: the test for this was flaky for
+ *     exactly this reason, passing or failing on the timing of a 2 MB upload.)
+ *   - Read to the end however long that takes: an attacker holds a connection open indefinitely.
+ *   - Read a BOUNDED amount more, discarding every byte, then answer properly. A client that
+ *     slightly overshoots gets a clean 413; one sending five times the limit gets cut off.
+ *
+ * Memory is bounded either way — nothing past the limit is ever retained. This allowance bounds
+ * TIME and BANDWIDTH, which are the other two things a large upload costs.
+ */
+const DRAIN_ALLOWANCE_MULTIPLIER = 4
+
 export const collectRawBody = async (request: StreamingRequest, limitBytes: number): Promise<Buffer> =>
   new Promise((resolve, reject) => {
     const chunks: Buffer[] = []
     let received = 0
+    let discarded = 0
+    let overLimit = false
     let settled = false
 
     const finish = (action: () => void): void => {
@@ -49,19 +69,24 @@ export const collectRawBody = async (request: StreamingRequest, limitBytes: numb
 
     request.on('data', (chunk: Buffer) => {
       received += chunk.length
+      if (overLimit) {
+        // Already refused. Discard rather than retain — memory is bounded from here on — but keep
+        // reading so the client can finish and receive a real 413 instead of a reset.
+        discarded += chunk.length
+        if (discarded > limitBytes * DRAIN_ALLOWANCE_MULTIPLIER) {
+          request.destroy()
+          finish(() => {
+            reject(new PayloadTooLargeStreamError(limitBytes))
+          })
+        }
+        return
+      }
+
       if (received > limitBytes) {
-        // PAUSE, do not destroy. Pausing is what bounds memory: TCP backpressure stops the sender
-        // rather than this process continuing to buffer a body it has already decided to refuse.
-        //
-        // Destroying here instead — the first version of this code — killed the socket before the
-        // 413 could be written, so the client saw ECONNRESET and never learned why. An unexplained
-        // reset is indistinguishable from a network fault, which is a miserable thing to hand a
-        // provider integrating against you. The socket IS closed, but only after the response.
-        request.pause()
+        // The moment of refusal. Everything buffered so far is dropped immediately, so peak memory
+        // is the limit and not the body.
+        overLimit = true
         chunks.length = 0
-        finish(() => {
-          reject(new PayloadTooLargeStreamError(limitBytes))
-        })
         return
       }
       chunks.push(chunk)
@@ -69,6 +94,10 @@ export const collectRawBody = async (request: StreamingRequest, limitBytes: numb
 
     request.on('end', () => {
       finish(() => {
+        if (overLimit) {
+          reject(new PayloadTooLargeStreamError(limitBytes))
+          return
+        }
         resolve(Buffer.concat(chunks))
       })
     })
@@ -96,14 +125,8 @@ export const createRawBodyMiddleware =
       },
       (error: unknown) => {
         if (error instanceof PayloadTooLargeStreamError) {
-          // Answered here rather than thrown into Nest's filter chain: the stream is paused
-          // mid-body, so there is no complete request for a controller to handle.
-          //
-          // The connection is closed only once the response has flushed. Closing it any earlier
-          // races the write and produces the ECONNRESET this ordering exists to avoid.
-          response.on('finish', () => {
-            request.destroy()
-          })
+          // Answered here rather than thrown into Nest's filter chain: there is no parsed body for
+          // a controller to have been given, and no route was ever matched.
           response.status(413).json({ accepted: false, reason_code: 'PAYLOAD_TOO_LARGE' })
           return
         }

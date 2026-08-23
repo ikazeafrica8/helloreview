@@ -279,10 +279,47 @@ const SELECTORS = {
         'Reason, purpose and intent codes are SCREAMING_SNAKE (SPEC.md §6 Naming). Export the derived union type alongside the registry.',
     },
   ],
+
+  /**
+   * T19: a fake provider adapter must never be imported by application code.
+   *
+   * Fakes exist so tests and local development can run before a provider contract is signed (PRD
+   * §33.3 is still a list of questions for the dealer). One reaching production means the service
+   * accepts invented events — and because a fake satisfies the same interface as the real adapter,
+   * that import compiles, passes review, and fails silently.
+   */
+  providerFakes: [
+    {
+      selector: 'ImportDeclaration[source.value=/adapters/] ImportSpecifier[imported.name=/^(createFake|fake)/]',
+      message:
+        'A fake adapter must not be imported by application code (T19, SPEC.md §3.1). Fakes exist so ' +
+        'tests can run without a provider contract; one reaching production means the service accepts ' +
+        'invented events.',
+    },
+  ],
 }
 
-/** Selectors that apply to ordinary application and test code. */
-const BASE_SELECTORS = ['processEnv', 'dedupeKey', 'piiLogger', 'focusedTests', 'outboxTx', 'queueNames']
+/**
+ * Selectors that apply to ordinary application and test code.
+ *
+ * ADD NEW SELECTORS HERE, never in a standalone block. `no-restricted-syntax` in a later block
+ * REPLACES the array rather than merging it — so a block that sets its own selectors silently
+ * switches every other one off for the files it matches. Measured: adding the providerFakes rule as
+ * its own block disabled the PII logger check across every application source file, and the only
+ * thing that noticed was the lint-contract test.
+ *
+ * (Note for the next editor: do not write a glob containing a star-slash inside a block comment.
+ * It closes the comment. That is how this very note got broken the first time it was written.)
+ */
+const BASE_SELECTORS = [
+  'processEnv',
+  'dedupeKey',
+  'piiLogger',
+  'focusedTests',
+  'outboxTx',
+  'queueNames',
+  'providerFakes',
+]
 
 /**
  * Compose a `no-restricted-syntax` value. Accepts SELECTORS keys and raw selector objects. Always
@@ -292,6 +329,50 @@ const restrict = (...items) => [
   'error',
   ...items.flatMap((item) => (typeof item === 'string' ? SELECTORS[item] : [item])),
 ]
+
+/**
+ * `no-restricted-imports` groups, and the same composition discipline SELECTORS uses.
+ *
+ * NECESSARY FOR THE SAME REASON. A later block setting `no-restricted-imports` REPLACES the value
+ * rather than merging it — measured: adding the adapter-boundary block switched off the tstz()
+ * guard on packages/db/src/schema, so `timestamp` from drizzle-orm/pg-core became importable again
+ * with nothing to say so. Compose with restrictImports() and every block states its full set.
+ */
+const IMPORT_RESTRICTIONS = {
+  /**
+   * T19, SPEC.md §3.1: packages/adapters is the only place a provider's own shapes may exist. Its
+   * index is the boundary — a deep import couples a core module to an adapter's internals while
+   * looking like an ordinary import.
+   */
+  adapterBoundary: {
+    patterns: [
+      {
+        group: ['@helloreview/adapters/*', '**/packages/adapters/src/**'],
+        message:
+          'Import from @helloreview/adapters — its index is the provider boundary (SPEC.md §3.1). ' +
+          'A deep import couples this module to the internals of a provider adapter.',
+      },
+    ],
+  },
+
+  /** SPEC.md §8: every timestamp column is timestamptz, which tstz() is the only way to get. */
+  drizzleTimestamp: {
+    paths: [
+      {
+        name: 'drizzle-orm/pg-core',
+        importNames: ['timestamp'],
+        message: 'Use tstz() from ../columns.js — SPEC.md §8 requires timestamptz.',
+      },
+    ],
+  },
+}
+
+/** Compose a `no-restricted-imports` value from named groups. Always use this, never a literal. */
+const restrictImports = (...keys) => {
+  const paths = keys.flatMap((key) => IMPORT_RESTRICTIONS[key].paths ?? [])
+  const patterns = keys.flatMap((key) => IMPORT_RESTRICTIONS[key].patterns ?? [])
+  return ['error', { ...(paths.length > 0 ? { paths } : {}), ...(patterns.length > 0 ? { patterns } : {}) }]
+}
 
 // -----------------------------------------------------------------------------------------------
 
@@ -477,14 +558,49 @@ export default defineConfig([
     rules: { 'no-restricted-syntax': restrict(...BASE_SELECTORS, 'reasonCodeCasing') },
   },
 
-  // Build and operational scripts. These legitimately read the environment and print to stdout.
-  // The exemption is written out by name rather than switching the whole rule off, so it is
+  // Build and operational scripts, and tests. These legitimately read the environment and print to
+  // stdout. The exemption is written out by name rather than switching the whole rule off, so it is
   // obvious exactly which convention is relaxed and which still apply.
+  //
+  // `providerFakes` is relaxed here too, and only here. Tests are the reason fakes exist (T19): the
+  // conformance suite has to import the fake in order to hold it to the same contract a real
+  // adapter will be held to. The ban is on APPLICATION code shipping one, which apps/*/src still
+  // gets from BASE_SELECTORS.
   {
     files: TOOLING,
     rules: {
       'no-console': 'off',
-      'no-restricted-syntax': restrict(...BASE_SELECTORS.filter((key) => key !== 'processEnv')),
+      'no-restricted-syntax': restrict(
+        ...BASE_SELECTORS.filter((key) => key !== 'processEnv' && key !== 'providerFakes'),
+      ),
+    },
+  },
+
+  // The provider boundary (T19, SPEC.md §3.1).
+  //
+  // Placed BEFORE the narrower blocks below, deliberately. This block matches packages/*/src/**,
+  // which includes packages/db/src/schema — and `no-restricted-imports` REPLACES rather than
+  // merges, so sitting after the db block switched off the tstz() guard there. Broad blocks first,
+  // narrow blocks last, and every narrow block re-lists what it still wants.
+  //
+  // packages/adapters is the ONLY place a provider's own shapes may exist. Everything behind it
+  // sees a §18 PlatformEvent, which is what makes "swap the fake for the real Kakao adapter" a
+  // change confined to one package.
+  //
+  // Two restrictions, each closing a different way that boundary erodes:
+  //
+  //   1. NO DEEP IMPORTS. Reaching into `@helloreview/adapters/dist/adapters/kakao/...` couples a
+  //      core module to a provider's internals while looking like an ordinary import. The package
+  //      index is the surface; a type not exported there is not part of the contract.
+  //   2. NO FAKES IN PRODUCTION CODE. A fake adapter imported by apps/** would ship. This is not
+  //      hypothetical caution — a fake that satisfies the same interface is exactly the kind of
+  //      import that survives review, and the symptom is a deployed service that silently accepts
+  //      invented events. Tests may import it freely; that is what it is for.
+  {
+    files: ['apps/**/*.{ts,mts,cts}', 'packages/*/src/**/*.{ts,mts,cts}'],
+    ignores: ['packages/adapters/src/**'],
+    rules: {
+      'no-restricted-imports': restrictImports('adapterBoundary'),
     },
   },
 
@@ -501,18 +617,9 @@ export default defineConfig([
   {
     files: ['packages/db/src/schema/**/*.ts'],
     rules: {
-      'no-restricted-imports': [
-        'error',
-        {
-          paths: [
-            {
-              name: 'drizzle-orm/pg-core',
-              importNames: ['timestamp'],
-              message: 'Use tstz() from ../columns.js — SPEC.md §8 requires timestamptz.',
-            },
-          ],
-        },
-      ],
+      // BOTH groups. The adapter boundary applies to every workspace, and naming it here is what
+      // stops this narrower block from switching it off for db schema files.
+      'no-restricted-imports': restrictImports('drizzleTimestamp', 'adapterBoundary'),
     },
   },
 

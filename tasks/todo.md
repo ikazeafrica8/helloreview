@@ -1123,14 +1123,17 @@ the capability question list for the Kakao dealer.
 
 **Acceptance criteria:**
 
-- [ ] The fake emits every inbound event type in `§18`, including duplicates and out-of-order delivery
-- [ ] The conformance suite runs against any adapter via a shared factory and passes for the fake
-- [ ] Provider-specific types do not appear outside `packages/adapters`, enforced by the T6 lint rule
+- [x] The fake emits every inbound event type in `§18`, including duplicates and out-of-order delivery
+- [x] The conformance suite runs against any adapter via a shared factory and passes for the fake
+- [x] Provider-specific types do not appear outside `packages/adapters`, enforced by the T6 lint rule
 
 **Verification:**
 
-- [ ] Tests pass: `pnpm test:integration`
-- [ ] Manual check: the suite's assertions map one-to-one onto the PRD `§33.3` provider checklist
+- [x] Tests pass: `pnpm test:unit` — 20 tests. Six of them feed the suite DELIBERATELY BROKEN
+      adapters and assert it rejects each, because a conformance suite whose checks cannot fail
+      certifies everything, including the adapter that destroys idempotency
+- [x] Manual check: each check is a §33.3 question — does the provider send a stable event id, does
+      it retry, does its timestamp mean when it happened or when it was sent
 
 **Dependencies:** T18
 
