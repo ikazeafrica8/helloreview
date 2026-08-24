@@ -87,6 +87,25 @@ const replayWindowSeconds = z
       .refine((value) => value >= 30 && value <= 3_600, { message: 'must be between 30 and 3600 seconds' }),
   )
 
+const boundedSeconds = (fallback: string, minimum: number, maximum: number) =>
+  z
+    .string()
+    .optional()
+    .transform((value) => value ?? fallback)
+    .pipe(
+      z
+        .string()
+        .regex(/^\d+$/, { message: 'must be a whole number of seconds' })
+        .transform(Number)
+        .refine((value) => value >= minimum && value <= maximum, {
+          message: `must be between ${String(minimum)} and ${String(maximum)} seconds`,
+        }),
+    )
+
+const reconciliationWindowSeconds = boundedSeconds('300', 30, 86_400)
+const reconciliationRetrySeconds = boundedSeconds('30', 1, 3_600)
+const applicationFreshnessSeconds = boundedSeconds('900', 30, 86_400)
+
 /** Everything the api reads. */
 export const apiConfigSchema = z.object({
   DATABASE_URL: connectableUrl(['postgres:', 'postgresql:']),
@@ -96,6 +115,9 @@ export const apiConfigSchema = z.object({
   MASKING_PEPPER: pepper,
   WEBHOOK_SECRET_WEBSITE: webhookSecret,
   WEBHOOK_REPLAY_WINDOW_SECONDS: replayWindowSeconds,
+  APPLICATION_RECONCILIATION_WINDOW_SECONDS: reconciliationWindowSeconds,
+  APPLICATION_RECONCILIATION_RETRY_SECONDS: reconciliationRetrySeconds,
+  APPLICATION_FRESHNESS_THRESHOLD_SECONDS: applicationFreshnessSeconds,
 })
 
 /**
@@ -109,6 +131,15 @@ export const workerConfigSchema = apiConfigSchema.pick({
   DATABASE_URL: true,
   REDIS_URL: true,
   NODE_ENV: true,
+  MASKING_PEPPER: true,
+  APPLICATION_RECONCILIATION_WINDOW_SECONDS: true,
+  APPLICATION_RECONCILIATION_RETRY_SECONDS: true,
+  APPLICATION_FRESHNESS_THRESHOLD_SECONDS: true,
+})
+
+/** The operator CSV command needs database DML and keyed digests, but no HTTP or Redis config. */
+export const applicationImportConfigSchema = apiConfigSchema.pick({
+  DATABASE_URL: true,
   MASKING_PEPPER: true,
 })
 

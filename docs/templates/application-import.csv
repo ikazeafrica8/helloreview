@@ -1,0 +1,2 @@
+application_id,campaign_code,application_status,applicant_name,phone_normalized,blog_url,blogger_level,blog_daily_visitors,blogger_region,submitted_at,updated_at
+example-application-001,pilot-campaign,received,Example Applicant,+821012345678,https://example.com/blog,1,1250,서울,2026-08-24T01:00:00Z,2026-08-24T01:05:00Z

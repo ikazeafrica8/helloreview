@@ -159,6 +159,7 @@ export default defineConfig({
         '**/*-validator.ts': { branches: 100, lines: 100 },
         '**/dedupe-key.ts': { branches: 100, lines: 100 },
         '**/rules-engine/**': { branches: 100, lines: 100 },
+        '**/modules/identity-resolution/matching-table.ts': { branches: 100, lines: 100 },
 
         // The §14 state model.
         '**/modules/selection/**': { lines: 90 },

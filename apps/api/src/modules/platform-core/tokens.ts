@@ -5,5 +5,7 @@
 
 export const APP_CONFIG = Symbol('APP_CONFIG')
 export const APP_LOGGER = Symbol('APP_LOGGER')
-export const POSTGRES_POOL = Symbol('POSTGRES_POOL')
+// Defined by the DB package so business modules can inject the pool without bypassing the
+// capability graph to import platform-core directly.
+export { POSTGRES_POOL } from '@helloreview/db'
 export const REDIS_CLIENT = Symbol('REDIS_CLIENT')

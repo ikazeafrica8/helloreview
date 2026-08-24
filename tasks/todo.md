@@ -175,25 +175,25 @@ Every fix carries a test that was verified to FAIL without it.
 - [x] T21 — Campaigns and versioned rules
 - [x] T22 — Time windows and blackouts
 - [x] T23 — Business details and approved aliases
-- [ ] T24 — Guideline, terms, and template versions
-- [ ] T25 — Campaign activation validation
-- [ ] T26 — Website adapter port, fake, and applications schema
-- [ ] T27 — Application reconciliation and freshness
+- [x] T24 — Guideline, terms, and template versions
+- [x] T25 — Campaign activation validation
+- [x] T26 — Website adapter port, fake, and applications schema
+- [x] T27 — Application reconciliation and freshness
 
 ### Phase 4 — Identity
 
-- [ ] T28 — Participants, channel identities, phone normalization
-- [ ] T29 — Matching decision table (`§16.1`)
-- [ ] T30 — Application verification token
-- [ ] T31 — Ambiguity and campaign disambiguation
-- [ ] T32 — Human review tasks (minimal)
+- [x] T28 — Participants, channel identities, phone normalization
+- [x] T29 — Matching decision table (`§16.1`)
+- [x] T30 — Application verification token
+- [x] T31 — Ambiguity and campaign disambiguation
+- [x] T32 — Human review tasks (minimal)
 - [ ] T33 — **AC-04**: ambiguous identity
 
 ### Checkpoint C — Identity proven
 
 - [ ] AC-04 passes and no candidate applicant detail is disclosed in any participant-facing output
-- [ ] Name-only matching is rejected (`FR-ID-001`) with a test proving it
-- [ ] Matching decision table is at 100% branch coverage
+- [x] Name-only matching is rejected (`FR-ID-001`) with a test proving it
+- [x] Matching decision table is at 100% branch coverage
 - [ ] Review with human before proceeding
 
 ### Phase 5 — Workflow core
@@ -1489,14 +1489,16 @@ once published, all referenced by exact version from consent records and deliver
 
 **Acceptance criteria:**
 
-- [ ] `UNIQUE(campaign_id, version)` for guidelines and `UNIQUE(purpose_code, version)` for templates hold
-- [ ] Publishing freezes content; editing a published version is rejected and requires a new version
-- [ ] Templates carry a legal classification field (`§21.9`) and a draft / approved / active / retired state
+- [x] `UNIQUE(campaign_id, version)` for guidelines and `UNIQUE(purpose_code, version)` for templates hold
+- [x] Publishing freezes content; editing a published version is rejected and requires a new version
+- [x] Templates carry a legal classification field (`§21.9`) and a draft / approved / active / retired state
 
 **Verification:**
 
-- [ ] Tests pass: `pnpm test:integration`
-- [ ] Manual check: publish, attempt an edit, confirm rejection, create a new version successfully
+- [x] Tests pass: `pnpm test:integration` — 18 files, 131 tests against migrated PostgreSQL/Redis;
+      the five focused T24 tests cover both version keys, lifecycle transitions and provider approval
+- [x] Manual check: automated against PostgreSQL — publish v1, reject its edit and deletion, then
+      publish v2 while v1 remains immutable and queryable as superseded
 
 **Dependencies:** T21
 
@@ -1513,14 +1515,16 @@ Validation runs before activation and names every missing requirement rather tha
 
 **Acceptance criteria:**
 
-- [ ] Activation is rejected when required rules, windows, templates, or guideline versions are absent
-- [ ] The rejection lists every missing item, each with a reason code
-- [ ] An invalid campaign type and visit method combination is rejected (`FR-ADM-002`, `§16.4`)
+- [x] Activation is rejected when required rules, windows, templates, or guideline versions are absent
+- [x] The rejection lists every missing item, each with a reason code
+- [x] An invalid campaign type and visit method combination is rejected (`FR-ADM-002`, `§16.4`)
 
 **Verification:**
 
-- [ ] Tests pass: `pnpm test:unit`
-- [ ] Manual check: activate a partially configured campaign and read the full missing-item list
+- [x] Tests pass: `pnpm test:unit` — 16 files, 297 tests; 11 activation-validator cases cover all
+      five valid routes, invalid combinations, complete aggregation and duplicate inventory
+- [x] Manual check: a partially configured payback snapshot returns all five remaining omissions in
+      deterministic order, with a stable reason code and item name for each
 
 **Dependencies:** T22, T23, T24
 
@@ -1538,14 +1542,26 @@ remains the source of truth; nothing here creates an application from a particip
 
 **Acceptance criteria:**
 
-- [ ] The unique constraint holds and repeated synchronization updates one record rather than creating duplicates (`FR-APP-002`)
-- [ ] Source event id and source timestamp are preserved on every change (`FR-APP-003`)
-- [ ] Application states distinguish received, completed, matched, ambiguous, cancelled, and synchronized-late (`FR-APP-004`)
+- [x] The unique constraint holds and repeated synchronization updates one record rather than creating duplicates (`FR-APP-002`)
+- [x] Source event id and source timestamp are preserved on every change (`FR-APP-003`)
+- [x] Application states distinguish received, completed, matched, ambiguous, cancelled, and synchronized-late (`FR-APP-004`)
 
 **Verification:**
 
-- [ ] Tests pass: `pnpm test:integration`
-- [ ] Manual check: replay the same application event and confirm one record, one logical change
+- [x] Tests pass: `pnpm test:integration` — 19 files, 132 tests; the focused T26/T27
+      PostgreSQL scenario covers event replay, a newer version, immutable source evidence and every state
+- [x] Manual check: automated against PostgreSQL — replaying the same create event leaves one
+      application and one change; version 2 updates that row and appends exactly one new change
+
+> **Notes.**
+>
+> 1. **The website is the only authority.** Its port exposes reads and validated application events;
+>    it has no write method, and application-sync accepts no participant-message command.
+> 2. **Current state and evidence are separate.** `applications` is the one-row projection, while
+>    `application_changes` is append-only by an `ENABLE ALWAYS` trigger. Every applied source
+>    version retains its source event id, source occurrence time and synchronization method.
+> 3. **Idempotency has two keys.** Source event id stops literal replay; source application version
+>    stops a poll and a later webhook with different event ids from recording the same transition.
 
 **Dependencies:** T19, T21
 
@@ -1564,14 +1580,33 @@ recent website applications over a configurable retry window before declaring no
 
 **Acceptance criteria:**
 
-- [ ] A configurable retry window elapses, with reconciliation attempts, before a no-match conclusion
-- [ ] Last successful reconciliation time is queryable per source, and staleness is a computed flag
-- [ ] Reconciliation is idempotent — a late-arriving event for an already-reconciled application produces no second transition
+- [x] A configurable retry window elapses, with reconciliation attempts, before a no-match conclusion
+- [x] Last successful reconciliation time is queryable per source, and staleness is a computed flag
+- [x] Reconciliation is idempotent — a late-arriving event for an already-reconciled application produces no second transition
 
 **Verification:**
 
-- [ ] Tests pass: `pnpm test:integration`
-- [ ] Manual check: simulate a delayed application and confirm pending state then resolution
+- [x] Tests pass: focused PostgreSQL integration for reconciliation and manual CSV import;
+      `pnpm verify` also passes 19 unit files / 330 tests, typecheck, lint and transition checks
+- [x] Manual check: automated with the website fake and migrated PostgreSQL — the first empty poll
+      stays pending, an early retry does no work, and the next due poll resolves the delayed record
+
+> **Notes.**
+>
+> 1. **No match is a bounded conclusion, not an empty first response.** Empty successful reads stay
+>    pending until the configured deadline. A website outage at the deadline becomes `failed`, not
+>    a false `no_match`.
+> 2. **Freshness means successful read-back.** The source row records the last attempted and last
+>    successful reconciliation separately; staleness is computed at query time from the configured
+>    threshold, and failures retain a stable reason code plus consecutive-failure count.
+> 3. **The processor is dependency-injected.** The real website read API is still an open provider
+>    contract, so the worker exposes a BullMQ handler factory rather than importing the fake into
+>    application code. The fake and a future real adapter satisfy the same read-only port.
+> 4. **Pilot fallback without vendor access.** A strict operator-run CSV importer is used when the
+>    outsourced website exposes neither an API, webhook, nor database credential. It records keyed
+>    batch evidence without retaining the PII-bearing file, rejects unknown campaigns before writes,
+>    and assigns local monotonic versions so an older export cannot reverse current state. See
+>    `docs/manual-application-import.md`.
 
 **Dependencies:** T26
 
@@ -1591,9 +1626,9 @@ forms. A phone number is explicitly not globally unique — shared numbers exist
 
 **Acceptance criteria:**
 
-- [ ] Korean local (`010-1234-5678`, `01012345678`) and international (`+821012345678`) forms normalize identically
-- [ ] `UNIQUE(provider, external_user_id)` holds; phone has an index but no unique constraint
-- [ ] Normalization is a pure function with its own exhaustive test table
+- [x] Korean local (`010-1234-5678`, `01012345678`) and international (`+821012345678`) forms normalize identically
+- [x] `UNIQUE(provider, external_user_id)` holds; phone has an index but no unique constraint
+- [x] Normalization is a pure function with its own exhaustive test table
 
 **Verification:**
 
@@ -1606,6 +1641,16 @@ forms. A phone number is explicitly not globally unique — shared numbers exist
 
 **Estimated scope:** M
 
+> **Implementation note (2026-08-24):** `participants` and `channel_identities` are defined in
+> `packages/db/src/schema/participants.ts`, with migration
+> `0016_add_participants_and_channel_identities`. Phone and blog URL are candidate evidence rather
+> than global identity keys. `normalizeKoreanMobilePhone()` accepts the tested Korean local,
+> international, dial-prefix, optional-trunk and full-width forms and rejects landlines, foreign,
+> legacy-prefix, malformed and extension-bearing values without echoing the raw phone in errors.
+> The 26-case unit suite and `pnpm db:check` pass. The focused PostgreSQL test includes the required
+> two-participants-one-phone proof and provider namespace collision, but remains pending execution
+> because no container runtime is available on this machine.
+
 ---
 
 ## T29 — Matching decision table (`§16.1`)
@@ -1616,21 +1661,27 @@ evidence recorded (`FR-ID-012`). Name-only matching is structurally impossible, 
 
 **Acceptance criteria:**
 
-- [ ] Every row of `§16.1` has a test, and the function is at 100% branch coverage
-- [ ] A name-only candidate can only return Weak Match, never a binding result (`FR-ID-001`)
-- [ ] The result carries method, evidence category, and timestamp for the audit record (`FR-ID-002`)
+- [x] Every row of `§16.1` has a test, and the function is at 100% branch coverage
+- [x] A name-only candidate can only return Weak Match, never a binding result (`FR-ID-001`)
+- [x] The result carries method, evidence category, and timestamp for the audit record (`FR-ID-002`)
 
 **Verification:**
 
-- [ ] Tests pass: `pnpm test:unit`
-- [ ] Coverage: 100% branch on the decision function
-- [ ] Manual check: each `§16.1` row maps to a named test case
+- [x] Tests pass: `pnpm test:unit`
+- [x] Coverage: 100% branch on the decision function
+- [x] Manual check: each `§16.1` row maps to a named test case
 
 **Dependencies:** T28
 
 **Files likely touched:** `apps/api/src/modules/identity-resolution/matching-table.ts`, `apps/api/src/modules/identity-resolution/matching-table.spec.ts`, `apps/api/src/modules/identity-resolution/reason-codes.ts`
 
 **Estimated scope:** M
+
+> **Implementation note (2026-08-24):** `matching-table.ts` implements all nine `§16.1` rows as
+> one pure exhaustive switch, including both policy-controlled branches. The named 12-test suite
+> passes and focused V8 coverage reports 18/18 statements, 15/15 branches, and 3/3 functions. A
+> file-specific 100% line/branch release threshold now protects the table. Name-and-campaign-only
+> evidence is structurally limited to Weak Match and cannot authorize a link.
 
 ---
 
@@ -1641,9 +1692,9 @@ matching evidence (`FR-ID-003`), with expiry and single-use semantics.
 
 **Acceptance criteria:**
 
-- [ ] A valid token resolves to exactly its intended application and yields a Verified result
-- [ ] Expired, reused, or unknown tokens fail closed and do not degrade to a weaker match
-- [ ] Tokens are compared in constant time and never logged
+- [x] A valid token resolves to exactly its intended application and yields a Verified result
+- [x] Expired, reused, or unknown tokens fail closed and do not degrade to a weaker match
+- [x] Tokens are compared in constant time and never logged
 
 **Verification:**
 
@@ -1656,6 +1707,14 @@ matching evidence (`FR-ID-003`), with expiry and single-use semantics.
 
 **Estimated scope:** S
 
+> **Implementation note (2026-08-24):** Website tokens are stored only as keyed HMAC-SHA-256
+> digests, compared through `timingSafeEqual` on fixed-size buffers (including the unknown-token
+> path), locked transactionally, expired fail-closed, and consumed once. The focused unit and
+> security tests pass. The focused real-PostgreSQL token lifecycle test is implemented but cannot
+> execute on this machine because Testcontainers reports
+> `Could not find a working container runtime strategy`; the full security tier also cannot connect
+> to its required PostgreSQL endpoint at `127.0.0.1:15432`.
+
 ---
 
 ## T31 — Ambiguity and campaign disambiguation
@@ -1666,20 +1725,27 @@ campaigns requires disambiguation before any campaign-specific state changes (`F
 
 **Acceptance criteria:**
 
-- [ ] No participant-facing output derived from an ambiguous result contains any candidate's name, phone, or application detail
-- [ ] Several active campaigns for one participant blocks campaign-specific transitions until context resolves
-- [ ] A candidate already linked to a different participant produces a security-review path, not a silent rebind
+- [x] No participant-facing output derived from an ambiguous result contains any candidate's name, phone, or application detail
+- [x] Several active campaigns for one participant blocks campaign-specific transitions until context resolves
+- [x] A candidate already linked to a different participant produces a security-review path, not a silent rebind
 
 **Verification:**
 
 - [ ] Tests pass: `pnpm test:security`
-- [ ] Manual check: two matching applications produce a disambiguation request revealing neither
+- [x] Manual check: two matching applications produce a disambiguation request revealing neither
 
 **Dependencies:** T29
 
 **Files likely touched:** `apps/api/src/modules/identity-resolution/ambiguity.service.ts`
 
 **Estimated scope:** M
+
+> **Implementation note (2026-08-24):** `IdentityAmbiguityService` persists an idempotent decision
+> and uses fixed, non-candidate-derived participant messages. Multi-campaign context keeps all
+> campaign-specific transitions closed until a valid active campaign is selected. An application
+> linked to a foreign participant takes precedence and creates the security-review path. The
+> focused unit and security non-disclosure tests pass; the full security tier remains
+> environment-blocked by its unavailable PostgreSQL endpoint.
 
 ---
 
@@ -1691,9 +1757,9 @@ return-to-automation land in Milestone 3.
 
 **Acceptance criteria:**
 
-- [ ] A task records workflow, reason code, priority, and status, with case data masked by default (`FR-HUM-003`)
-- [ ] Priority follows the `§16.11` handoff table for the conditions implemented so far
-- [ ] Creating a task pauses ordinary automation for that workflow
+- [x] A task records workflow, reason code, priority, and status, with case data masked by default (`FR-HUM-003`)
+- [x] Priority follows the `§16.11` handoff table for the conditions implemented so far
+- [x] Creating a task pauses ordinary automation for that workflow
 
 **Verification:**
 
@@ -1706,6 +1772,13 @@ return-to-automation land in Milestone 3.
 
 **Estimated scope:** M
 
+> **Implementation note (2026-08-24):** Migration
+> `0017_add_identity_resolution_and_human_review` adds the durable resolution, token, and minimal
+> human-task records. Human tasks use a unique resolution deduplication key, code-only masked case
+> packet, persisted priority/status, and `automation_paused=true`. All 13 `§16.11` priority rows and
+> masked task construction pass unit tests. The real-PostgreSQL persistence assertion is present in
+> AC-04 but remains environment-blocked by the unavailable container runtime.
+
 ---
 
 ## T33 — AC-04: ambiguous identity
@@ -1716,8 +1789,8 @@ phone and campaign produce an Ambiguous state, a human review task, and no discl
 **Acceptance criteria:**
 
 - [ ] The Gherkin scenario is implemented as written and passes
-- [ ] The test asserts that no participant-facing output contains either applicant's details
-- [ ] The test runs in the e2e tier and gates release
+- [x] The test asserts that no participant-facing output contains either applicant's details
+- [x] The test runs in the e2e tier and gates release
 
 **Verification:**
 
@@ -1729,6 +1802,13 @@ phone and campaign produce an Ambiguous state, a human review task, and no discl
 **Files likely touched:** `tests/e2e/ac-04-ambiguous-identity.spec.ts`
 
 **Estimated scope:** S
+
+> **Implementation note (2026-08-24):** `tests/e2e/ac-04-ambiguous-identity.test.mjs` creates two
+> active same-phone/same-campaign applications and proves Ambiguous state, closed transitions,
+> candidate non-disclosure, one high-priority paused human task, and replay idempotency. It is in
+> the release-gating e2e tier. Its focused run reaches only the Testcontainers startup boundary on
+> this machine and remains pending until Docker or another compatible container runtime is
+> available.
 
 ---
 

@@ -1,0 +1,25 @@
+import { HUMAN_REVIEW_REASON, type HumanReviewReasonCode } from './reason-codes.js'
+
+export type HumanReviewPriority = 'normal' | 'high' | 'critical'
+
+/** The implemented PRD §16.11 handoff-priority table. */
+export const humanReviewPriority = (reasonCode: HumanReviewReasonCode): HumanReviewPriority => {
+  switch (reasonCode) {
+    case HUMAN_REVIEW_REASON.PARTICIPANT_REQUESTED_PERSON:
+    case HUMAN_REVIEW_REASON.MISSING_SCORE_OR_PROVIDER_OUTAGE:
+    case HUMAN_REVIEW_REASON.BORDERLINE_SELECTION:
+    case HUMAN_REVIEW_REASON.UNKNOWN_INTENT_AFTER_RETRIES:
+      return 'normal'
+    case HUMAN_REVIEW_REASON.COMPLAINT:
+    case HUMAN_REVIEW_REASON.IDENTITY_AMBIGUOUS:
+    case HUMAN_REVIEW_REASON.IDENTITY_CONFLICT:
+    case HUMAN_REVIEW_REASON.SUSPICIOUS_SCREENSHOT:
+    case HUMAN_REVIEW_REASON.REPEATED_FAILED_VERIFICATION:
+    case HUMAN_REVIEW_REASON.PERSONAL_DATA_REQUEST:
+      return 'high'
+    case HUMAN_REVIEW_REASON.VISIT_C_APPROVAL_REVOKED:
+    case HUMAN_REVIEW_REASON.GUIDELINE_MAY_HAVE_BEEN_SENT_PREMATURELY:
+    case HUMAN_REVIEW_REASON.SYSTEM_SECURITY_ALERT:
+      return 'critical'
+  }
+}

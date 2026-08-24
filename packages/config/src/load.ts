@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import type { EnvironmentSource } from './env-source.js'
-import { apiConfigSchema, isSecret, workerConfigSchema } from './schema.js'
+import { applicationImportConfigSchema, apiConfigSchema, isSecret, workerConfigSchema } from './schema.js'
 
 /**
  * Configuration in the shape application code wants.
@@ -20,6 +20,9 @@ export type ApiConfig = Readonly<{
   /** Per-provider webhook signing secrets, keyed by the §18.1 `source` value. */
   webhookSecrets: Readonly<Record<string, string>>
   webhookReplayWindowSeconds: number
+  applicationReconciliationWindowSeconds: number
+  applicationReconciliationRetrySeconds: number
+  applicationFreshnessThresholdSeconds: number
 }>
 
 export type WorkerConfig = Readonly<{
@@ -36,6 +39,15 @@ export type WorkerConfig = Readonly<{
    * change in deployment requirements and is called out here rather than discovered on a rollout.
    */
   databaseUrl: string
+  applicationReconciliationWindowSeconds: number
+  applicationReconciliationRetrySeconds: number
+  applicationFreshnessThresholdSeconds: number
+}>
+
+export type ApplicationImportConfig = Readonly<{
+  databaseUrl: string
+  /** Secret. Keys both batch digests and source-event identities; never logged. */
+  maskingPepper: string
 }>
 
 /** Thrown at startup and never caught: a misconfigured process must not begin serving. */
@@ -96,6 +108,9 @@ export const loadApiConfig = (source: EnvironmentSource): ApiConfig =>
     // the envelope carries rather than by a second name that has to be kept in step.
     webhookSecrets: Object.freeze({ helloreview_website: parsed.WEBHOOK_SECRET_WEBSITE }),
     webhookReplayWindowSeconds: parsed.WEBHOOK_REPLAY_WINDOW_SECONDS,
+    applicationReconciliationWindowSeconds: parsed.APPLICATION_RECONCILIATION_WINDOW_SECONDS,
+    applicationReconciliationRetrySeconds: parsed.APPLICATION_RECONCILIATION_RETRY_SECONDS,
+    applicationFreshnessThresholdSeconds: parsed.APPLICATION_FRESHNESS_THRESHOLD_SECONDS,
   }))
 
 export const loadWorkerConfig = (source: EnvironmentSource): WorkerConfig =>
@@ -104,6 +119,15 @@ export const loadWorkerConfig = (source: EnvironmentSource): WorkerConfig =>
     environment: parsed.NODE_ENV,
     maskingPepper: parsed.MASKING_PEPPER,
     databaseUrl: parsed.DATABASE_URL,
+    applicationReconciliationWindowSeconds: parsed.APPLICATION_RECONCILIATION_WINDOW_SECONDS,
+    applicationReconciliationRetrySeconds: parsed.APPLICATION_RECONCILIATION_RETRY_SECONDS,
+    applicationFreshnessThresholdSeconds: parsed.APPLICATION_FRESHNESS_THRESHOLD_SECONDS,
+  }))
+
+export const loadApplicationImportConfig = (source: EnvironmentSource): ApplicationImportConfig =>
+  load(applicationImportConfigSchema, source, (parsed) => ({
+    databaseUrl: parsed.DATABASE_URL,
+    maskingPepper: parsed.MASKING_PEPPER,
   }))
 
 /**

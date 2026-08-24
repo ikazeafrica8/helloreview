@@ -23,3 +23,45 @@ export type {
 } from './campaign-businesses.js'
 export type { CampaignBlackoutRow, NewCampaignBlackoutRow } from './campaign-blackouts.js'
 export type { EventInboxRow, NewEventInboxRow } from './event-inbox.js'
+export { guidelineVersions } from './guideline-versions.js'
+export type { GuidelineVersionRow, NewGuidelineVersionRow } from './guideline-versions.js'
+export { messageTemplates, messageTemplateStatusEnum, messageLegalClassificationEnum } from './message-templates.js'
+export type { MessageTemplateRow, NewMessageTemplateRow } from './message-templates.js'
+export {
+  applications,
+  applicationChanges,
+  applicationReconciliations,
+  applicationSourceFreshness,
+  applicationImportBatches,
+  applicationStatusEnum,
+  applicationSyncMethodEnum,
+  reconciliationStatusEnum,
+} from './applications.js'
+export { participants, channelIdentities, channelIdentityVerificationStateEnum } from './participants.js'
+export type { ParticipantRow, NewParticipantRow, ChannelIdentityRow, NewChannelIdentityRow } from './participants.js'
+export {
+  applicationVerificationTokens,
+  identityResolutionCases,
+  identityMatchCategoryEnum,
+  identityResolutionStatusEnum,
+} from './identity-resolution.js'
+export { humanReviewTasks, humanReviewPriorityEnum, humanReviewStatusEnum } from './human-review-tasks.js'
+export type { HumanReviewTaskRow, NewHumanReviewTaskRow } from './human-review-tasks.js'
+export type {
+  ApplicationVerificationTokenRow,
+  NewApplicationVerificationTokenRow,
+  IdentityResolutionCaseRow,
+  NewIdentityResolutionCaseRow,
+} from './identity-resolution.js'
+export type {
+  ApplicationRow,
+  NewApplicationRow,
+  ApplicationChangeRow,
+  NewApplicationChangeRow,
+  ApplicationReconciliationRow,
+  NewApplicationReconciliationRow,
+  ApplicationSourceFreshnessRow,
+  NewApplicationSourceFreshnessRow,
+  ApplicationImportBatchRow,
+  NewApplicationImportBatchRow,
+} from './applications.js'

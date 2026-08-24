@@ -28,5 +28,16 @@ export {
 export type { ContractErrorStatus } from './errors.js'
 
 // FR-MSG-002 message purpose codes.
-export { MESSAGE_PURPOSES, ALL_MESSAGE_PURPOSES, isMessagePurpose } from './purposes.js'
+export {
+  MESSAGE_PURPOSES,
+  ALL_MESSAGE_PURPOSES,
+  PARAMETERISED_PURPOSES,
+  PARAMETERISED_TEMPLATE_PURPOSES,
+  PURPOSE_PARAMETER_SEPARATOR,
+  isMessagePurpose,
+  composePurpose,
+  purposeStem,
+  isWellFormedPurposeCode,
+  isWellFormedTemplatePurposeCode,
+} from './purposes.js'
 export type { MessagePurpose } from './purposes.js'

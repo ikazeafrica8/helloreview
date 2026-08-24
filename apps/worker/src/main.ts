@@ -64,7 +64,7 @@ const bootstrap = async (): Promise<void> => {
 
   logger.info(
     queues.length === 0
-      ? 'ready — 0 processors registered (T27, T45 and T55 add them; see src/processors/index.ts)'
+      ? 'ready — 0 concrete provider processors registered; see src/processors/index.ts'
       : `ready — ${String(queues.length)} processor(s): ${queues.join(', ')}`,
     { operation: 'worker.ready', result: 'ok', count: queues.length },
   )

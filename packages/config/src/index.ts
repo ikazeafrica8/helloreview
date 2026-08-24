@@ -7,8 +7,14 @@
 
 export { readEnvironment } from './env-source.js'
 export type { EnvironmentSource } from './env-source.js'
-export { loadApiConfig, loadWorkerConfig, redactEnvironment, ConfigurationError } from './load.js'
-export type { ApiConfig, WorkerConfig, Environment } from './load.js'
-export { apiConfigSchema, workerConfigSchema, SECRET_KEYS, isSecret } from './schema.js'
+export {
+  loadApiConfig,
+  loadWorkerConfig,
+  loadApplicationImportConfig,
+  redactEnvironment,
+  ConfigurationError,
+} from './load.js'
+export type { ApiConfig, WorkerConfig, ApplicationImportConfig, Environment } from './load.js'
+export { apiConfigSchema, workerConfigSchema, applicationImportConfigSchema, SECRET_KEYS, isSecret } from './schema.js'
 
 export { redisConnectionOptions } from './redis-connection.js'
