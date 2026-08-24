@@ -8,6 +8,9 @@ import { IdentityResolutionModule } from './modules/identity-resolution/index.js
 import { HumanTasksModule } from './modules/human-tasks/index.js'
 import { WorkflowCoreModule } from './modules/workflow-core/index.js'
 import { MessagingModule } from './modules/messaging/index.js'
+import { RulesEngineModule } from './modules/rules-engine/index.js'
+import { BusinessApprovalModule } from './modules/business-approval/index.js'
+import { GuidelineDeliveryModule } from './modules/guideline-delivery/index.js'
 
 /**
  * Composition root. Every capability-map module from SPEC.md §3.1 is imported here as it lands, in
@@ -24,6 +27,9 @@ import { MessagingModule } from './modules/messaging/index.js'
     WorkflowCoreModule,
     MessagingModule,
     HumanTasksModule,
+    RulesEngineModule,
+    BusinessApprovalModule,
+    GuidelineDeliveryModule,
   ],
 })
 export class AppModule {}

@@ -121,6 +121,10 @@ try {
   await client.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO ${PRIVILEGE_GROUP}`)
   await client.query(`GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO ${PRIVILEGE_GROUP}`)
   await client.query(`REVOKE UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER ON audit_logs FROM ${PRIVILEGE_GROUP}`)
+  await client.query(
+    `REVOKE UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER
+       ON business_approvals, guideline_delivery_attempts FROM ${PRIVILEGE_GROUP}`,
+  )
 
   // The function revoke, repeated from the migration for a case the migration cannot reach: this
   // runs AFTER every migration, so a SECURITY DEFINER function created by a LATER migration is

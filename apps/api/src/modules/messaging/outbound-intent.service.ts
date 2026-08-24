@@ -71,6 +71,32 @@ const statusColumn = (row: Record<string, unknown>): OutboundNotificationStatus 
   throw new Error('outbound intent query returned invalid status')
 }
 
+const assertVisitCBookingAuthorized = async (
+  tx: DbTransaction,
+  workflow: Record<string, unknown>,
+  command: EnqueueOutboundIntent,
+): Promise<void> => {
+  if (command.purpose !== MESSAGE_PURPOSES.VISIT_C_BOOKING_INSTRUCTIONS) return
+  const approval = await tx.query(
+    `SELECT a.state, a.source, a.campaign_id, a.application_id, a.expires_at, w.visit_method
+       FROM workflow_instances w
+       LEFT JOIN business_approval_heads h ON h.workflow_id = w.id
+       LEFT JOIN business_approvals a ON a.id = h.approval_id AND a.workflow_id = w.id
+      WHERE w.id = $1`,
+    [command.workflowId],
+  )
+  const row = approval.rows[0]
+  const expiresAt = row?.expires_at
+  const current =
+    row?.visit_method === 'visit_c' &&
+    row.state === 'approved' &&
+    (row.source === 'authorized_operator' || row.source === 'authorized_system') &&
+    row.campaign_id === workflow.campaign_id &&
+    row.application_id === workflow.application_id &&
+    (expiresAt === null || (expiresAt instanceof Date && expiresAt.getTime() > command.occurredAt.getTime()))
+  if (!current) throw new OutboundIntentError(MESSAGING_REASON.VISIT_C_APPROVAL_REQUIRED)
+}
+
 @Injectable()
 export class OutboundIntentService {
   constructor(private readonly templates: MessageTemplateRepository) {}
@@ -86,6 +112,7 @@ export class OutboundIntentService {
     )
     const workflowRow = workflow.rows[0]
     if (workflowRow === undefined) throw new OutboundIntentError(MESSAGING_REASON.WORKFLOW_NOT_FOUND)
+    await assertVisitCBookingAuthorized(tx, workflowRow, command)
 
     const ownerResult = await tx.query(
       `SELECT operator_id
