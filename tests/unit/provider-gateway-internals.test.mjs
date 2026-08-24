@@ -63,7 +63,9 @@ describe('build freshness', () => {
     // while testing the previous build. That is a worse failure than no guard, because it looks
     // like one.
     //
-    // `pnpm test:unit` now runs `pnpm build` first, which is the actual fix. This assertion is what
+    // `pnpm test:unit` now runs `pnpm build:fresh` first, which is the actual fix. A normal cached
+    // Turbo build can restore an artifact whose original mtime predates a fresh checkout, so it is
+    // not strong enough for this particular freshness contract. This assertion is what
     // catches the case that fix cannot reach: someone running `npx vitest` directly. It compares
     // timestamps rather than rebuilding, so it is correct regardless of when imports were resolved.
     //
@@ -109,7 +111,7 @@ describe('build freshness', () => {
       stale,
       `This file imports compiled output, and ${String(stale.length)} source file(s) are newer than it.\n` +
         'Every assertion below is therefore about code that is not the code under review.\n' +
-        'Run `pnpm build`, or use `pnpm test:unit`, which builds first.\n\n' +
+        'Run `pnpm build:fresh`, or use `pnpm test:unit`, which forces a fresh build first.\n\n' +
         stale.map((entry) => `    - ${entry}`).join('\n'),
     ).toEqual([])
   })
