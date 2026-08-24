@@ -1,6 +1,7 @@
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres'
 import { Pool } from 'pg'
 import * as schema from './schema/index.js'
+import { runInTransaction, type DbTransaction } from './transaction.js'
 
 /**
  * A connected database handle, plus the escape hatch and the way to close it.
@@ -27,6 +28,9 @@ export type DbClient = Readonly<{
    * where the column types are checked.
    */
   query: (sql: string, parameters?: readonly unknown[]) => Promise<{ rows: Record<string, unknown>[] }>
+
+  /** A branded transaction handle; outbox intents cannot be created without this callback. */
+  transaction: <Result>(operation: (tx: DbTransaction) => Promise<Result>) => Promise<Result>
 
   /** Release every pooled connection. An un-closed pool keeps the Node event loop alive. */
   close: () => Promise<void>
@@ -55,6 +59,7 @@ export const createDbClient = (url: string, poolSize = 10): DbClient => {
       const result = await pool.query<Record<string, unknown>>(sql, [...parameters])
       return { rows: result.rows }
     },
+    transaction: async (operation) => runInTransaction(pool, operation),
     close: async () => {
       await pool.end()
     },

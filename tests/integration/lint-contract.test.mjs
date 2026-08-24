@@ -243,6 +243,42 @@ describe('lint and format toolchain', () => {
     )
   })
 
+  test('T42 rejects a hand-concatenated dedupe key', () => {
+    const relative = withFixture(
+      [
+        'export const bad = (workflowId: string, purpose: string): string => {',
+        '  const dedupeKey = `${workflowId}|${purpose}`',
+        '  return dedupeKey',
+        '}',
+        '',
+      ].join('\n'),
+    )
+    const result = runEslintOnFixture(relative)
+    assert.match(
+      result.stdout,
+      /built only by buildDedupeKey/,
+      `manual dedupe concatenation must fail:\n${result.stdout}`,
+    )
+  })
+
+  test('T43 rejects enqueueIntent when the first argument is not the transaction token', () => {
+    const relative = withFixture(
+      [
+        'const messages = { enqueueIntent: async (_value: unknown): Promise<void> => undefined }',
+        'export const bad = async (): Promise<void> => {',
+        '  await messages.enqueueIntent({})',
+        '}',
+        '',
+      ].join('\n'),
+    )
+    const result = runEslintOnFixture(relative)
+    assert.match(
+      result.stdout,
+      /pass the transaction handle/,
+      `out-of-transaction enqueue must fail:\n${result.stdout}`,
+    )
+  })
+
   test('a later block never silently switches off an earlier restriction', () => {
     // The trap this file's own header warns about, caught twice while T19 landed. Both
     // `no-restricted-syntax` and `no-restricted-imports` REPLACE their value in a later block

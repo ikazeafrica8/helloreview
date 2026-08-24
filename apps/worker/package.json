@@ -10,6 +10,7 @@
     "start": "node dist/main.js"
   },
   "dependencies": {
+    "@helloreview/adapters": "workspace:*",
     "@helloreview/config": "workspace:*",
     "@helloreview/contracts": "workspace:*",
     "@helloreview/db": "workspace:*",

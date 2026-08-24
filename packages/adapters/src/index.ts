@@ -35,3 +35,20 @@ export type { FakeWebsiteApplicationSource } from './fakes/website-fake.js'
 
 export { inboundConformanceChecks } from './conformance/inbound.suite.js'
 export type { ConformanceCheck, InboundConformanceFixtures } from './conformance/inbound.suite.js'
+
+export { OutboundProviderTimeoutError } from './ports/outbound.js'
+export type {
+  OutboundDeliveryResult,
+  OutboundProvider,
+  OutboundSendRequest,
+  OutboundSendResult,
+} from './ports/outbound.js'
+export { createFakeOutboundProvider } from './fakes/outbound-fake.js'
+export type {
+  FakeOutboundProvider,
+  FakeOutboundProviderOptions,
+  FakeReconcileBehavior,
+  FakeSendBehavior,
+} from './fakes/outbound-fake.js'
+export { outboundConformanceChecks } from './conformance/outbound.suite.js'
+export type { OutboundConformanceCheck } from './conformance/outbound.suite.js'

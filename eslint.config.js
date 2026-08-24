@@ -705,6 +705,13 @@ export default defineConfig([
   // minus 'dedupeKey'. Compose it with restrict() — never `'no-restricted-syntax': 'off'`, which
   // would silently drop every other convention.
 
+  {
+    files: ['packages/contracts/src/dedupe-key.ts'],
+    rules: {
+      'no-restricted-syntax': restrict(...BASE_SELECTORS.filter((key) => key !== 'dedupeKey'), 'purity'),
+    },
+  },
+
   // LAST, ALWAYS. Switches off the core rules that would argue with Prettier. Against this exact
   // rule set it disables very little — typescript-eslint v8 deleted all its formatting rules —
   // but it is one dependency and one array entry, and it is insurance against any future plugin

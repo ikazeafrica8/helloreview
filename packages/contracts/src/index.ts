@@ -41,3 +41,7 @@ export {
   isWellFormedTemplatePurposeCode,
 } from './purposes.js'
 export type { MessagePurpose } from './purposes.js'
+
+// PRD §17.4 canonical outbound idempotency identity.
+export { OUTBOUND_CHANNELS, buildDedupeKey } from './dedupe-key.js'
+export type { DedupeKeyInput, OutboundChannel } from './dedupe-key.js'

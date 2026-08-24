@@ -120,6 +120,9 @@ importers:
 
   apps/worker:
     dependencies:
+      '@helloreview/adapters':
+        specifier: workspace:*
+        version: link:../../packages/adapters
       '@helloreview/config':
         specifier: workspace:*
         version: link:../../packages/config
