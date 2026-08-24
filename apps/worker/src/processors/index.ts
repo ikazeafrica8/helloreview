@@ -25,3 +25,7 @@ export {
   ReconciliationFailedError,
 } from './reconcile-applications.js'
 export type { ApplicationReconciler, ReconciliationProcessorOutcome } from './reconcile-applications.js'
+export { createOutboundDeliveryProcessor } from './send-outbound.js'
+export type { OutboundDeliveryProcessor, OutboundProcessorOptions } from './send-outbound.js'
+export { createOutboundNotificationStore } from './outbound-store.js'
+export type { ClaimedOutboundNotification, OutboundNotificationStore } from './outbound-store.js'

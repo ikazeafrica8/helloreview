@@ -2039,14 +2039,14 @@ that makes duplicate suppression a guarantee rather than a best effort (`FR-MSG-
 
 **Acceptance criteria:**
 
-- [ ] The unique constraint exists and a test proves a second insert with the same key is rejected
-- [ ] Records carry workflow, channel, purpose code, dedupe key, provider message id, status, and retry count
-- [ ] Suppression events are recorded with a reason so an operator can explain a non-send (`FR-ADM-008`)
+- [x] The unique constraint exists and a test proves a second insert with the same key is rejected
+- [x] Records carry workflow, channel, purpose code, dedupe key, provider message id, status, and retry count
+- [x] Suppression events are recorded with a reason so an operator can explain a non-send (`FR-ADM-008`)
 
 **Verification:**
 
-- [ ] Tests pass: `pnpm test:integration`
-- [ ] Manual check: insert a duplicate key directly in psql and confirm rejection
+- [x] Tests pass: `pnpm test:integration`
+- [x] Manual check: insert a duplicate key directly in psql and confirm rejection
 
 **Dependencies:** T34
 
@@ -2064,15 +2064,15 @@ Hand-concatenating a key anywhere else fails lint.
 
 **Acceptance criteria:**
 
-- [ ] The key format matches `§17.4` and the `§17.2` example round-trips through a test
-- [ ] Key construction is pure and deterministic, with a test table covering each component's presence and absence
-- [ ] String concatenation producing a dedupe key outside this function fails lint
+- [x] The key format matches `§17.4` and the `§17.2` example round-trips through a test
+- [x] Key construction is pure and deterministic, with a test table covering each component's presence and absence
+- [x] String concatenation producing a dedupe key outside this function fails lint
 
 **Verification:**
 
-- [ ] Tests pass: `pnpm test:unit`
-- [ ] Coverage: 100% branch on the builder
-- [ ] Manual check: an authorized re-delivery produces a key distinct from the original
+- [x] Tests pass: `pnpm test:unit`
+- [x] Coverage: 100% branch on the builder
+- [x] Manual check: an authorized re-delivery produces a key distinct from the original
 
 **Dependencies:** T41
 
@@ -2090,14 +2090,14 @@ transition can never commit without its intent.
 
 **Acceptance criteria:**
 
-- [ ] A rolled-back transition leaves no outbound intent, proven by an integration test
-- [ ] The worker claims intents without double-claiming under concurrency
-- [ ] Enqueueing an intent outside a transaction context fails at the type level
+- [x] A rolled-back transition leaves no outbound intent, proven by an integration test
+- [x] The worker claims intents without double-claiming under concurrency
+- [x] Enqueueing an intent outside a transaction context fails at the type level
 
 **Verification:**
 
-- [ ] Tests pass: `pnpm test:integration`
-- [ ] Manual check: force a rollback mid-transaction and confirm no intent persists
+- [x] Tests pass: `pnpm test:integration`
+- [x] Manual check: force a rollback mid-transaction and confirm no intent persists
 
 **Dependencies:** T42, T35
 
@@ -2115,14 +2115,14 @@ interpolated (`FR-SEL-008`).
 
 **Acceptance criteria:**
 
-- [ ] Rendering resolves the template by purpose code and version, and an unknown variable fails loudly
-- [ ] A denylist of internal fields cannot be interpolated into a participant-facing template
-- [ ] The rendered version is recorded on the notification for audit
+- [x] Rendering resolves the template by purpose code and version, and an unknown variable fails loudly
+- [x] A denylist of internal fields cannot be interpolated into a participant-facing template
+- [x] The rendered version is recorded on the notification for audit
 
 **Verification:**
 
-- [ ] Tests pass: `pnpm test:unit`
-- [ ] Manual check: attempt to interpolate a selection score and confirm rejection
+- [x] Tests pass: `pnpm test:unit`
+- [x] Manual check: attempt to interpolate a selection score and confirm rejection
 
 **Dependencies:** T24, T41
 
@@ -2140,14 +2140,14 @@ key (`FR-MSG-008`). Delivery status reconciliation for unknown results (`FR-MSG-
 
 **Acceptance criteria:**
 
-- [ ] A provider timeout retries with the same idempotency key and produces one logical message
-- [ ] Unknown delivery status is reconciled on a schedule rather than resent blindly (`§16.10`)
-- [ ] The outbound conformance suite passes for the fake and is shared with future real adapters
+- [x] A provider timeout retries with the same idempotency key and produces one logical message
+- [x] Unknown delivery status is reconciled on a schedule rather than resent blindly (`§16.10`)
+- [x] The outbound conformance suite passes for the fake and is shared with future real adapters
 
 **Verification:**
 
-- [ ] Tests pass: `pnpm test:integration`
-- [ ] Manual check: simulate a timeout then success, confirm one provider message
+- [x] Tests pass: `pnpm test:integration`
+- [x] Manual check: simulate a timeout then success, confirm one provider message
 
 **Dependencies:** T43, T44
 
@@ -2165,14 +2165,14 @@ key (`FR-MSG-008`). Delivery status reconciliation for unknown results (`FR-MSG-
 
 **Acceptance criteria:**
 
-- [ ] An automated intent created during human ownership is suppressed and recorded with the reason
-- [ ] Ownership has exactly one active holder, enforced by constraint, with actor and timestamp visible
-- [ ] Approved system notices are the only exception and are explicitly allowlisted
+- [x] An automated intent created during human ownership is suppressed and recorded with the reason
+- [x] Ownership has exactly one active holder, enforced by constraint, with actor and timestamp visible
+- [x] Approved system notices are the only exception and are explicitly allowlisted
 
 **Verification:**
 
-- [ ] Tests pass: `pnpm test:integration`
-- [ ] Manual check: take ownership, trigger an automated path, confirm suppression
+- [x] Tests pass: `pnpm test:integration`
+- [x] Manual check: take ownership, trigger an automated path, confirm suppression
 
 **Dependencies:** T43
 
@@ -2189,14 +2189,14 @@ an automated message intent is created, the intent is suppressed with reason `HU
 
 **Acceptance criteria:**
 
-- [ ] The Gherkin scenario is implemented as written and passes
-- [ ] The test asserts the suppression reason, not merely the absence of a send
-- [ ] The test runs in the e2e tier and gates release
+- [x] The Gherkin scenario is implemented as written and passes
+- [x] The test asserts the suppression reason, not merely the absence of a send
+- [x] The test runs in the e2e tier and gates release
 
 **Verification:**
 
-- [ ] Tests pass: `pnpm test:e2e`
-- [ ] Manual check: the test fails if the ownership guard is removed
+- [x] Tests pass: `pnpm test:e2e`
+- [x] Manual check: the test fails if the ownership guard is removed
 
 **Dependencies:** T46
 

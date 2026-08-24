@@ -38,6 +38,20 @@ export {
   reconciliationStatusEnum,
 } from './applications.js'
 export {
+  outboundNotifications,
+  outboundNotificationEvents,
+  operatorAssignments,
+  outboundNotificationStatusEnum,
+  outboundIntentSourceEnum,
+  outboundNotificationEventTypeEnum,
+} from './outbound-notifications.js'
+export type {
+  OutboundNotificationRow,
+  NewOutboundNotificationRow,
+  OutboundNotificationEventRow,
+  OperatorAssignmentRow,
+} from './outbound-notifications.js'
+export {
   workflowInstances,
   workflowEvents,
   workflowEventSupersessions,

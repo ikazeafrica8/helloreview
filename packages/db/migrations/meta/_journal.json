@@ -141,6 +141,13 @@
       "when": 1787560529970,
       "tag": "0019_protect_workflow_event_history",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1787564350402,
+      "tag": "0020_add_outbound_messaging",
+      "breakpoints": true
     }
   ]
 }

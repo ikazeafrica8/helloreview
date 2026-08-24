@@ -17,15 +17,9 @@
 //   "no second state transition"       PROVEN AT TODAY'S BOUNDARY. The inbox row IS the platform's
 //                                      state for an inbound event until T34 adds workflow
 //                                      instances. One row, unchanged, is the whole state.
-//   "no second acknowledgment message" PROVEN BY PROXY. Outbound messages arrive with T41's
-//                                      outbound_notifications table and T45's sender; today the
-//                                      strongest available evidence is that no second processing
-//                                      job was enqueued, and nothing downstream can send a message
-//                                      it was never asked to send.
-//
-// The last one is a proxy, and proxies rot. The final test in this file therefore FAILS the moment
-// outbound_notifications exists — a forcing function rather than a comment, so this file cannot be
-// left asserting less than it claims once the real artifact is available.
+//   "no second acknowledgment message" PROVEN DIRECTLY. T41's outbound_notifications rows are
+//                                      read before and after the duplicate. The APPLICATION_MATCH_STATUS
+//                                      logical message set must be identical and contain at most one row.
 
 import { test, describe, beforeAll, afterAll, expect } from 'vitest'
 import { createHmac } from 'node:crypto'
@@ -186,6 +180,13 @@ describe('AC-02: duplicate application-completion webhook', () => {
     expect(stateAfterFirst).toHaveLength(1)
     const jobsAfterFirst = await queuedJobs()
     expect(jobsAfterFirst).toHaveLength(1)
+    const acknowledgmentsAfterFirst = await query(
+      `SELECT id, workflow_id, deduplication_key, status
+         FROM outbound_notifications
+        WHERE purpose_code = 'APPLICATION_MATCH_STATUS'
+        ORDER BY created_at, id`,
+    )
+    expect(acknowledgmentsAfterFirst.length).toBeLessThanOrEqual(1)
 
     // WHEN the same source event ID is delivered again
     const second = await deliver(body)
@@ -209,6 +210,13 @@ describe('AC-02: duplicate application-completion webhook', () => {
     const jobsAfterSecond = await queuedJobs()
     expect(jobsAfterSecond).toHaveLength(1)
     expect(jobsAfterSecond[0].id).toBe(jobsAfterFirst[0].id)
+    const acknowledgmentsAfterSecond = await query(
+      `SELECT id, workflow_id, deduplication_key, status
+         FROM outbound_notifications
+        WHERE purpose_code = 'APPLICATION_MATCH_STATUS'
+        ORDER BY created_at, id`,
+    )
+    expect(acknowledgmentsAfterSecond).toEqual(acknowledgmentsAfterFirst)
   })
 
   test('the test fails if the inbox unique constraint is dropped', async () => {
@@ -252,25 +260,5 @@ describe('AC-02: duplicate application-completion webhook', () => {
     expect(output).not.toContain('홍길동')
     expect(output).not.toContain('821012345678')
     expect(output).not.toContain(SECRET)
-  })
-
-  test('FORCING FUNCTION: strengthen this file when outbound notifications exist', async () => {
-    // "No second acknowledgment message shall be sent" is currently proven by proxy — no second
-    // job was enqueued, so nothing downstream was ever asked to send anything. That is the best
-    // evidence available until T41 creates outbound_notifications and T45 sends from it.
-    //
-    // This assertion fails the moment that table appears, which is the point: a proxy left in place
-    // after the real artifact exists is an acceptance test quietly asserting less than its Gherkin
-    // says. When this fails, replace it with a direct assertion that no second row with purpose
-    // APPLICATION_MATCH_STATUS was written for this workflow.
-    const tables = await query(
-      `SELECT table_name FROM information_schema.tables WHERE table_name = 'outbound_notifications'`,
-    )
-
-    expect(
-      tables,
-      'outbound_notifications now exists — AC-02 must assert on it directly rather than on the ' +
-        'absence of a queued job. See the note above this test.',
-    ).toHaveLength(0)
   })
 })

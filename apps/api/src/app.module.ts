@@ -7,6 +7,7 @@ import { ApplicationSyncModule } from './modules/application-sync/index.js'
 import { IdentityResolutionModule } from './modules/identity-resolution/index.js'
 import { HumanTasksModule } from './modules/human-tasks/index.js'
 import { WorkflowCoreModule } from './modules/workflow-core/index.js'
+import { MessagingModule } from './modules/messaging/index.js'
 
 /**
  * Composition root. Every capability-map module from SPEC.md §3.1 is imported here as it lands, in
@@ -21,6 +22,7 @@ import { WorkflowCoreModule } from './modules/workflow-core/index.js'
     ApplicationSyncModule,
     IdentityResolutionModule,
     WorkflowCoreModule,
+    MessagingModule,
     HumanTasksModule,
   ],
 })
