@@ -15,7 +15,7 @@ import {
   normalizeBusinessName,
   matchesApprovedName,
   matchesBranch,
-} from '../../apps/api/dist/modules/campaign-config/index.js'
+} from '../../apps/api/dist/modules/campaign-config/business-name-normalizer.js'
 
 describe('Unicode composition — the case a hand-written test usually misses', () => {
   test('decomposed and composed Hangul normalize to the same string', () => {

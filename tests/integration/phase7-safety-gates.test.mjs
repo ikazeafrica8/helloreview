@@ -170,8 +170,18 @@ describe('Phase 7 persistence and hard gates', () => {
           new OutboundIntentService(new MessageTemplateRepository()),
         )
         const first = await service.request(guidelineRequest(ids))
-        const second = await service.request(guidelineRequest(ids, { triggeringEventId: 'phase7-guideline-request-2' }))
-        const third = await service.request(guidelineRequest(ids, { triggeringEventId: 'phase7-guideline-request-3' }))
+        const second = await service.request(
+          guidelineRequest(ids, {
+            triggeringEventId: 'phase7-guideline-request-2',
+            occurredAt: new Date(ids.now.getTime() + 1_000),
+          }),
+        )
+        const third = await service.request(
+          guidelineRequest(ids, {
+            triggeringEventId: 'phase7-guideline-request-3',
+            occurredAt: new Date(ids.now.getTime() + 2_000),
+          }),
+        )
         expect(first.outcome).toBe('queued')
         expect([second.outcome, third.outcome]).toEqual(['suppressed', 'suppressed'])
         expect(
