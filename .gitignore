@@ -34,3 +34,6 @@ apps/*/src/__lint-fixture-*.ts
 
 # Database dumps. These contain every participant record the platform holds.
 backups/
+
+# Operator-only website exports. These contain applicant PII and are never source artifacts.
+private/application-imports/

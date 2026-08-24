@@ -8,6 +8,7 @@ export { tstz } from './columns.js'
 export { applyMigrations, MIGRATIONS_FOLDER } from './migrate.js'
 export { createDbClient } from './client.js'
 export type { DbClient } from './client.js'
+export { POSTGRES_POOL } from './tokens.js'
 export {
   isUniqueViolation,
   isRetryableDatabaseFailure,

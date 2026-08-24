@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common'
 import { PlatformCoreModule } from '../platform-core/index.js'
 import { AuditLogModule } from '../audit-log/index.js'
 import { CampaignRulesRepository } from './campaign-rules.repository.js'
+import { ConfigurationPublishingService } from './publishing.js'
 
 /**
  * Campaign configuration (SPEC.md §3.1: depends on platform-core and audit-log).
@@ -12,7 +13,7 @@ import { CampaignRulesRepository } from './campaign-rules.repository.js'
  */
 @Module({
   imports: [PlatformCoreModule, AuditLogModule],
-  providers: [CampaignRulesRepository],
-  exports: [CampaignRulesRepository],
+  providers: [CampaignRulesRepository, ConfigurationPublishingService],
+  exports: [CampaignRulesRepository, ConfigurationPublishingService],
 })
 export class CampaignConfigModule {}

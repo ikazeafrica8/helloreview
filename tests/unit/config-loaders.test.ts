@@ -7,6 +7,7 @@
 import { test, describe, expect } from 'vitest'
 import {
   loadApiConfig,
+  loadApplicationImportConfig,
   loadWorkerConfig,
   redactEnvironment,
   ConfigurationError,
@@ -95,6 +96,31 @@ describe('loadApiConfig', () => {
     expect(loadApiConfig({ ...VALID, API_PORT: '1' }).apiPort).toBe(1)
     expect(loadApiConfig({ ...VALID, API_PORT: '65535' }).apiPort).toBe(65535)
   })
+
+  test('application reconciliation and freshness use bounded deployment defaults', () => {
+    const config = loadApiConfig(VALID)
+    expect(config.applicationReconciliationWindowSeconds).toBe(300)
+    expect(config.applicationReconciliationRetrySeconds).toBe(30)
+    expect(config.applicationFreshnessThresholdSeconds).toBe(900)
+
+    const supplied = loadApiConfig({
+      ...VALID,
+      APPLICATION_RECONCILIATION_WINDOW_SECONDS: '600',
+      APPLICATION_RECONCILIATION_RETRY_SECONDS: '60',
+      APPLICATION_FRESHNESS_THRESHOLD_SECONDS: '1800',
+    })
+    expect(supplied.applicationReconciliationWindowSeconds).toBe(600)
+    expect(supplied.applicationReconciliationRetrySeconds).toBe(60)
+    expect(supplied.applicationFreshnessThresholdSeconds).toBe(1800)
+  })
+
+  test.each([
+    ['window below its floor', 'APPLICATION_RECONCILIATION_WINDOW_SECONDS', '10'],
+    ['retry interval at zero', 'APPLICATION_RECONCILIATION_RETRY_SECONDS', '0'],
+    ['freshness above its ceiling', 'APPLICATION_FRESHNESS_THRESHOLD_SECONDS', '999999'],
+  ])('rejects an application %s', (_label, key, value) => {
+    expect(() => loadApiConfig({ ...VALID, [key]: value })).toThrow(ConfigurationError)
+  })
 })
 
 describe('webhook signing configuration (T16)', () => {
@@ -158,6 +184,9 @@ describe('loadWorkerConfig', () => {
     })
     expect(config.redisUrl).toBe(VALID.REDIS_URL)
     expect(config.databaseUrl).toBe(VALID.DATABASE_URL)
+    expect(config.applicationReconciliationWindowSeconds).toBe(300)
+    expect(config.applicationReconciliationRetrySeconds).toBe(30)
+    expect(config.applicationFreshnessThresholdSeconds).toBe(900)
     expect(Object.isFrozen(config)).toBe(true)
   })
 
@@ -175,6 +204,27 @@ describe('loadWorkerConfig', () => {
     expect(() => loadWorkerConfig({ ...withPepper, REDIS_URL: 'http://127.0.0.1:16379' })).toThrow(ConfigurationError)
     expect(() => loadWorkerConfig({ ...withPepper, REDIS_URL: 'redis://' })).toThrow(ConfigurationError)
     expect(() => loadWorkerConfig(withPepper)).toThrow(/REDIS_URL is not set/)
+  })
+})
+
+describe('loadApplicationImportConfig', () => {
+  test('requires only the database and keyed-digest secret used by the operator command', () => {
+    const config = loadApplicationImportConfig({
+      DATABASE_URL: VALID.DATABASE_URL,
+      MASKING_PEPPER: VALID.MASKING_PEPPER,
+    })
+    expect(config).toEqual({
+      databaseUrl: VALID.DATABASE_URL,
+      maskingPepper: VALID.MASKING_PEPPER,
+    })
+    expect(Object.isFrozen(config)).toBe(true)
+  })
+
+  test('does not accept a missing database or a weak digest secret', () => {
+    expect(() => loadApplicationImportConfig({ MASKING_PEPPER: VALID.MASKING_PEPPER })).toThrow(/DATABASE_URL/)
+    expect(() =>
+      loadApplicationImportConfig({ DATABASE_URL: VALID.DATABASE_URL, MASKING_PEPPER: 'too-short' }),
+    ).toThrow(ConfigurationError)
   })
 })
 

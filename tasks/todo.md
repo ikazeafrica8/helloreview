@@ -40,13 +40,13 @@ its own acceptance criteria. `pnpm verify` must pass before every commit.
 
 ### Phase 2 — Idempotency spine
 
-- [ ] T14 — Event contracts (`§18`)
-- [ ] T15 — Event inbox schema
-- [ ] T16 — Webhook gateway: signature and replay
-- [ ] T17 — Webhook gateway: schema, limits, rate limiting
-- [ ] T18 — Idempotent accept semantics
-- [ ] T19 — Inbound provider port, fake, and conformance suite
-- [ ] T20 — **AC-02**: duplicate application-completion webhook
+- [x] T14 — Event contracts (`§18`)
+- [x] T15 — Event inbox schema
+- [x] T16 — Webhook gateway: signature and replay
+- [x] T17 — Webhook gateway: schema, limits, rate limiting
+- [x] T18 — Idempotent accept semantics
+- [x] T19 — Inbound provider port, fake, and conformance suite
+- [x] T20 — **AC-02**: duplicate application-completion webhook
 
 ### Checkpoint B — Idempotency proven
 
@@ -172,28 +172,28 @@ Every fix carries a test that was verified to FAIL without it.
 
 # Phase 3 — Configuration and source of truth
 
-- [ ] T21 — Campaigns and versioned rules
-- [ ] T22 — Time windows and blackouts
-- [ ] T23 — Business details and approved aliases
-- [ ] T24 — Guideline, terms, and template versions
-- [ ] T25 — Campaign activation validation
-- [ ] T26 — Website adapter port, fake, and applications schema
-- [ ] T27 — Application reconciliation and freshness
+- [x] T21 — Campaigns and versioned rules
+- [x] T22 — Time windows and blackouts
+- [x] T23 — Business details and approved aliases
+- [x] T24 — Guideline, terms, and template versions
+- [x] T25 — Campaign activation validation
+- [x] T26 — Website adapter port, fake, and applications schema
+- [x] T27 — Application reconciliation and freshness
 
 ### Phase 4 — Identity
 
-- [ ] T28 — Participants, channel identities, phone normalization
-- [ ] T29 — Matching decision table (`§16.1`)
-- [ ] T30 — Application verification token
-- [ ] T31 — Ambiguity and campaign disambiguation
-- [ ] T32 — Human review tasks (minimal)
+- [x] T28 — Participants, channel identities, phone normalization
+- [x] T29 — Matching decision table (`§16.1`)
+- [x] T30 — Application verification token
+- [x] T31 — Ambiguity and campaign disambiguation
+- [x] T32 — Human review tasks (minimal)
 - [ ] T33 — **AC-04**: ambiguous identity
 
 ### Checkpoint C — Identity proven
 
 - [ ] AC-04 passes and no candidate applicant detail is disclosed in any participant-facing output
-- [ ] Name-only matching is rejected (`FR-ID-001`) with a test proving it
-- [ ] Matching decision table is at 100% branch coverage
+- [x] Name-only matching is rejected (`FR-ID-001`) with a test proving it
+- [x] Matching decision table is at 100% branch coverage
 - [ ] Review with human before proceeding
 
 ### Phase 5 — Workflow core
@@ -930,7 +930,9 @@ acceptance criteria were untrue. Everything below was verified by measurement, n
       then deleting wiped it with no DDL at all, because the triggers were `O` (origin). Migration
       `0002` sets them `ENABLE ALWAYS`, and the bypass is now rejected — verified against a live
       database. The second route, `ALTER TABLE ... DISABLE TRIGGER ALL`, is only available to the
-      table owner and needs role separation to close. **See the open decision below.**
+      table owner; **migration `0009` closes it for the application** by connecting it as a non-owner
+      role. It remains open to the operator's own superuser session, deliberately. See
+      "Decided — least-privilege database roles" below.
 - [x] **The worker exited 545 ms after logging "ready".** With no processors registered nothing
       referenced the event loop, so `pnpm dev:worker` handed back a worker that was already gone and
       T5's drain path was unreachable. A `keepAlive` interval holds it open; verified still running
@@ -1014,19 +1016,94 @@ No privilege change at all, so nothing could break. Pays most of the plumbing co
       loudly. The real hazard is the reflex fix, `GRANT ALL ON ALL TABLES`, which does re-grant
       `DELETE`. `db:verify-audit-protection` catches exactly that, verified by simulating it.
 
-### Commit B — before T15 creates `event_inbox`
+### Commit B — done
 
-Migration `0003` (idempotent, because `db:reset` replays it), a `NOLOGIN` group role holding the
-grants, a separate `LOGIN` role provisioned from the environment (a password may never enter a
-committed migration), the `REVOKE` carve-out on `audit_logs`, an assertion block inside the
-migration that raises if a privilege is ever silently restored, and an integration test on a **real
-app-role connection** — `SET ROLE` inside a superuser session proves nothing, since the session can
-`SET ROLE` back.
+Landed as migration `0009` rather than `0003`: Phase 2 shipped first, so the number moved but
+nothing else did. The application now connects as `helloreview_api`, which owns nothing.
 
-Keep 0002's `ENABLE ALWAYS` triggers: they are the backstop that still catches the operator's own
-superuser session, which is the one actor an ACL cannot constrain.
+- [x] **Migration `0009`** — a `NOLOGIN` group (`helloreview_app`) holding the grants, `USAGE` but
+      never `CREATE` on the schema, DML on all tables, the carve-out revoking
+      `UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER` on `audit_logs`, and `ALTER DEFAULT PRIVILEGES`
+      so no future migration has to write a `GRANT`. Idempotent, because `db:reset` replays it —
+      which is the only thing that restores the schema ACL that `DROP SCHEMA` destroys.
+- [x] **An assertion block inside the migration.** It raises if the app role ever holds a rewrite
+      privilege, loses `INSERT`/`SELECT`, gains membership in the owner, becomes superuser, if an
+      `audit_logs` trigger stops being `ENABLE ALWAYS`, if the table stops being logged, if a
+      `SECURITY DEFINER` function becomes executable by it, or if it is granted
+      `SET ON PARAMETER session_replication_role`. A silently restored privilege is otherwise
+      invisible — a broken carve-out looks exactly like a working one.
+- [x] **`tools/db-provision-role.mjs`**, run by `db:migrate` and by `db:reset`. Creates the `LOGIN`
+      role from `APP_DB_USER`/`APP_DB_PASSWORD` (a password may never enter a committed migration),
+      and **re-asserts the password on every run** — roles are cluster-wide, nothing in this repo
+      can drop one, so a typo'd password would otherwise outlive every correction to `.env`.
+- [x] **Preflight refuses a mismatch.** `DATABASE_URL` must carry `APP_DB_USER`/`APP_DB_PASSWORD`,
+      and must not connect as the owner. Without this the stack starts healthy and every query
+      fails with "password authentication failed", which points at the password rather than at the
+      mismatch.
+- [x] **`db:verify-audit-protection` gained checks 3 and 4.** Checks 1 and 2 exclude superusers and
+      the owner — correctly, since no ACL constrains them, and that exclusion was the blind spot:
+      pointing `DATABASE_URL` back at the owner passed every check while leaving the table freely
+      deletable. Check 3 fails if the application's role is the owner, is superuser, inherits the
+      owner, or can `SET ROLE` to it. Check 4 fails if any `SECURITY DEFINER` function in `public` is
+      executable by the application role — a detector, because prevention cannot reach functions a
+      later migration creates.
+- [x] **`tests/integration/db-privileges.test.mjs`** — thirteen tests on a **real authenticated
+      app-role connection**, not `SET ROLE`, and driving the **shipped** tools as subprocesses rather
+      than a copy of their SQL. Covers all ten refusal routes, the ordinary work that must keep
+      working (including `citext` and `pg_trgm`), that the immutability triggers still fire for a
+      non-owner, both repair paths, and every guard listed below.
+- [x] **Mutation-checked, and each guard is tied to a named test.** Removing any one of these makes
+      exactly one test fail: the migration's revoke loop, the provisioning `pg_has_role` guard, the
+      password redaction, the `SECURITY DEFINER` detector, the verifier's owner/superuser check, its
+      `MEMBER` predicate, the grant re-assertion, and the provisioning revoke loop.
 
-Estimated 20–28 hours, mostly the Testcontainers harness and tooling — not the SQL.
+### Commit B — what the pre-commit review found
+
+Five review lenses over the changeset raised 27 findings; 8 survived adversarial refutation. The
+suite was 432/432 green throughout, which is the point: **the lens aimed at test vacuity found the
+most.** Everything below was then measured, not reasoned about.
+
+- [x] **`ALTER DEFAULT PRIVILEGES ... REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC` silently did nothing.**
+      On PostgreSQL 16.15 it records no `pg_default_acl` row, and even after forcing one to exist a
+      new function still came back with `proacl` NULL — PUBLIC keeps `EXECUTE`. **The identical
+      construct for TABLES does work**, verified the same way, which is exactly what made the
+      function version look right. Proven end to end: the app role called a `SECURITY DEFINER`
+      function, which ran `ALTER TABLE audit_logs DISABLE TRIGGER ALL; DELETE FROM audit_logs;` and
+      succeeded. Replaced with an explicit loop that skips extension-owned functions, so `citext`
+      and `pg_trgm` survive.
+- [x] **`pnpm db:migrate` can never re-apply migration 0009**, so the documented recovery was a
+      no-op. drizzle records a migration and only applies files newer than the recorded timestamp;
+      after 0009 lands that comparison is false forever. Measured: after a broad `GRANT ALL`,
+      `db:migrate` alone left `DELETE` on `audit_logs` still granted. The only replay path,
+      `db:reset`, refuses off loopback — precisely where a restore happens. **Fixed by moving the
+      grants into `db-provision-role.mjs`**, which `db:migrate` runs every time. That also closes
+      the `SECURITY DEFINER` gap for later migrations, since provisioning runs after all of them.
+      Both repair paths now have tests that first assert the damage is real.
+- [x] **Four of the new tests proved nothing.** The owner-refusal test exited on a JavaScript string
+      compare before opening a connection, so the `pg_has_role` membership guard — which the code
+      itself calls "the trap that voids the entire scheme" — had zero coverage, its `withPostgres`
+      setup was decoration, and the SPEC.md §8 password assertion passed because no error object
+      ever existed. Split into a name-check test and a real membership test, plus a redaction test
+      that provokes a genuine PostgreSQL failure (a reserved role name) carrying the password in
+      the error's `CONTEXT`.
+- [x] **The verifier's membership check missed the `SET ROLE` route.** It tested only
+      `pg_has_role(..., 'USAGE')`, which is false for a member created `WITH INHERIT FALSE` — who
+      can still `SET ROLE` to the owner and acquire ownership on demand. The comment already claimed
+      `SET ROLE` was covered. Now tests `MEMBER` as well, with a test asserting both predicates.
+- [x] **Stale documentation corrected.** `db-target.mjs` still said the two URLs hold the same value;
+      `backup-and-restore.md` still described the split as forthcoming and documented a recovery
+      that did not work; the verifier's header said "Two properties are checked" above a list of
+      four.
+
+Verified against a real login role: `DELETE`/`UPDATE`/`TRUNCATE` → `permission denied`;
+`ALTER TABLE ... DISABLE TRIGGER`, `DROP TABLE`, `DROP TRIGGER`, `ALTER TABLE ... RENAME` → `must be
+owner`; `SET session_replication_role` → `permission denied to set parameter`; `SET ROLE helloreview`
+→ `permission denied to set role`; `CREATE TABLE` → `permission denied for schema`. `INSERT`/`SELECT`
+on `audit_logs`, full DML elsewhere, and both extensions are unaffected.
+
+0002's `ENABLE ALWAYS` triggers are kept: they are the backstop that still catches the operator's own
+superuser session, which is the one actor an ACL cannot constrain. That residual gap is unchanged and
+deliberate — the operator is trusted; the daemon is not.
 
 ### Deliberately deferred
 
@@ -1330,14 +1407,30 @@ multiple windows per weekday and configurable boundary inclusivity (`§16.7`, `F
 
 **Acceptance criteria:**
 
-- [ ] Multiple windows per weekday are supported, and all are evaluated
-- [ ] Boundary inclusivity is stored per window, not assumed globally
-- [ ] `UNIQUE(campaign_id, rule_version, date)` holds for blackouts
+- [x] Multiple windows per weekday are supported, and all are evaluated
+- [x] Boundary inclusivity is stored per window, not assumed globally
+- [x] `UNIQUE(campaign_id, rule_version, date)` holds for blackouts
 
 **Verification:**
 
-- [ ] Tests pass: `pnpm test:integration`
-- [ ] Manual check: configure two Tuesday windows and confirm both persist and resolve
+- [x] Tests pass: `pnpm test:integration` — 9 tests against a real migrated Postgres
+- [x] Manual check: two Tuesday windows (11:00–14:00 and 17:00–21:00) both persist and both come
+      back from the resolver. The gap between them is the point — nothing in the result says 15:00
+      is allowed, which a single spanning window would have accepted while the business was closed
+
+> **Notes.**
+>
+> 1. **Bound to a RULE VERSION, not to a campaign.** If windows hung off the campaign, editing one
+>    would retroactively change what "valid" meant for every reservation already checked against the
+>    old windows — the silent retroactive rule application FR-CAM-007 forbids.
+> 2. **Boundary inclusivity is per window because §16.7 makes Boundary its own check.** A shop may
+>    accept a booking at closing time for a ten-minute service and refuse it for a ninety-minute
+>    one; that is a property of the window, not of the platform.
+> 3. **The default is start-inclusive, end-EXCLUSIVE**, asymmetric on purpose: defaulting both ends
+>    to inclusive would make adjacent windows overlap at their shared boundary, so 14:00 would fall
+>    in both the morning and the afternoon window.
+> 4. **A blackout is a `date`, never a timestamp.** Midnight UTC is 09:00 in Seoul, so an 08:00
+>    Seoul reservation on a blacked-out day would compare against the previous date and pass.
 
 **Dependencies:** T21
 
@@ -1355,14 +1448,30 @@ validation later.
 
 **Acceptance criteria:**
 
-- [ ] Business records are effective-dated and versioned; changes create a new version
-- [ ] Aliases are a first-class list, and name comparison normalizes whitespace, casing, and Korean spacing variants
-- [ ] Branch is stored separately from business name so a wrong-branch booking is distinguishable from a wrong business
+- [x] Business records are effective-dated and versioned; changes create a new version
+- [x] Aliases are a first-class list, and name comparison normalizes whitespace, casing, and Korean spacing variants
+- [x] Branch is stored separately from business name so a wrong-branch booking is distinguishable from a wrong business
 
 **Verification:**
 
-- [ ] Tests pass: `pnpm test:unit` (normalization) and `pnpm test:integration`
-- [ ] Manual check: a known alias resolves to the campaign business; an unapproved one does not
+- [x] Tests pass: `pnpm test:unit` — 31 normalizer tests — and `pnpm test:integration` — 7 tests
+- [x] Manual check: a known alias resolves to the campaign business and an unapproved one does not,
+      including across Korean spacing (`스벅 강남` vs `스벅강남`) and Unicode composition
+
+> **Notes.**
+>
+> 1. **An alias is an AUTHORIZATION, not a convenience.** §16.7 validates a booking against an
+>    "approved alias", so the list is frozen with its business version — adding one to a published
+>    version would retroactively authorize bookings under a name nobody approved at the time.
+> 2. **Unicode normalization comes FIRST, and it is the step that matters most.** Korean text from
+>    an OCR engine, a browser paste and a phone keyboard is genuinely not byte-identical even when
+>    it renders identically. Mutation-tested: dropping NFKC breaks 5 tests, keeping whitespace
+>    breaks 11.
+> 3. **Whitespace is removed, not collapsed**, because Korean spacing is inconsistent — and that is
+>    the one rule that could create a FALSE match. Accepted knowingly: §16.7 pairs the business
+>    check with a separate branch check, so a name collision alone cannot validate a booking.
+> 4. **Branch is its own column** so a right-business/wrong-branch booking is distinguishable from a
+>    wrong-business one; §16.7 gives those different failure actions.
 
 **Dependencies:** T21
 
@@ -1380,14 +1489,16 @@ once published, all referenced by exact version from consent records and deliver
 
 **Acceptance criteria:**
 
-- [ ] `UNIQUE(campaign_id, version)` for guidelines and `UNIQUE(purpose_code, version)` for templates hold
-- [ ] Publishing freezes content; editing a published version is rejected and requires a new version
-- [ ] Templates carry a legal classification field (`§21.9`) and a draft / approved / active / retired state
+- [x] `UNIQUE(campaign_id, version)` for guidelines and `UNIQUE(purpose_code, version)` for templates hold
+- [x] Publishing freezes content; editing a published version is rejected and requires a new version
+- [x] Templates carry a legal classification field (`§21.9`) and a draft / approved / active / retired state
 
 **Verification:**
 
-- [ ] Tests pass: `pnpm test:integration`
-- [ ] Manual check: publish, attempt an edit, confirm rejection, create a new version successfully
+- [x] Tests pass: `pnpm test:integration` — 18 files, 131 tests against migrated PostgreSQL/Redis;
+      the five focused T24 tests cover both version keys, lifecycle transitions and provider approval
+- [x] Manual check: automated against PostgreSQL — publish v1, reject its edit and deletion, then
+      publish v2 while v1 remains immutable and queryable as superseded
 
 **Dependencies:** T21
 
@@ -1404,14 +1515,16 @@ Validation runs before activation and names every missing requirement rather tha
 
 **Acceptance criteria:**
 
-- [ ] Activation is rejected when required rules, windows, templates, or guideline versions are absent
-- [ ] The rejection lists every missing item, each with a reason code
-- [ ] An invalid campaign type and visit method combination is rejected (`FR-ADM-002`, `§16.4`)
+- [x] Activation is rejected when required rules, windows, templates, or guideline versions are absent
+- [x] The rejection lists every missing item, each with a reason code
+- [x] An invalid campaign type and visit method combination is rejected (`FR-ADM-002`, `§16.4`)
 
 **Verification:**
 
-- [ ] Tests pass: `pnpm test:unit`
-- [ ] Manual check: activate a partially configured campaign and read the full missing-item list
+- [x] Tests pass: `pnpm test:unit` — 16 files, 297 tests; 11 activation-validator cases cover all
+      five valid routes, invalid combinations, complete aggregation and duplicate inventory
+- [x] Manual check: a partially configured payback snapshot returns all five remaining omissions in
+      deterministic order, with a stable reason code and item name for each
 
 **Dependencies:** T22, T23, T24
 
@@ -1429,14 +1542,26 @@ remains the source of truth; nothing here creates an application from a particip
 
 **Acceptance criteria:**
 
-- [ ] The unique constraint holds and repeated synchronization updates one record rather than creating duplicates (`FR-APP-002`)
-- [ ] Source event id and source timestamp are preserved on every change (`FR-APP-003`)
-- [ ] Application states distinguish received, completed, matched, ambiguous, cancelled, and synchronized-late (`FR-APP-004`)
+- [x] The unique constraint holds and repeated synchronization updates one record rather than creating duplicates (`FR-APP-002`)
+- [x] Source event id and source timestamp are preserved on every change (`FR-APP-003`)
+- [x] Application states distinguish received, completed, matched, ambiguous, cancelled, and synchronized-late (`FR-APP-004`)
 
 **Verification:**
 
-- [ ] Tests pass: `pnpm test:integration`
-- [ ] Manual check: replay the same application event and confirm one record, one logical change
+- [x] Tests pass: `pnpm test:integration` — 19 files, 132 tests; the focused T26/T27
+      PostgreSQL scenario covers event replay, a newer version, immutable source evidence and every state
+- [x] Manual check: automated against PostgreSQL — replaying the same create event leaves one
+      application and one change; version 2 updates that row and appends exactly one new change
+
+> **Notes.**
+>
+> 1. **The website is the only authority.** Its port exposes reads and validated application events;
+>    it has no write method, and application-sync accepts no participant-message command.
+> 2. **Current state and evidence are separate.** `applications` is the one-row projection, while
+>    `application_changes` is append-only by an `ENABLE ALWAYS` trigger. Every applied source
+>    version retains its source event id, source occurrence time and synchronization method.
+> 3. **Idempotency has two keys.** Source event id stops literal replay; source application version
+>    stops a poll and a later webhook with different event ids from recording the same transition.
 
 **Dependencies:** T19, T21
 
@@ -1455,14 +1580,33 @@ recent website applications over a configurable retry window before declaring no
 
 **Acceptance criteria:**
 
-- [ ] A configurable retry window elapses, with reconciliation attempts, before a no-match conclusion
-- [ ] Last successful reconciliation time is queryable per source, and staleness is a computed flag
-- [ ] Reconciliation is idempotent — a late-arriving event for an already-reconciled application produces no second transition
+- [x] A configurable retry window elapses, with reconciliation attempts, before a no-match conclusion
+- [x] Last successful reconciliation time is queryable per source, and staleness is a computed flag
+- [x] Reconciliation is idempotent — a late-arriving event for an already-reconciled application produces no second transition
 
 **Verification:**
 
-- [ ] Tests pass: `pnpm test:integration`
-- [ ] Manual check: simulate a delayed application and confirm pending state then resolution
+- [x] Tests pass: focused PostgreSQL integration for reconciliation and manual CSV import;
+      `pnpm verify` also passes 19 unit files / 330 tests, typecheck, lint and transition checks
+- [x] Manual check: automated with the website fake and migrated PostgreSQL — the first empty poll
+      stays pending, an early retry does no work, and the next due poll resolves the delayed record
+
+> **Notes.**
+>
+> 1. **No match is a bounded conclusion, not an empty first response.** Empty successful reads stay
+>    pending until the configured deadline. A website outage at the deadline becomes `failed`, not
+>    a false `no_match`.
+> 2. **Freshness means successful read-back.** The source row records the last attempted and last
+>    successful reconciliation separately; staleness is computed at query time from the configured
+>    threshold, and failures retain a stable reason code plus consecutive-failure count.
+> 3. **The processor is dependency-injected.** The real website read API is still an open provider
+>    contract, so the worker exposes a BullMQ handler factory rather than importing the fake into
+>    application code. The fake and a future real adapter satisfy the same read-only port.
+> 4. **Pilot fallback without vendor access.** A strict operator-run CSV importer is used when the
+>    outsourced website exposes neither an API, webhook, nor database credential. It records keyed
+>    batch evidence without retaining the PII-bearing file, rejects unknown campaigns before writes,
+>    and assigns local monotonic versions so an older export cannot reverse current state. See
+>    `docs/manual-application-import.md`.
 
 **Dependencies:** T26
 
@@ -1482,9 +1626,9 @@ forms. A phone number is explicitly not globally unique — shared numbers exist
 
 **Acceptance criteria:**
 
-- [ ] Korean local (`010-1234-5678`, `01012345678`) and international (`+821012345678`) forms normalize identically
-- [ ] `UNIQUE(provider, external_user_id)` holds; phone has an index but no unique constraint
-- [ ] Normalization is a pure function with its own exhaustive test table
+- [x] Korean local (`010-1234-5678`, `01012345678`) and international (`+821012345678`) forms normalize identically
+- [x] `UNIQUE(provider, external_user_id)` holds; phone has an index but no unique constraint
+- [x] Normalization is a pure function with its own exhaustive test table
 
 **Verification:**
 
@@ -1497,6 +1641,16 @@ forms. A phone number is explicitly not globally unique — shared numbers exist
 
 **Estimated scope:** M
 
+> **Implementation note (2026-08-24):** `participants` and `channel_identities` are defined in
+> `packages/db/src/schema/participants.ts`, with migration
+> `0016_add_participants_and_channel_identities`. Phone and blog URL are candidate evidence rather
+> than global identity keys. `normalizeKoreanMobilePhone()` accepts the tested Korean local,
+> international, dial-prefix, optional-trunk and full-width forms and rejects landlines, foreign,
+> legacy-prefix, malformed and extension-bearing values without echoing the raw phone in errors.
+> The 26-case unit suite and `pnpm db:check` pass. The focused PostgreSQL test includes the required
+> two-participants-one-phone proof and provider namespace collision, but remains pending execution
+> because no container runtime is available on this machine.
+
 ---
 
 ## T29 — Matching decision table (`§16.1`)
@@ -1507,21 +1661,27 @@ evidence recorded (`FR-ID-012`). Name-only matching is structurally impossible, 
 
 **Acceptance criteria:**
 
-- [ ] Every row of `§16.1` has a test, and the function is at 100% branch coverage
-- [ ] A name-only candidate can only return Weak Match, never a binding result (`FR-ID-001`)
-- [ ] The result carries method, evidence category, and timestamp for the audit record (`FR-ID-002`)
+- [x] Every row of `§16.1` has a test, and the function is at 100% branch coverage
+- [x] A name-only candidate can only return Weak Match, never a binding result (`FR-ID-001`)
+- [x] The result carries method, evidence category, and timestamp for the audit record (`FR-ID-002`)
 
 **Verification:**
 
-- [ ] Tests pass: `pnpm test:unit`
-- [ ] Coverage: 100% branch on the decision function
-- [ ] Manual check: each `§16.1` row maps to a named test case
+- [x] Tests pass: `pnpm test:unit`
+- [x] Coverage: 100% branch on the decision function
+- [x] Manual check: each `§16.1` row maps to a named test case
 
 **Dependencies:** T28
 
 **Files likely touched:** `apps/api/src/modules/identity-resolution/matching-table.ts`, `apps/api/src/modules/identity-resolution/matching-table.spec.ts`, `apps/api/src/modules/identity-resolution/reason-codes.ts`
 
 **Estimated scope:** M
+
+> **Implementation note (2026-08-24):** `matching-table.ts` implements all nine `§16.1` rows as
+> one pure exhaustive switch, including both policy-controlled branches. The named 12-test suite
+> passes and focused V8 coverage reports 18/18 statements, 15/15 branches, and 3/3 functions. A
+> file-specific 100% line/branch release threshold now protects the table. Name-and-campaign-only
+> evidence is structurally limited to Weak Match and cannot authorize a link.
 
 ---
 
@@ -1532,9 +1692,9 @@ matching evidence (`FR-ID-003`), with expiry and single-use semantics.
 
 **Acceptance criteria:**
 
-- [ ] A valid token resolves to exactly its intended application and yields a Verified result
-- [ ] Expired, reused, or unknown tokens fail closed and do not degrade to a weaker match
-- [ ] Tokens are compared in constant time and never logged
+- [x] A valid token resolves to exactly its intended application and yields a Verified result
+- [x] Expired, reused, or unknown tokens fail closed and do not degrade to a weaker match
+- [x] Tokens are compared in constant time and never logged
 
 **Verification:**
 
@@ -1547,6 +1707,14 @@ matching evidence (`FR-ID-003`), with expiry and single-use semantics.
 
 **Estimated scope:** S
 
+> **Implementation note (2026-08-24):** Website tokens are stored only as keyed HMAC-SHA-256
+> digests, compared through `timingSafeEqual` on fixed-size buffers (including the unknown-token
+> path), locked transactionally, expired fail-closed, and consumed once. The focused unit and
+> security tests pass. The focused real-PostgreSQL token lifecycle test is implemented but cannot
+> execute on this machine because Testcontainers reports
+> `Could not find a working container runtime strategy`; the full security tier also cannot connect
+> to its required PostgreSQL endpoint at `127.0.0.1:15432`.
+
 ---
 
 ## T31 — Ambiguity and campaign disambiguation
@@ -1557,20 +1725,27 @@ campaigns requires disambiguation before any campaign-specific state changes (`F
 
 **Acceptance criteria:**
 
-- [ ] No participant-facing output derived from an ambiguous result contains any candidate's name, phone, or application detail
-- [ ] Several active campaigns for one participant blocks campaign-specific transitions until context resolves
-- [ ] A candidate already linked to a different participant produces a security-review path, not a silent rebind
+- [x] No participant-facing output derived from an ambiguous result contains any candidate's name, phone, or application detail
+- [x] Several active campaigns for one participant blocks campaign-specific transitions until context resolves
+- [x] A candidate already linked to a different participant produces a security-review path, not a silent rebind
 
 **Verification:**
 
 - [ ] Tests pass: `pnpm test:security`
-- [ ] Manual check: two matching applications produce a disambiguation request revealing neither
+- [x] Manual check: two matching applications produce a disambiguation request revealing neither
 
 **Dependencies:** T29
 
 **Files likely touched:** `apps/api/src/modules/identity-resolution/ambiguity.service.ts`
 
 **Estimated scope:** M
+
+> **Implementation note (2026-08-24):** `IdentityAmbiguityService` persists an idempotent decision
+> and uses fixed, non-candidate-derived participant messages. Multi-campaign context keeps all
+> campaign-specific transitions closed until a valid active campaign is selected. An application
+> linked to a foreign participant takes precedence and creates the security-review path. The
+> focused unit and security non-disclosure tests pass; the full security tier remains
+> environment-blocked by its unavailable PostgreSQL endpoint.
 
 ---
 
@@ -1582,9 +1757,9 @@ return-to-automation land in Milestone 3.
 
 **Acceptance criteria:**
 
-- [ ] A task records workflow, reason code, priority, and status, with case data masked by default (`FR-HUM-003`)
-- [ ] Priority follows the `§16.11` handoff table for the conditions implemented so far
-- [ ] Creating a task pauses ordinary automation for that workflow
+- [x] A task records workflow, reason code, priority, and status, with case data masked by default (`FR-HUM-003`)
+- [x] Priority follows the `§16.11` handoff table for the conditions implemented so far
+- [x] Creating a task pauses ordinary automation for that workflow
 
 **Verification:**
 
@@ -1597,6 +1772,13 @@ return-to-automation land in Milestone 3.
 
 **Estimated scope:** M
 
+> **Implementation note (2026-08-24):** Migration
+> `0017_add_identity_resolution_and_human_review` adds the durable resolution, token, and minimal
+> human-task records. Human tasks use a unique resolution deduplication key, code-only masked case
+> packet, persisted priority/status, and `automation_paused=true`. All 13 `§16.11` priority rows and
+> masked task construction pass unit tests. The real-PostgreSQL persistence assertion is present in
+> AC-04 but remains environment-blocked by the unavailable container runtime.
+
 ---
 
 ## T33 — AC-04: ambiguous identity
@@ -1607,8 +1789,8 @@ phone and campaign produce an Ambiguous state, a human review task, and no discl
 **Acceptance criteria:**
 
 - [ ] The Gherkin scenario is implemented as written and passes
-- [ ] The test asserts that no participant-facing output contains either applicant's details
-- [ ] The test runs in the e2e tier and gates release
+- [x] The test asserts that no participant-facing output contains either applicant's details
+- [x] The test runs in the e2e tier and gates release
 
 **Verification:**
 
@@ -1620,6 +1802,13 @@ phone and campaign produce an Ambiguous state, a human review task, and no discl
 **Files likely touched:** `tests/e2e/ac-04-ambiguous-identity.spec.ts`
 
 **Estimated scope:** S
+
+> **Implementation note (2026-08-24):** `tests/e2e/ac-04-ambiguous-identity.test.mjs` creates two
+> active same-phone/same-campaign applications and proves Ambiguous state, closed transitions,
+> candidate non-disclosure, one high-priority paused human task, and replay idempotency. It is in
+> the release-gating e2e tier. Its focused run reaches only the Testcontainers startup boundary on
+> this machine and remains pending until Docker or another compatible container runtime is
+> available.
 
 ---
 

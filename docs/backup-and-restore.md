@@ -80,12 +80,35 @@ GRANT ALL ON ALL TABLES IN SCHEMA public TO helloreview_app;   -- ⚠️ re-gran
 ```
 
 That single line restores the application's access _and_ its ability to erase history, and nothing
-reports it. The correct recovery is to re-run the migration that establishes the grants — it is
-idempotent by design, and it re-applies the `REVOKE` carve-out along with everything else:
+reports it. The recovery:
 
 ```bash
 pnpm db:migrate && pnpm db:verify-audit-protection
 ```
+
+**What is actually doing the work there, because it is not the migration.** A drizzle migration runs
+exactly once: it is recorded in `drizzle.__drizzle_migrations`, and afterwards the migrator applies a
+file only when the recorded timestamp is older than the file's. Migration 0009 is therefore skipped
+forever once applied, and `pnpm db:migrate` on an existing database applies **zero SQL**. An earlier
+version of this page claimed the migration was re-applied "because it is idempotent by design" —
+the SQL is idempotent, but nothing ever replays it. Measured: after the `GRANT ALL` above,
+`db:migrate` alone left `DELETE` on `audit_logs` still granted.
+
+The repair comes from `tools/db-provision-role.mjs`, which `db:migrate` runs afterwards **every
+time**. It re-asserts `USAGE` on the schema, the table and sequence grants, the `audit_logs`
+carve-out, and the `REVOKE EXECUTE ... FROM PUBLIC` on every non-extension function. That covers
+both failure modes on this page — the broad `GRANT ALL`, and a `--no-owner --no-acl` restore that
+stripped every grant — and it covers them on a staging or production host, where `pnpm db:reset`
+(the only other thing that replays migrations) refuses to run at all.
+
+It also recovers a restore where `globals.sql` was never loaded and the `helloreview_api` login role
+is missing entirely: the role is recreated from `APP_DB_USER`/`APP_DB_PASSWORD` and put back in the
+`helloreview_app` group. It will not restore a **password** you no longer have — set
+`APP_DB_PASSWORD` to whatever you want it to become and re-run, since the password is reset on every
+run.
+
+If provisioning still refuses after this, it is telling you the carve-out could not be restored —
+do not reach for `GRANT ALL` to make the error go away, because that is the command that caused it.
 
 ### After any restore, verify the protection came back
 
@@ -96,9 +119,17 @@ worth checking for explicitly:
 pnpm db:verify-audit-protection
 ```
 
-This asserts the three triggers exist and are `ENABLE ALWAYS` (`tgenabled = 'A'`, not `'O'`), and —
-once the role split lands — that the application role holds no rewrite privilege. It exits non-zero
-if either is untrue.
+It exits non-zero unless all four of these hold:
+
+1. The three triggers exist and are `ENABLE ALWAYS` (`tgenabled = 'A'`, not `'O'`).
+2. No non-superuser, non-owner role holds `UPDATE`, `DELETE` or `TRUNCATE` on `audit_logs`.
+3. The role named by `APP_DB_USER` is not a superuser, does not own `audit_logs`, and is not a
+   member of the owner — by inheritance or by `SET ROLE`. Checks 1 and 2 exclude superusers and the
+   owner, correctly, since no ACL constrains them; without check 3 that exclusion is a blind spot,
+   and pointing `DATABASE_URL` back at the owner would pass everything while the table stayed
+   freely deletable.
+4. No `SECURITY DEFINER` function in `public` is executable by the application role. Such a function
+   runs as its owner, so it routes around checks 1–3 entirely.
 
 ## The backup is also your tamper evidence
 

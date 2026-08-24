@@ -80,10 +80,16 @@ const parseUrl = (key, shape) => {
 /**
  * Keys whose VALUE must never be printed, even inside a failure message.
  *
- * Mirrors SECRET_KEYS in packages/config. Duplicated rather than imported because this script has
- * to run before `pnpm install` ever has — but the two lists must be kept in agreement.
+ * RELATED TO, but deliberately not a copy of, SECRET_KEYS in packages/config. That list covers what
+ * the running application must never log — whole connection strings like DATABASE_URL. This one
+ * covers the standalone PARTS this script compares, which the application never sees at all:
+ * POSTGRES_PASSWORD and APP_DB_PASSWORD reach Compose and `db:provision-role`, not the app.
+ *
+ * The overlap is only MASKING_PEPPER. Neither list can be imported from the other in any case —
+ * this script has to run before `pnpm install` ever has — so adding a credential to one is not a
+ * reason to add it to the other. Ask instead: who reads this key, and could it reach a log line?
  */
-const SECRET_PARTS = new Set(['POSTGRES_PASSWORD', 'REDIS_PASSWORD', 'MASKING_PEPPER'])
+const SECRET_PARTS = new Set(['POSTGRES_PASSWORD', 'REDIS_PASSWORD', 'MASKING_PEPPER', 'APP_DB_PASSWORD'])
 
 /**
  * Describe a value without disclosing it.
@@ -98,13 +104,21 @@ const describeValue = (key, value) => {
   return SECRET_PARTS.has(key) ? `(set, ${String(value.length)} characters)` : value
 }
 
-const disagree = (urlKey, partKey, inUrl, inParts) => {
+/**
+ * Report two places that must hold the same value and do not.
+ *
+ * `whoConsumes` names what actually reads the standalone key, because the reader's next question is
+ * always "which one is wrong?" and the answer depends on that. Compose creates the Postgres
+ * superuser from POSTGRES_*; `db:provision-role` creates the application role from APP_DB_*. A
+ * single hardcoded sentence was right for the first group and quietly wrong for the second.
+ */
+const disagree = (urlKey, partKey, inUrl, inParts, whoConsumes = `Compose builds the container from ${partKey}`) => {
   const column = Math.max(urlKey.length, partKey.length) + 12
   fail(
     `${urlKey} disagrees with ${partKey}.\n\n` +
       `    ${`${urlKey} carries`.padEnd(column)}${describeValue(partKey, inUrl)}\n` +
       `    ${`${partKey} is`.padEnd(column)}${describeValue(partKey, inParts)}\n\n` +
-      `  Compose builds the container from ${partKey}; the app connects with ${urlKey}.\n` +
+      `  ${whoConsumes}; the app connects with ${urlKey}.\n` +
       `  While they disagree the stack starts healthy and the app cannot connect.`,
   )
 }
@@ -147,6 +161,37 @@ if (db.hostname !== migration.hostname) {
       `    DATABASE_MIGRATION_URL host  ${migration.hostname}\n\n` +
       '  They may legitimately differ in CREDENTIALS — that is the point of separating them — but\n' +
       '  they must address the same database, or migrations land somewhere the app never reads.',
+  )
+}
+
+// --- DATABASE_URL must carry the credentials db:provision-role actually creates ---
+//
+// The credentials are NOT compared against POSTGRES_* above, on purpose. They must still be
+// compared against something, or the two halves of the privilege split drift apart silently:
+// db:provision-role creates the role named by APP_DB_USER, the app connects as whoever
+// DATABASE_URL says, and nothing notices until a container that reports healthy fails every
+// query with "password authentication failed" — a message that points at the password rather
+// than at the mismatch that caused it.
+for (const [partKey, inUrl] of [
+  ['APP_DB_USER', decodeURIComponent(db.username)],
+  ['APP_DB_PASSWORD', decodeURIComponent(db.password)],
+]) {
+  if (inUrl !== need(partKey)) {
+    disagree('DATABASE_URL', partKey, inUrl, need(partKey), `\`pnpm db:migrate\` provisions the role from ${partKey}`)
+  }
+}
+
+// The application must not be the owner. Catching it here is worth the four lines: every REVOKE in
+// migration 0009 is silently inert against the owner, so the audit log would look protected — the
+// triggers are still there, the grants are still there — while being deletable at will.
+if (decodeURIComponent(db.username) === decodeURIComponent(migration.username)) {
+  fail(
+    'DATABASE_URL connects as the schema owner.\n\n' +
+      `    both connect as  ${decodeURIComponent(db.username)}\n\n` +
+      '  The owner of a table can always ALTER TABLE ... DISABLE TRIGGER and then delete from it,\n' +
+      '  whatever has been revoked. That makes audit_logs append-only in appearance only.\n\n' +
+      '  Set APP_DB_USER to a separate role and point DATABASE_URL at it; `pnpm db:migrate`\n' +
+      '  creates it. DATABASE_MIGRATION_URL keeps the owner credential.',
   )
 }
 

@@ -79,3 +79,90 @@ const PURPOSE_VALUES: ReadonlySet<string> = new Set<string>(ALL_MESSAGE_PURPOSES
  * written by an older deployment is the realistic case.
  */
 export const isMessagePurpose = (value: string): value is MessagePurpose => PURPOSE_VALUES.has(value)
+
+/**
+ * The purposes that take a parameter, and what the parameter means.
+ *
+ * §14.1 writes these as `RESERVATION_CORRECTION:<rule>` and `GUIDELINE_DELIVERY:<version>`. The
+ * registry above holds STEMS; this is the list of stems that are incomplete on their own.
+ *
+ * Why it matters beyond tidiness: `message_templates.purpose_code` stores the FULL form, and §32
+ * has seven distinct reservation-correction templates. If the stem were stored instead, six of them
+ * could not exist — PRD §17.3 makes (purpose_code, version) unique.
+ */
+export const PARAMETERISED_PURPOSES: ReadonlySet<MessagePurpose> = new Set<MessagePurpose>([
+  MESSAGE_PURPOSES.RESERVATION_CORRECTION,
+  MESSAGE_PURPOSES.GUIDELINE_DELIVERY,
+  MESSAGE_PURPOSES.GUIDELINE_REDELIVERY,
+])
+
+/**
+ * Purpose stems whose TEMPLATE identity includes a parameter.
+ *
+ * This is intentionally narrower than PARAMETERISED_PURPOSES. A guideline delivery's outbound
+ * purpose carries the delivered guideline version, but its approved wrapper template does not —
+ * the guideline content/version is a separate record. Reservation corrections, on the other hand,
+ * genuinely have different approved wording per failed rule, so the rule is part of the template
+ * purpose (`RESERVATION_CORRECTION:INVALID_TIME`).
+ */
+export const PARAMETERISED_TEMPLATE_PURPOSES: ReadonlySet<MessagePurpose> = new Set<MessagePurpose>([
+  MESSAGE_PURPOSES.RESERVATION_CORRECTION,
+])
+
+/** Separates a stem from its parameters, matching §14.1's `RESERVATION_CORRECTION:<rule>`. */
+export const PURPOSE_PARAMETER_SEPARATOR = ':'
+
+/**
+ * Compose the full purpose string from a stem and its parameters.
+ *
+ * COMPOSED, NEVER SPELLED BY HAND. A purpose written out as a literal at one call site and composed
+ * at another is how one purpose acquires two spellings — and since the purpose is the namespace half
+ * of every dedupe key, two spellings are two dedupe namespaces that look like one, which shows up
+ * as a duplicate message to a participant rather than as a failing test.
+ *
+ * Rejects an empty or separator-containing parameter for the same reason: `GUIDELINE_DELIVERY:4:x`
+ * parsed back gives a different stem than it started with.
+ */
+export const composePurpose = (stem: MessagePurpose, ...parameters: readonly string[]): string => {
+  for (const parameter of parameters) {
+    if (parameter === '' || parameter.includes(PURPOSE_PARAMETER_SEPARATOR)) {
+      throw new Error(
+        `invalid purpose parameter ${JSON.stringify(parameter)} for ${stem}: ` +
+          `it must be non-empty and must not contain "${PURPOSE_PARAMETER_SEPARATOR}"`,
+      )
+    }
+  }
+  return [stem, ...parameters].join(PURPOSE_PARAMETER_SEPARATOR)
+}
+
+/**
+ * Recover the stem from a full purpose string, or undefined if it names no known purpose.
+ *
+ * Undefined rather than a throw: purpose codes are read back from rows written by older
+ * deployments, and a code this build does not recognise is data, not a programming error.
+ */
+export const purposeStem = (fullPurpose: string): MessagePurpose | undefined => {
+  const [stem] = fullPurpose.split(PURPOSE_PARAMETER_SEPARATOR)
+  return stem !== undefined && isMessagePurpose(stem) ? stem : undefined
+}
+
+/**
+ * Whether a stored purpose_code is well formed: a known stem, parameterised only if the stem allows
+ * it, and carrying a parameter if the stem requires one.
+ */
+export const isWellFormedPurposeCode = (fullPurpose: string): boolean => {
+  const parts = fullPurpose.split(PURPOSE_PARAMETER_SEPARATOR)
+  const [stem, ...parameters] = parts
+  if (stem === undefined || !isMessagePurpose(stem)) return false
+  if (parameters.some((parameter) => parameter === '')) return false
+  return PARAMETERISED_PURPOSES.has(stem) ? parameters.length > 0 : parameters.length === 0
+}
+
+/** Whether a `message_templates.purpose_code` names one valid approved-template namespace. */
+export const isWellFormedTemplatePurposeCode = (templatePurpose: string): boolean => {
+  const parts = templatePurpose.split(PURPOSE_PARAMETER_SEPARATOR)
+  const [stem, ...parameters] = parts
+  if (stem === undefined || !isMessagePurpose(stem)) return false
+  if (parameters.some((parameter) => parameter === '')) return false
+  return PARAMETERISED_TEMPLATE_PURPOSES.has(stem) ? parameters.length > 0 : parameters.length === 0
+}

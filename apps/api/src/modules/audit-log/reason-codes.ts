@@ -28,6 +28,24 @@ export const AUDIT_ACTION = {
   // Unprotected: useful for operations, but losing one does not make a decision unexplainable.
   HEALTH_CHECKED: 'HEALTH_CHECKED',
   CONFIGURATION_READ: 'CONFIGURATION_READ',
+
+  /**
+   * §13.12 / §21.9 configuration publishing (T24). Deliberately UNPROTECTED, and the reasoning is
+   * the standard stated above rather than a judgement that these matter less.
+   *
+   * The test is whether losing the record destroys the ability to reconstruct a decision. It does
+   * not here: publishing FREEZES a row, and the row itself carries who did it and when
+   * (`published_by`/`published_at`, `approved_by`/`approved_at`) under a trigger that refuses any
+   * later edit. The evidence survives in the table whether or not the audit write lands, which is
+   * exactly what is NOT true of a selection decision or a consent.
+   *
+   * Adding them to PROTECTED_ACTIONS would page somebody for an event whose evidence is already
+   * durable, and alert fatigue is what makes the genuinely protected eight worth waking for.
+   */
+  GUIDELINE_VERSION_PUBLISHED: 'GUIDELINE_VERSION_PUBLISHED',
+  TEMPLATE_APPROVED: 'TEMPLATE_APPROVED',
+  TEMPLATE_ACTIVATED: 'TEMPLATE_ACTIVATED',
+  TEMPLATE_RETIRED: 'TEMPLATE_RETIRED',
 } as const
 
 export type AuditAction = (typeof AUDIT_ACTION)[keyof typeof AUDIT_ACTION]
