@@ -651,9 +651,8 @@ export const ILLEGAL_WORKFLOW_TRANSITIONS: readonly IllegalTransitionRule[] = [
     reasonCode: WORKFLOW_TRANSITION_REASON.VISIT_C_APPROVAL_REQUIRED,
     matches: (snapshot, request) =>
       snapshot.visit_method === 'visit_c' &&
-      (snapshot.business_approval === 'rejected' ||
-        snapshot.business_approval === 'expired' ||
-        snapshot.business_approval === 'revoked') &&
+      snapshot.business_approval !== 'approved' &&
+      snapshot.business_approval !== 'pending' &&
       request.dimension === 'reservation' &&
       request.to === 'instructions_sent',
   },

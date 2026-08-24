@@ -159,4 +159,31 @@ describe('PRD section 14.6 prohibited transitions', () => {
     })
     expect(plan.nextSnapshot).toBe(snapshot)
   })
+
+  test.each(['not_required', 'not_requested', 'pending', 'rejected', 'expired', 'revoked', 'human_review_required'])(
+    'Visit C booking instructions are specifically prohibited while approval is %s',
+    (approvalState) => {
+      const snapshot = {
+        ...base(),
+        visit_method: 'visit_c',
+        business_approval: approvalState,
+        reservation: 'not_started',
+      }
+      const plan = planWorkflowTransition(
+        snapshot,
+        {
+          dimension: 'reservation',
+          to: 'instructions_sent',
+          trigger: WORKFLOW_TRIGGER.RESERVATION_INSTRUCTIONS_AUTHORIZED,
+        },
+        defaultContext(),
+      )
+      expect(plan).toMatchObject({
+        approved: false,
+        reasonCode: 'WORKFLOW_VISIT_C_APPROVAL_REQUIRED',
+        sideEffects: [],
+      })
+      expect(plan.nextSnapshot).toBe(snapshot)
+    },
+  )
 })

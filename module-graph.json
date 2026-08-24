@@ -29,7 +29,10 @@
     "selection": { "dependsOn": ["workflow-core", "rules-engine", "identity-resolution"] },
     "shipping": { "dependsOn": ["workflow-core", "messaging", "rules-engine"] },
     "payback-consent": { "dependsOn": ["workflow-core", "messaging", "campaign-config"] },
-    "business-approval": { "dependsOn": ["workflow-core", "campaign-config"] },
+    "business-approval": {
+      "$comment": "The approval-owned Visit C hard gate is the only component allowed to enqueue booking instructions, so messaging is an explicit dependency.",
+      "dependsOn": ["workflow-core", "campaign-config", "messaging"]
+    },
     "reservation": {
       "dependsOn": ["workflow-core", "rules-engine", "ai-orchestration", "business-approval"]
     },

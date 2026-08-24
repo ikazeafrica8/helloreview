@@ -85,6 +85,22 @@ export type {
 } from './workflow-instances.js'
 export { automationPauses, automationPauseScopeEnum, automationPauseKindEnum } from './automation-pauses.js'
 export type { AutomationPauseRow, NewAutomationPauseRow } from './automation-pauses.js'
+export { businessApprovals, businessApprovalHeads, businessApprovalSourceEnum } from './business-approvals.js'
+export type { BusinessApprovalRow, NewBusinessApprovalRow, BusinessApprovalHeadRow } from './business-approvals.js'
+export {
+  guidelineDeliveries,
+  guidelineDeliveryAttempts,
+  guidelineDeliveryIncidents,
+  guidelineDeliveryStatusEnum,
+  guidelineDeliveryAttemptOutcomeEnum,
+  guidelineIncidentStatusEnum,
+} from './guideline-deliveries.js'
+export type {
+  GuidelineDeliveryRow,
+  NewGuidelineDeliveryRow,
+  GuidelineDeliveryAttemptRow,
+  GuidelineDeliveryIncidentRow,
+} from './guideline-deliveries.js'
 export { participants, channelIdentities, channelIdentityVerificationStateEnum } from './participants.js'
 export type { ParticipantRow, NewParticipantRow, ChannelIdentityRow, NewChannelIdentityRow } from './participants.js'
 export {

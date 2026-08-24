@@ -63,11 +63,10 @@ its own acceptance criteria. `pnpm verify` must pass before every commit.
 > | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 > | acknowledged as a duplicate      | **Proven.** The response carries `duplicate: true`.                                                                                                                                                                                                                                               |
 > | no second state transition       | **Proven at today's boundary.** The inbox row IS the platform's state for an inbound event until T34 adds workflow instances. The test asserts the row is not merely singular but byte-identical — a duplicate that bumped `received_at` would be a second transition wearing the first one's id. |
-> | no second acknowledgment message | **Proven by proxy.** Outbound messages arrive with T41's `outbound_notifications` and T45's sender. Today the evidence is that no second job was enqueued, so nothing downstream was ever asked to send anything.                                                                                 |
+> | no second acknowledgment message | **Proven directly.** AC-02 reads `outbound_notifications` before and after the duplicate and proves the `APPLICATION_MATCH_STATUS` logical-message set is unchanged and contains at most one row.                                                                                                 |
 >
-> The proxy is guarded by a FORCING FUNCTION rather than a comment: the last test in the file fails
-> the moment `outbound_notifications` exists, so this file cannot be left asserting less than its
-> Gherkin claims once the real artifact is available.
+> T41 retired the former queue-only proxy and its forcing function; the acceptance test now asserts
+> against the durable outbound artifact directly.
 
 ### Audit — Phase 2 (before Phase 3)
 
@@ -215,25 +214,25 @@ Every fix carries a test that was verified to FAIL without it.
 
 ### Phase 6 — Outbound and deduplication
 
-- [ ] T41 — Outbound notifications schema
-- [ ] T42 — Dedupe key construction (`§17.4`)
-- [ ] T43 — Transactional outbox
-- [ ] T44 — Template rendering
-- [ ] T45 — Outbound port, fake, and send worker
-- [ ] T46 — Human-ownership lock
-- [ ] T47 — **AC-06**: operator and AI concurrency
+- [x] T41 — Outbound notifications schema
+- [x] T42 — Dedupe key construction (`§17.4`)
+- [x] T43 — Transactional outbox
+- [x] T44 — Template rendering
+- [x] T45 — Outbound port, fake, and send worker
+- [x] T46 — Human-ownership lock
+- [x] T47 — **AC-06**: operator and AI concurrency
 
 ### Phase 7 — The gates
 
-- [ ] T48 — Rules engine core
-- [ ] T49 — Reservation rule set (`§16.7`)
-- [ ] T50 — Business approvals schema
-- [ ] T51 — Visit C hard gate
-- [ ] T52 — **AC-01**: Visit C approval gate
-- [ ] T53 — Guideline readiness predicate (`§16.9`)
-- [ ] T54 — Guideline delivery and version dedupe
-- [ ] T55 — Premature-delivery incident handling
-- [ ] T56 — **AC-03** and **AC-08**
+- [x] T48 — Rules engine core
+- [x] T49 — Reservation rule set (`§16.7`)
+- [x] T50 — Business approvals schema
+- [x] T51 — Visit C hard gate
+- [x] T52 — **AC-01**: Visit C approval gate
+- [x] T53 — Guideline readiness predicate (`§16.9`)
+- [x] T54 — Guideline delivery and version dedupe
+- [x] T55 — Premature-delivery incident handling
+- [x] T56 — **AC-03** and **AC-08**
 
 ### Checkpoint E — Walking skeleton complete
 
@@ -2216,15 +2215,15 @@ default (`§11`).
 
 **Acceptance criteria:**
 
-- [ ] Evaluation is pure, takes the clock as an argument, and performs no I/O
-- [ ] Missing or malformed rule configuration returns a distinct configuration-error result, never a pass
-- [ ] Every result carries the rule version used, the submitted value, and the expected condition
+- [x] Evaluation is pure, takes the clock as an argument, and performs no I/O
+- [x] Missing or malformed rule configuration returns a distinct configuration-error result, never a pass
+- [x] Every result carries the rule version used, the submitted value, and the expected condition
 
 **Verification:**
 
-- [ ] Tests pass: `pnpm test:unit`
-- [ ] Coverage: 100% branch on the evaluator
-- [ ] Manual check: evaluate against a campaign missing a required rule and read the error
+- [x] Tests pass: `pnpm test:unit`
+- [x] Coverage: 100% branch on the evaluator
+- [x] Manual check: evaluate against a campaign missing a required rule and read the error
 
 **Dependencies:** T21, T25
 
@@ -2243,15 +2242,15 @@ and the correction (`FR-RES-011`).
 
 **Acceptance criteria:**
 
-- [ ] Each `§16.7` row is an independently testable rule with its own reason code
-- [ ] Boundary rules honor per-window inclusivity, and exact start and end times are tested explicitly
-- [ ] Every failure result carries submitted value, expected condition, correction, and retry eligibility
+- [x] Each `§16.7` row is an independently testable rule with its own reason code
+- [x] Boundary rules honor per-window inclusivity, and exact start and end times are tested explicitly
+- [x] Every failure result carries submitted value, expected condition, correction, and retry eligibility
 
 **Verification:**
 
-- [ ] Tests pass: `pnpm test:unit`
-- [ ] Coverage: 100% branch on the rule set
-- [ ] Manual check: the `§26.2` boundary and weekday scenarios each map to a named test
+- [x] Tests pass: `pnpm test:unit`
+- [x] Coverage: 100% branch on the rule set
+- [x] Manual check: the `§26.2` boundary and weekday scenarios each map to a named test
 
 **Dependencies:** T48, T22, T23
 
@@ -2269,14 +2268,14 @@ independent from reservation state and separately auditable (`FR-VC-001`).
 
 **Acceptance criteria:**
 
-- [ ] One current approval version per workflow, with immutable prior versions retained
-- [ ] Records carry campaign, scope, approver, issued time, and expiry (`FR-VC-004`)
-- [ ] Approval is queryable independently of any reservation record
+- [x] One current approval version per workflow, with immutable prior versions retained
+- [x] Records carry campaign, scope, approver, issued time, and expiry (`FR-VC-004`)
+- [x] Approval is queryable independently of any reservation record
 
 **Verification:**
 
-- [ ] Tests pass: `pnpm test:integration`
-- [ ] Manual check: revoke an approval and confirm the prior version remains readable
+- [x] Tests pass: `pnpm test:integration`
+- [x] Manual check: revoke an approval and confirm the prior version remains readable
 
 **Dependencies:** T34
 
@@ -2295,15 +2294,15 @@ message never can.
 
 **Acceptance criteria:**
 
-- [ ] Every `§16.6` row has a test, and each prohibited state produces zero `VISIT_C_BOOKING_INSTRUCTIONS` intents
-- [ ] Approval recorded from a participant-message path is rejected regardless of content
-- [ ] Expiry and revocation both halt progression and create a task; revocation is priority Critical (`§16.11`)
+- [x] Every `§16.6` row has a test, and each prohibited state produces zero `VISIT_C_BOOKING_INSTRUCTIONS` intents
+- [x] Approval recorded from a participant-message path is rejected regardless of content
+- [x] Expiry and revocation both halt progression and create a task; revocation is priority Critical (`§16.11`)
 
 **Verification:**
 
-- [ ] Tests pass: `pnpm test:transitions` and `pnpm test:security`
-- [ ] Coverage: 100% branch on the gate predicate
-- [ ] Manual check: attempt a send in each prohibited state and confirm zero intents
+- [x] Tests pass: `pnpm test:transitions` and `pnpm test:security`
+- [x] Coverage: 100% branch on the gate predicate
+- [x] Manual check: attempt a send in each prohibited state and confirm zero intents
 
 **Dependencies:** T50, T43
 
@@ -2321,14 +2320,14 @@ booking-instruction intent exists.
 
 **Acceptance criteria:**
 
-- [ ] The Gherkin scenario is implemented as written and passes
-- [ ] The test asserts the absence of any intent with purpose `VISIT_C_BOOKING_INSTRUCTIONS`
-- [ ] The test runs in the e2e tier and gates release — this is a zero-incident requirement
+- [x] The Gherkin scenario is implemented as written and passes
+- [x] The test asserts the absence of any intent with purpose `VISIT_C_BOOKING_INSTRUCTIONS`
+- [x] The test runs in the e2e tier and gates release — this is a zero-incident requirement
 
 **Verification:**
 
-- [ ] Tests pass: `pnpm test:e2e`
-- [ ] Manual check: the test fails if the approval predicate is bypassed
+- [x] Tests pass: `pnpm test:e2e`
+- [x] Manual check: the test fails if the approval predicate is bypassed
 
 **Dependencies:** T51
 
@@ -2347,15 +2346,15 @@ workflow snapshot, the capability map needs revising.
 
 **Acceptance criteria:**
 
-- [ ] Every `§16.9` row is covered, and the campaign-type switch is exhaustive at compile time
-- [ ] The function is pure, takes the clock as an argument, and reads only the workflow snapshot
-- [ ] Every blocked result names the specific blocking condition, never a generic failure
+- [x] Every `§16.9` row is covered, and the campaign-type switch is exhaustive at compile time
+- [x] The function is pure, takes the clock as an argument, and reads only the workflow snapshot
+- [x] Every blocked result names the specific blocking condition, never a generic failure
 
 **Verification:**
 
-- [ ] Tests pass: `pnpm test:unit`
-- [ ] Coverage: 100% branch on the predicate
-- [ ] Manual check: confirm no fact needed by the gate is absent from the snapshot — if any is, raise it against SPEC.md §3.3
+- [x] Tests pass: `pnpm test:unit`
+- [x] Coverage: 100% branch on the predicate
+- [x] Manual check: confirm no fact needed by the gate is absent from the snapshot — if any is, raise it against SPEC.md §3.3
 
 **Dependencies:** T49, T51
 
@@ -2374,14 +2373,14 @@ independently before sending (`§18.13`).
 
 **Acceptance criteria:**
 
-- [ ] A repeated request for a delivered version creates a suppression record rather than a send
-- [ ] A new active version is eligible for exactly one delivery after readiness re-evaluation
-- [ ] Every delivery stores the `FR-GDL-003` fields: participant, application, campaign, version, channel, event, rule result, timestamp, provider result, dedupe key
+- [x] A repeated request for a delivered version creates a suppression record rather than a send
+- [x] A new active version is eligible for exactly one delivery after readiness re-evaluation
+- [x] Every delivery stores the `FR-GDL-003` fields: participant, application, campaign, version, channel, event, rule result, timestamp, provider result, dedupe key
 
 **Verification:**
 
-- [ ] Tests pass: `pnpm test:integration`
-- [ ] Manual check: request the same version three times, confirm one send and two suppressions
+- [x] Tests pass: `pnpm test:integration`
+- [x] Manual check: request the same version three times, confirm one send and two suppressions
 
 **Dependencies:** T53, T43
 
@@ -2399,14 +2398,14 @@ delivery creates a review task with the full delivery and state history (`FR-GDL
 
 **Acceptance criteria:**
 
-- [ ] A detected premature delivery raises a critical alert and activates a campaign-scope pause
-- [ ] Post-delivery cancellation or revocation creates a Critical priority task carrying the delivery history
-- [ ] Detection runs as an independent check, not only as an assertion inside the send path
+- [x] A detected premature delivery raises a critical alert and activates a campaign-scope pause
+- [x] Post-delivery cancellation or revocation creates a Critical priority task carrying the delivery history
+- [x] Detection runs as an independent check, not only as an assertion inside the send path
 
 **Verification:**
 
-- [ ] Tests pass: `pnpm test:integration`
-- [ ] Manual check: force a delivery bypassing the gate and confirm alert plus pause
+- [x] Tests pass: `pnpm test:integration`
+- [x] Manual check: force a delivery bypassing the gate and confirm alert plus pause
 
 **Dependencies:** T54, T38
 
@@ -2425,17 +2424,27 @@ queued, v3 remains recorded, and repeat v4 requests are suppressed.
 
 **Acceptance criteria:**
 
-- [ ] Both Gherkin scenarios are implemented as written and pass
-- [ ] AC-03 asserts the specific invalid-time correction, not a generic failure message
-- [ ] Both run in the e2e tier and gate release
+- [x] Both Gherkin scenarios are implemented as written and pass
+- [x] AC-03 asserts the specific invalid-time correction, not a generic failure message
+- [x] Both run in the e2e tier and gate release
 
 **Verification:**
 
-- [ ] Tests pass: `pnpm test:e2e`
-- [ ] Manual check: all six Milestone 1 acceptance tests pass in one run
+- [x] Tests pass: `pnpm test:e2e`
+- [x] Manual check: all six Milestone 1 acceptance tests pass in one run
 
 **Dependencies:** T55
 
 **Files likely touched:** `tests/e2e/ac-03-guideline-readiness.spec.ts`, `tests/e2e/ac-08-guideline-version.spec.ts`
 
 **Estimated scope:** S
+
+> **Phase 7 implementation note (2026-08-24):** T48–T56 are complete. The evaluator, fourteen
+> reservation checks, Visit C approval gate, and guideline readiness gate are pure and measured at
+> 100% statements, branches, functions, and lines. Migration 0021 adds immutable approval history,
+> a single current head, guideline delivery/attempt evidence, and critical incident records. Visit C
+> is enforced both by the approval-owned booking service and defensively inside the generic outbox,
+> so a direct caller still cannot enqueue booking instructions without current scoped approval. The
+> independent guideline auditor creates critical incidents, campaign pauses, and post-delivery
+> review tasks. All 25 integration files pass in bounded serial groups (143 tests), all six security
+> files pass (44 tests), and all six Milestone 1 acceptance-test files pass together (8 assertions).
