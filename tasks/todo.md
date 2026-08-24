@@ -186,11 +186,11 @@ Every fix carries a test that was verified to FAIL without it.
 - [x] T30 — Application verification token
 - [x] T31 — Ambiguity and campaign disambiguation
 - [x] T32 — Human review tasks (minimal)
-- [ ] T33 — **AC-04**: ambiguous identity
+- [x] T33 — **AC-04**: ambiguous identity
 
 ### Checkpoint C — Identity proven
 
-- [ ] AC-04 passes and no candidate applicant detail is disclosed in any participant-facing output
+- [x] AC-04 passes and no candidate applicant detail is disclosed in any participant-facing output
 - [x] Name-only matching is rejected (`FR-ID-001`) with a test proving it
 - [x] Matching decision table is at 100% branch coverage
 - [ ] Review with human before proceeding
@@ -236,11 +236,23 @@ Every fix carries a test that was verified to FAIL without it.
 
 ### Checkpoint E — Walking skeleton complete
 
-- [ ] AC-01, AC-02, AC-03, AC-04, AC-06, AC-08 all pass
-- [ ] End-to-end: fake webhook → inbox → transition → gate → outbox → fake provider
-- [ ] Coverage thresholds in SPEC.md §7 met; gates and validators at 100% branch
-- [ ] SPEC.md §3.3 boundary decisions confirmed or revised against what was built
-- [ ] Break down Milestone 2 before proceeding
+- [x] AC-01, AC-02, AC-03, AC-04, AC-06, AC-08 all pass
+- [x] End-to-end: fake webhook → inbox → transition → gate → outbox → fake provider
+- [x] Coverage thresholds in SPEC.md §7 met; gates and validators at 100% branch
+- [x] SPEC.md §3.3 boundary decisions confirmed or revised against what was built
+- [x] Break down Milestone 2 before proceeding
+
+> **Checkpoint E verification note (2026-08-24):** GitHub merge `061bb85` contains PR #7 and the
+> Phase 7 commit. The complete aggregate gate passed 77 files / 785 tests with 86.38% statements and
+> 88.32% lines; all configured gate, predicate, validator, dedupe, rules-engine, identity, and
+> business-flow thresholds passed. A new E2E composition proves fake inbound adapter → durable
+> inbox/queue → optimistic workflow transition → guideline readiness gate → transactional outbox →
+> delivery worker → fake outbound provider. The built §3.3 boundaries remain valid: approval stays
+> independent from reservation; guideline readiness consumes a workflow projection without importing
+> flow modules; rules stay pure and separate from configuration; and inbound/outbound trust paths
+> compose without merging. OCR and privacy-ops decisions remain deferred with their unbuilt modules.
+> Milestone 2 is broken down as T57–T87 in `tasks/milestone-2.md`, with external policy decisions
+> called out as explicit blockers rather than guessed defaults.
 
 ---
 
@@ -1631,8 +1643,8 @@ forms. A phone number is explicitly not globally unique — shared numbers exist
 
 **Verification:**
 
-- [ ] Tests pass: `pnpm test:unit` and `pnpm test:integration`
-- [ ] Manual check: two participants sharing one phone number both persist
+- [x] Tests pass: `pnpm test:unit` and `pnpm test:integration`
+- [x] Manual check: two participants sharing one phone number both persist
 
 **Dependencies:** T26
 
@@ -1646,9 +1658,9 @@ forms. A phone number is explicitly not globally unique — shared numbers exist
 > than global identity keys. `normalizeKoreanMobilePhone()` accepts the tested Korean local,
 > international, dial-prefix, optional-trunk and full-width forms and rejects landlines, foreign,
 > legacy-prefix, malformed and extension-bearing values without echoing the raw phone in errors.
-> The 26-case unit suite and `pnpm db:check` pass. The focused PostgreSQL test includes the required
-> two-participants-one-phone proof and provider namespace collision, but remains pending execution
-> because no container runtime is available on this machine.
+> The 26-case unit suite, current PostgreSQL integration suite, and `pnpm db:check` pass. The focused
+> persistence test proves two participants may share one phone while provider identity uniqueness
+> remains enforced.
 
 ---
 
@@ -1697,8 +1709,8 @@ matching evidence (`FR-ID-003`), with expiry and single-use semantics.
 
 **Verification:**
 
-- [ ] Tests pass: `pnpm test:unit` and `pnpm test:security`
-- [ ] Manual check: reuse a consumed token and confirm rejection
+- [x] Tests pass: `pnpm test:unit` and `pnpm test:security`
+- [x] Manual check: reuse a consumed token and confirm rejection
 
 **Dependencies:** T29
 
@@ -1708,11 +1720,8 @@ matching evidence (`FR-ID-003`), with expiry and single-use semantics.
 
 > **Implementation note (2026-08-24):** Website tokens are stored only as keyed HMAC-SHA-256
 > digests, compared through `timingSafeEqual` on fixed-size buffers (including the unknown-token
-> path), locked transactionally, expired fail-closed, and consumed once. The focused unit and
-> security tests pass. The focused real-PostgreSQL token lifecycle test is implemented but cannot
-> execute on this machine because Testcontainers reports
-> `Could not find a working container runtime strategy`; the full security tier also cannot connect
-> to its required PostgreSQL endpoint at `127.0.0.1:15432`.
+> path), locked transactionally, expired fail-closed, and consumed once. Unit, security, and current
+> real-PostgreSQL lifecycle tests all pass, including reuse rejection.
 
 ---
 
@@ -1730,7 +1739,7 @@ campaigns requires disambiguation before any campaign-specific state changes (`F
 
 **Verification:**
 
-- [ ] Tests pass: `pnpm test:security`
+- [x] Tests pass: `pnpm test:security`
 - [x] Manual check: two matching applications produce a disambiguation request revealing neither
 
 **Dependencies:** T29
@@ -1742,9 +1751,8 @@ campaigns requires disambiguation before any campaign-specific state changes (`F
 > **Implementation note (2026-08-24):** `IdentityAmbiguityService` persists an idempotent decision
 > and uses fixed, non-candidate-derived participant messages. Multi-campaign context keeps all
 > campaign-specific transitions closed until a valid active campaign is selected. An application
-> linked to a foreign participant takes precedence and creates the security-review path. The
-> focused unit and security non-disclosure tests pass; the full security tier remains
-> environment-blocked by its unavailable PostgreSQL endpoint.
+> linked to a foreign participant takes precedence and creates the security-review path. The full
+> security and non-disclosure suites pass against current PostgreSQL.
 
 ---
 
@@ -1762,8 +1770,8 @@ return-to-automation land in Milestone 3.
 
 **Verification:**
 
-- [ ] Tests pass: `pnpm test:integration`
-- [ ] Manual check: an ambiguous match produces exactly one task at the `§16.11` priority
+- [x] Tests pass: `pnpm test:integration`
+- [x] Manual check: an ambiguous match produces exactly one task at the `§16.11` priority
 
 **Dependencies:** T31
 
@@ -1774,9 +1782,8 @@ return-to-automation land in Milestone 3.
 > **Implementation note (2026-08-24):** Migration
 > `0017_add_identity_resolution_and_human_review` adds the durable resolution, token, and minimal
 > human-task records. Human tasks use a unique resolution deduplication key, code-only masked case
-> packet, persisted priority/status, and `automation_paused=true`. All 13 `§16.11` priority rows and
-> masked task construction pass unit tests. The real-PostgreSQL persistence assertion is present in
-> AC-04 but remains environment-blocked by the unavailable container runtime.
+> packet, persisted priority/status, and `automation_paused=true`. All 13 `§16.11` priority rows,
+> masked construction, real-PostgreSQL persistence, and AC-04 task-deduplication checks pass.
 
 ---
 
@@ -1787,14 +1794,14 @@ phone and campaign produce an Ambiguous state, a human review task, and no discl
 
 **Acceptance criteria:**
 
-- [ ] The Gherkin scenario is implemented as written and passes
+- [x] The Gherkin scenario is implemented as written and passes
 - [x] The test asserts that no participant-facing output contains either applicant's details
 - [x] The test runs in the e2e tier and gates release
 
 **Verification:**
 
-- [ ] Tests pass: `pnpm test:e2e`
-- [ ] Manual check: the test fails if the non-disclosure guard is removed
+- [x] Tests pass: `pnpm test:e2e`
+- [x] Manual check: the test fails if the non-disclosure guard is removed
 
 **Dependencies:** T32
 
@@ -1805,9 +1812,7 @@ phone and campaign produce an Ambiguous state, a human review task, and no discl
 > **Implementation note (2026-08-24):** `tests/e2e/ac-04-ambiguous-identity.test.mjs` creates two
 > active same-phone/same-campaign applications and proves Ambiguous state, closed transitions,
 > candidate non-disclosure, one high-priority paused human task, and replay idempotency. It is in
-> the release-gating e2e tier. Its focused run reaches only the Testcontainers startup boundary on
-> this machine and remains pending until Docker or another compatible container runtime is
-> available.
+> the release-gating e2e tier and passes in the complete six-scenario Milestone 1 acceptance run.
 
 ---
 

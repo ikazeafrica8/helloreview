@@ -2,13 +2,13 @@
 
 | Field          | Value                                                                                                               |
 | -------------- | ------------------------------------------------------------------------------------------------------------------- |
-| Plan version   | 1.0                                                                                                                 |
-| Status         | Draft — awaiting approval before implementation                                                                     |
+| Plan version   | 1.1                                                                                                                 |
+| Status         | Milestone 1 complete; Milestone 2 proposed at Checkpoint E                                                          |
 | Spec           | [SPEC.md](../SPEC.md) (capability map in §3)                                                                        |
 | Requirements   | [PRD v1.0](../HelloReview%20Reviewer%20Campaign%20Automation%20Platform%20—%20Product%20Requirements%20Document.md) |
-| Task list      | [tasks/todo.md](todo.md) — markdown checklist, no external tracker designated                                       |
-| Detailed scope | Milestone 1 (Core Spine), 56 tasks across 8 phases                                                                  |
-| Outlined scope | Milestones 2–4, broken down at their checkpoints                                                                    |
+| Task lists     | [Milestone 1](todo.md) · [Milestone 2](milestone-2.md) — markdown, no external tracker designated                   |
+| Detailed scope | Milestone 1: 56 tasks across 8 phases; Milestone 2: 31 proposed tasks across 6 phases                               |
+| Outlined scope | Milestones 3–4, broken down at their checkpoints                                                                    |
 
 ---
 
@@ -22,7 +22,8 @@ external provider replaced by an in-repo fake.
 At the end of Milestone 1 no participant-facing campaign flow exists yet. What exists is proof that
 the mechanisms the entire product depends on actually hold: duplicate events produce one effect,
 illegal transitions are rejected, the guideline gate cannot be bypassed, and human ownership
-suppresses automation. Five of the PRD's eight `§26.3` acceptance tests pass.
+suppresses automation. Six of the PRD's eight `§26.3` acceptance tests pass; AC-05 and AC-07 remain
+with their planned Milestone 2/4 modules.
 
 That ordering is deliberate. Every campaign flow in Milestone 2 is a consumer of these mechanisms.
 Building shipping or payback first would mean building them twice — once against assumptions, once
@@ -32,9 +33,9 @@ against the real spine.
 
 ## Scope of this plan
 
-**Milestone 1 is broken down in full.** Milestones 2–4 are outlined below and get their own task
-breakdown at the preceding checkpoint, when the spine's real shape is known. Planning 150 tasks now
-against an unbuilt foundation would produce fiction, not a plan.
+**Milestones 1 and 2 are broken down.** Milestone 2 was expanded at Checkpoint E, after the spine's
+real shape was proven, in [tasks/milestone-2.md](milestone-2.md). Milestones 3–4 remain outlines and
+get their own task breakdown at the preceding checkpoint.
 
 ---
 
@@ -130,19 +131,20 @@ Full task detail — description, acceptance criteria, verification, dependencie
 | 6. Outbound and deduplication        | T41–T47 | Transactional outbox, dedupe keys, ownership lock          | **AC-06**                                |
 | 7. The gates                         | T48–T56 | Rules engine, Visit C hard gate, guideline readiness       | **AC-01 · AC-03 · AC-08** · Checkpoint E |
 
-Three of the eight `§26.3` acceptance tests are deferred with their modules: AC-05 (payback consent
-versioning) to Milestone 2, AC-07 (screenshot prompt injection) to Milestone 4 with `ocr-extraction`.
+Two of the eight `§26.3` acceptance tests are deferred with their modules: AC-05 (payback consent
+versioning) to Milestone 2, and AC-07 (screenshot prompt injection) to Milestone 4 with
+`ocr-extraction`.
 
 ---
 
-## Milestones 2–4 (outline)
+## Milestones 2–4
 
-Broken down at the preceding checkpoint, not now.
-
-**Milestone 2 — Participant Flows.** `attachments`, `ai-orchestration`, `selection`
-(recommendation-only), `shipping`, `payback-consent`, `reservation` (Visit A path). Delivers the first
-end-to-end participant journeys and **AC-05**. Introduces the scored-evaluation test tier for Korean
-intent and date parsing. Maps to PRD rollout phases 2–4.
+**Milestone 2 — Participant Flows.** Detailed as T57–T87 in
+[tasks/milestone-2.md](milestone-2.md): `attachments`, `ai-orchestration`, `selection`
+(recommendation-only), `shipping`, `payback-consent`, and `reservation` (Visit A path). It delivers
+the first participant journeys and **AC-05**, while keeping the manual website CSV pilot and
+automatic selection disabled. It introduces the scored-evaluation tier for Korean intent and date
+parsing. Maps to PRD rollout phases 2–4.
 
 **Milestone 3 — Operations Surface.** `human-tasks` (full case packet, SLA, return-to-automation),
 `privacy-ops`, `admin-api` with RBAC, `operator-console` across the `§20.1` page list. This is what

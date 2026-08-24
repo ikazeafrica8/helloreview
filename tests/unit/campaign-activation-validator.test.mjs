@@ -1,10 +1,8 @@
 // Unit tier: exhaustive pre-activation configuration validation (T25, FR-CAM-006, PRD §16.4).
 
 import { describe, expect, test } from 'vitest'
-import {
-  CAMPAIGN_CONFIG_REASON,
-  validateCampaignActivation,
-} from '../../apps/api/dist/modules/campaign-config/index.js'
+import { validateCampaignActivation } from '../../apps/api/src/modules/campaign-config/activation-validator.ts'
+import { CAMPAIGN_CONFIG_REASON } from '../../apps/api/src/modules/campaign-config/reason-codes.ts'
 
 const routeCases = [
   ['shipping', 'not_applicable', 'shipping', 'shipping', 'SHIPPING_ADDRESS_REQUEST'],
