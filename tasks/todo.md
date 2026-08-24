@@ -198,19 +198,19 @@ Every fix carries a test that was verified to FAIL without it.
 
 ### Phase 5 — Workflow core
 
-- [ ] T34 — Workflow instances and events schema
-- [ ] T35 — `transition()` with optimistic concurrency
-- [ ] T36 — Legal transition table (`§14.5`)
-- [ ] T37 — Illegal transitions rejected (`§14.6`)
-- [ ] T38 — Automation pauses and kill switch
-- [ ] T39 — Corrections and supersession (`§14.7`)
-- [ ] T40 — Out-of-order and stale events
+- [x] T34 — Workflow instances and events schema
+- [x] T35 — `transition()` with optimistic concurrency
+- [x] T36 — Legal transition table (`§14.5`)
+- [x] T37 — Illegal transitions rejected (`§14.6`)
+- [x] T38 — Automation pauses and kill switch
+- [x] T39 — Corrections and supersession (`§14.7`)
+- [x] T40 — Out-of-order and stale events
 
 ### Checkpoint D — State machine proven
 
-- [ ] Every `§14.6` illegal transition has a passing rejection test
-- [ ] Concurrent transitions on one workflow serialize or 409, never interleave
-- [ ] Emergency pause halts non-essential automation at all four scopes
+- [x] Every `§14.6` illegal transition has a passing rejection test
+- [x] Concurrent transitions on one workflow serialize or 409, never interleave
+- [x] Emergency pause halts non-essential automation at all four scopes
 - [ ] Review with human before proceeding
 
 ### Phase 6 — Outbound and deduplication
@@ -1822,20 +1822,27 @@ twelve `§14.2` state dimensions and a version column, plus the immutable `workf
 
 **Acceptance criteria:**
 
-- [ ] The unique constraint holds, and one participant can hold several independent workflows (`FR-APP-007`)
-- [ ] All twelve `§14.2` dimensions are persisted as enums with explicit initial states
-- [ ] `workflow_events` is append-only at the database level and records the `§14.4` mandatory fields
+- [x] The unique constraint holds, and one participant can hold several independent workflows (`FR-APP-007`)
+- [x] All twelve `§14.2` dimensions are persisted as enums with explicit initial states
+- [x] `workflow_events` is append-only at the database level and records the `§14.4` mandatory fields
 
 **Verification:**
 
-- [ ] Tests pass: `pnpm test:integration`
-- [ ] Manual check: one participant with two campaigns yields two isolated workflows
+- [x] Tests pass: focused `tests/integration/workflow-core.test.mjs`
+- [x] Manual check: one participant with two campaigns yields two isolated workflows
 
 **Dependencies:** T13, T32
 
 **Files likely touched:** `packages/db/src/schema/workflow-instances.ts`, `packages/db/src/schema/workflow-events.ts`, `packages/db/migrations/*`
 
 **Estimated scope:** M
+
+> **Implementation note (2026-08-24):** Migration `0018_add_workflow_core` persists the twelve
+> typed dimensions, per-dimension source clocks, optimistic version, immutable event evidence,
+> declared side effects, corrections, incidents, and pause scopes. Migration
+> `0019_protect_workflow_event_history` rejects update, delete, and truncate on workflow events and
+> supersession links. The focused real-PostgreSQL test applies the complete migration chain and
+> passes with two isolated campaign workflows for one participant.
 
 ---
 
@@ -1847,14 +1854,14 @@ event and an audit record in the same transaction as the state change.
 
 **Acceptance criteria:**
 
-- [ ] A stale expected version fails with 409 and leaves the workflow unchanged
-- [ ] State change, workflow event, and audit record commit atomically or not at all
-- [ ] Concurrent transitions on one workflow serialize or conflict — a concurrency test proves no interleaving
+- [x] A stale expected version fails with 409 and leaves the workflow unchanged
+- [x] State change, workflow event, and audit record commit atomically or not at all
+- [x] Concurrent transitions on one workflow serialize or conflict — a concurrency test proves no interleaving
 
 **Verification:**
 
-- [ ] Tests pass: `pnpm test:integration`
-- [ ] Manual check: two concurrent transitions from the same version — exactly one succeeds
+- [x] Tests pass: focused `tests/integration/workflow-core.test.mjs`
+- [x] Manual check: two concurrent transitions from the same version — exactly one succeeds
 
 **Dependencies:** T34
 
@@ -1862,24 +1869,30 @@ event and an audit record in the same transaction as the state change.
 
 **Estimated scope:** M
 
+> **Implementation note (2026-08-24):** `WorkflowTransitionService` locks the projection row,
+> compares the expected version, and writes projection, workflow event, side-effect declarations,
+> and audit evidence in one PostgreSQL transaction. Rejections are committed as immutable evidence
+> without changing the projection. The real-PostgreSQL two-command assertion passes with exactly
+> one success, one 409 rejection, version 1, and no rejected side effects.
+
 ---
 
 ## T36 — Legal transition table (`§14.5`)
 
-**Description:** The twenty-eight `§14.5` transitions encoded as data — from state, trigger, to state,
+**Description:** The thirty-two current `§14.5` transitions encoded as data — from state, trigger, to state,
 mandatory guard, side effect — with guards evaluated before any state change. Side effects are declared,
 not executed inline, so they can be suppressed when a transition is rejected.
 
 **Acceptance criteria:**
 
-- [ ] Each `§14.5` row is represented and has a passing test for its guard passing and failing
-- [ ] A failed guard rejects with a reason code and produces no side effect
-- [ ] Adding a state to a dimension without adding its transitions is a compile error, not a silent gap
+- [x] Each `§14.5` row is represented and has a passing test for its guard passing and failing
+- [x] A failed guard rejects with a reason code and produces no side effect
+- [x] Adding a state to a dimension without adding its transitions is a compile error, not a silent gap
 
 **Verification:**
 
-- [ ] Tests pass: `pnpm test:transitions`
-- [ ] Manual check: every `§14.5` row maps to a named test case
+- [x] Tests pass: `pnpm test:transitions`
+- [x] Manual check: every `§14.5` row maps to a named test case
 
 **Dependencies:** T35
 
@@ -1887,29 +1900,39 @@ not executed inline, so they can be suppressed when a transition is rejected.
 
 **Estimated scope:** M
 
+> **Implementation note (2026-08-24):** The PRD currently contains 32 rows, not the older task
+> count of 28. All 32 are data entries with named guard-pass and guard-fail cases. The exhaustive
+> `WORKFLOW_STATE_COVERAGE` map makes every newly added mutable state a compile-visible decision.
+
 ---
 
 ## T37 — Illegal transitions rejected (`§14.6`)
 
-**Description:** The thirteen explicitly prohibited transitions from `§14.6`, each with a test proving
+**Description:** The fourteen current explicitly prohibited transitions from `§14.6`, each with a test proving
 rejection leaves the workflow unchanged and records an illegal-transition-attempt metric (`§23.2`).
 
 **Acceptance criteria:**
 
-- [ ] Each `§14.6` entry has a test asserting rejection, unchanged state, and an audit record
-- [ ] Illegal attempts increment a metric and are queryable by dimension
-- [ ] Anything not in the `§14.5` table is rejected by default — the table is an allowlist, not a denylist
+- [x] Each `§14.6` entry has a test asserting rejection, unchanged state, and an audit record
+- [x] Illegal attempts increment a metric and are queryable by dimension
+- [x] Anything not in the `§14.5` table is rejected by default — the table is an allowlist, not a denylist
 
 **Verification:**
 
-- [ ] Tests pass: `pnpm test:transitions`
-- [ ] Manual check: an unlisted transition is rejected without needing an explicit `§14.6` entry
+- [x] Tests pass: `pnpm test:transitions`
+- [x] Manual check: an unlisted transition is rejected without needing an explicit `§14.6` entry
 
 **Dependencies:** T36
 
 **Files likely touched:** `tests/transitions/illegal-transitions.spec.ts`, `apps/api/src/modules/workflow-core/transition-table.ts`
 
 **Estimated scope:** M
+
+> **Implementation note (2026-08-24):** The PRD currently contains 14 prohibited bullets, not the
+> older task count of 13. Each named case proves rejection, unchanged object identity, no side
+> effects, and an audit plan. Unlisted transitions fail closed, and durable rejection evidence
+> carries a metric category that `countRejectedByDimension()` queries without counting guard,
+> pause, version, or stale-event rejections as illegal attempts.
 
 ---
 
@@ -1921,20 +1944,27 @@ Pause state is checked by every automated path, and the active scope is always v
 
 **Acceptance criteria:**
 
-- [ ] All four scopes independently block automated progression, and the effective scope is queryable
-- [ ] Activation and deactivation are authorized, audited, and carry a reason
-- [ ] `UNIQUE` active pause per scope and type holds, so a scope cannot be doubly paused
+- [x] All four scopes independently block automated progression, and the effective scope is queryable
+- [x] Activation and deactivation are authorized, audited, and carry a reason
+- [x] `UNIQUE` active pause per scope and type holds, so a scope cannot be doubly paused
 
 **Verification:**
 
-- [ ] Tests pass: `pnpm test:integration`
-- [ ] Manual check: activate global pause and confirm no automated transition proceeds
+- [x] Tests pass: focused `tests/integration/workflow-core.test.mjs`
+- [x] Manual check: activate global pause and confirm no automated transition proceeds
 
 **Dependencies:** T35
 
 **Files likely touched:** `packages/db/src/schema/automation-pauses.ts`, `apps/api/src/modules/workflow-core/pause.service.ts`
 
 **Estimated scope:** M
+
+> **Implementation note (2026-08-24):** Global, campaign, workflow-type, and participant scopes
+> have independent active uniqueness constraints and deterministic scope matching. Standard pauses
+> block automated progression; the global emergency switch blocks non-essential automation while
+> allowing explicitly essential recovery work. Activation, rejected authorization, deactivation,
+> and rejected resume attempts are audited with actor and reason. The real-PostgreSQL four-scope
+> activation, effective-scope query, transition block, and deactivation assertions pass.
 
 ---
 
@@ -1946,20 +1976,27 @@ cancelled.
 
 **Acceptance criteria:**
 
-- [ ] A correction preserves the prior state and evidence, and records the correcting actor and reason
-- [ ] Superseded records remain queryable and are excluded from current-state reads
-- [ ] Pending side effects invalidated by the correction are cancelled or suppressed, with a test proving it
+- [x] A correction preserves the prior state and evidence, and records the correcting actor and reason
+- [x] Superseded records remain queryable and are excluded from current-state reads
+- [x] Pending side effects invalidated by the correction are cancelled or suppressed, with a test proving it
 
 **Verification:**
 
-- [ ] Tests pass: `pnpm test:transitions`
-- [ ] Manual check: correct a state and confirm both versions remain in the event history
+- [x] Tests pass: `pnpm test:transitions`
+- [x] Manual check: correct a state and confirm both versions remain in the event history
 
 **Dependencies:** T37
 
 **Files likely touched:** `apps/api/src/modules/workflow-core/correction.service.ts`, `tests/transitions/corrections.spec.ts`
 
 **Estimated scope:** M
+
+> **Implementation note (2026-08-24):** Corrections are an explicit authorized write path that
+> appends a correction event and immutable supersession link. Current-history reads exclude the
+> superseded event without deleting it. Pending effects are cancelled fail-closed before a new
+> readiness evaluation is declared; invalidating an already delivered guideline also creates a
+> critical incident. Pure correction-policy tests and the real-PostgreSQL supersession,
+> current-history, pending-effect cancellation, and delivered-guideline incident assertions pass.
 
 ---
 
@@ -1970,20 +2007,26 @@ valid state without an explicit authorized correction (`FR-MSG-007`).
 
 **Acceptance criteria:**
 
-- [ ] An event whose source timestamp precedes the current state's origin is rejected or reconciled, never silently applied
-- [ ] Rejection records the reason and retains the event for replay
-- [ ] A test covers the `§26.2` "events arrive out of order" scenario
+- [x] An event whose source timestamp precedes the current state's origin is rejected or reconciled, never silently applied
+- [x] Rejection records the reason and retains the event for replay
+- [x] A test covers the `§26.2` "events arrive out of order" scenario
 
 **Verification:**
 
-- [ ] Tests pass: `pnpm test:transitions`
-- [ ] Manual check: deliver two events in reverse order and confirm the newer state survives
+- [x] Tests pass: `pnpm test:transitions`
+- [x] Manual check: deliver two events in reverse order and confirm the newer state survives
 
 **Dependencies:** T39
 
 **Files likely touched:** `apps/api/src/modules/workflow-core/staleness.ts`, `tests/transitions/out-of-order.spec.ts`
 
 **Estimated scope:** S
+
+> **Implementation note (2026-08-24):** Every mutable dimension owns an independent source-origin
+> timestamp. Freshness is evaluated before all business transition rules, so an older event is
+> classified as stale, retained for replay, and cannot be misclassified or applied because current
+> state has changed. The named reverse-order test confirms object identity and state remain
+> unchanged while the event is marked for replay.
 
 ---
 

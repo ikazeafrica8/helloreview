@@ -6,6 +6,7 @@ import { CampaignConfigModule } from './modules/campaign-config/index.js'
 import { ApplicationSyncModule } from './modules/application-sync/index.js'
 import { IdentityResolutionModule } from './modules/identity-resolution/index.js'
 import { HumanTasksModule } from './modules/human-tasks/index.js'
+import { WorkflowCoreModule } from './modules/workflow-core/index.js'
 
 /**
  * Composition root. Every capability-map module from SPEC.md §3.1 is imported here as it lands, in
@@ -19,6 +20,7 @@ import { HumanTasksModule } from './modules/human-tasks/index.js'
     CampaignConfigModule,
     ApplicationSyncModule,
     IdentityResolutionModule,
+    WorkflowCoreModule,
     HumanTasksModule,
   ],
 })

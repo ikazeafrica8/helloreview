@@ -37,6 +37,40 @@ export {
   applicationSyncMethodEnum,
   reconciliationStatusEnum,
 } from './applications.js'
+export {
+  workflowInstances,
+  workflowEvents,
+  workflowEventSupersessions,
+  workflowSideEffects,
+  workflowIncidents,
+  workflowApplicationStateEnum,
+  workflowSelectionStateEnum,
+  workflowSecretCommentStateEnum,
+  workflowPaybackConsentStateEnum,
+  workflowBusinessApprovalStateEnum,
+  workflowShippingStateEnum,
+  workflowReservationStateEnum,
+  workflowGuidelineStateEnum,
+  workflowHumanHandoffStateEnum,
+  workflowAutomationModeStateEnum,
+  workflowDimensionEnum,
+  workflowEventKindEnum,
+  workflowEventResultEnum,
+  workflowSideEffectStatusEnum,
+  workflowIncidentSeverityEnum,
+  workflowIncidentStatusEnum,
+} from './workflow-instances.js'
+export type {
+  WorkflowInstanceRow,
+  NewWorkflowInstanceRow,
+  WorkflowEventRow,
+  NewWorkflowEventRow,
+  WorkflowEventSupersessionRow,
+  WorkflowSideEffectRow,
+  WorkflowIncidentRow,
+} from './workflow-instances.js'
+export { automationPauses, automationPauseScopeEnum, automationPauseKindEnum } from './automation-pauses.js'
+export type { AutomationPauseRow, NewAutomationPauseRow } from './automation-pauses.js'
 export { participants, channelIdentities, channelIdentityVerificationStateEnum } from './participants.js'
 export type { ParticipantRow, NewParticipantRow, ChannelIdentityRow, NewChannelIdentityRow } from './participants.js'
 export {
