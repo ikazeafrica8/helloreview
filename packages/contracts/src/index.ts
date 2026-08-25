@@ -59,6 +59,7 @@ export {
 } from './ai.js'
 export type {
   AiTask,
+  AiIntentCode,
   AiRequest,
   AiIntentEvidence,
   AiDateTimeEvidence,

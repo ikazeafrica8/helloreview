@@ -21,6 +21,7 @@ const completeSnapshot = (campaignType, visitMethod, routeRule, routeTemplate) =
     'SELECTION_RESULT',
     'GUIDELINE_DELIVERY',
     routeTemplate,
+    ...(campaignType === 'payback' ? ['PAYBACK_CONSENT_CLARIFICATION'] : []),
     ...(visitMethod === 'visit_c' ? ['VISIT_C_BOOKING_INSTRUCTIONS'] : []),
     // An old/unknown database value is ignored rather than crashing activation diagnostics.
     'PURPOSE_WRITTEN_BY_A_NEWER_DEPLOYMENT',
@@ -109,6 +110,7 @@ describe('complete missing-item reporting', () => {
       'MISSING_RULE_VERSION:payback',
       'MISSING_MESSAGE_TEMPLATE:GUIDELINE_DELIVERY',
       'MISSING_MESSAGE_TEMPLATE:PAYBACK_CONSENT_REQUEST',
+      'MISSING_MESSAGE_TEMPLATE:PAYBACK_CONSENT_CLARIFICATION',
       'MISSING_GUIDELINE_VERSION:guideline_version',
     ])
   })
