@@ -135,6 +135,7 @@ try {
        ON selection_recommendations, selection_manual_decisions, selection_shadow_comparisons,
           shipping_addresses, shipping_address_reveals,
           payback_consent_aggregates, payback_consent_versions, payback_consent_requests,
+          payback_consent_response_events,
           reservations, reservation_versions
        FROM ${PRIVILEGE_GROUP}`,
   )
@@ -199,6 +200,7 @@ try {
     'payback_consent_aggregates',
     'payback_consent_versions',
     'payback_consent_requests',
+    'payback_consent_response_events',
     'reservations',
     'reservation_versions',
   ]

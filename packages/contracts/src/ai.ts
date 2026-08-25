@@ -24,6 +24,7 @@ export const AI_INTENT_CODES = [
   'PRIVACY_REQUEST',
   'UNKNOWN',
 ] as const
+export type AiIntentCode = (typeof AI_INTENT_CODES)[number]
 
 const contractVersion = z.string().regex(/^[a-z0-9][a-z0-9._-]{0,99}$/)
 const confidence = z.number().min(0).max(1)
@@ -39,6 +40,7 @@ export const aiRequestSchema = z.strictObject({
     text: z.string().min(1).max(8_000),
     locale: z.literal('ko-KR'),
     timezone: z.literal('Asia/Seoul'),
+    referenceTimestamp: isoTimestamp.optional(),
   }),
 })
 
@@ -118,22 +120,32 @@ const resultMetadata = {
   }),
 }
 
-export const aiResultSchema = z.discriminatedUnion('outcome', [
-  z.strictObject({ ...resultMetadata, outcome: z.literal('evidence'), evidence: aiEvidenceSchema }),
-  z.strictObject({
-    ...resultMetadata,
-    outcome: z.literal('refused'),
-    reasonCode,
-    requiresHumanReview: z.literal(true),
-  }),
-  z.strictObject({
-    ...resultMetadata,
-    outcome: z.literal('failure'),
-    reasonCode,
-    retryable: z.boolean(),
-    requiresHumanReview: z.literal(true),
-  }),
-])
+export const aiResultSchema = z
+  .discriminatedUnion('outcome', [
+    z.strictObject({ ...resultMetadata, outcome: z.literal('evidence'), evidence: aiEvidenceSchema }),
+    z.strictObject({
+      ...resultMetadata,
+      outcome: z.literal('refused'),
+      reasonCode,
+      requiresHumanReview: z.literal(true),
+    }),
+    z.strictObject({
+      ...resultMetadata,
+      outcome: z.literal('failure'),
+      reasonCode,
+      retryable: z.boolean(),
+      requiresHumanReview: z.literal(true),
+    }),
+  ])
+  .superRefine((result, context) => {
+    if (result.outcome === 'evidence' && result.evidence.task !== result.task) {
+      context.addIssue({
+        code: 'custom',
+        path: ['evidence', 'task'],
+        message: 'evidence task must match result task',
+      })
+    }
+  })
 
 export type AiResult = z.infer<typeof aiResultSchema>
 

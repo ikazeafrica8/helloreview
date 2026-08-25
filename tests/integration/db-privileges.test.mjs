@@ -142,6 +142,7 @@ describe('the application database role', () => {
           'payback_consent_aggregates',
           'payback_consent_versions',
           'payback_consent_requests',
+          'payback_consent_response_events',
           'reservations',
           'reservation_versions',
         ]

@@ -31,6 +31,8 @@ export const MESSAGE_PURPOSES = {
   SHIPPING_ADDRESS_REQUEST: 'SHIPPING_ADDRESS_REQUEST',
   /** 9. Payback — explicit consent to current terms. */
   PAYBACK_CONSENT_REQUEST: 'PAYBACK_CONSENT_REQUEST',
+  /** 9 (continued). One bounded clarification for an ambiguous current-terms response. */
+  PAYBACK_CONSENT_CLARIFICATION: 'PAYBACK_CONSENT_CLARIFICATION',
   /** 10. Visit A — phone number and reservation instructions. */
   VISIT_A_INSTRUCTIONS: 'VISIT_A_INSTRUCTIONS',
   /** 11. Visit B — booking instructions, screenshot expected back. */

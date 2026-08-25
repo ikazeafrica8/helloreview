@@ -16,6 +16,19 @@ export const paybackConsentStateEnum = pgEnum('payback_consent_state', [
   'human_review_required',
 ])
 export const paybackConsentActorTypeEnum = pgEnum('payback_consent_actor_type', ['system', 'operator', 'participant'])
+export const paybackConsentResponseClassificationEnum = pgEnum('payback_consent_response_classification', [
+  'explicit_agreement',
+  'explicit_decline',
+  'ambiguous',
+])
+export const paybackConsentResponseOutcomeEnum = pgEnum('payback_consent_response_outcome', [
+  'agreed',
+  'declined',
+  'clarification_sent',
+  'human_review_required',
+  'current_request_required',
+  'ignored_no_active_request',
+])
 
 export const paybackConsentAggregates = pgTable(
   'payback_consent_aggregates',
@@ -109,6 +122,35 @@ export const paybackConsentRequests = pgTable(
   ],
 )
 
+/** Every participant response is immutable evidence, including stale and ambiguous responses. */
+export const paybackConsentResponseEvents = pgTable(
+  'payback_consent_response_events',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    aggregateId: uuid('aggregate_id')
+      .notNull()
+      .references(() => paybackConsentAggregates.id, { onDelete: 'restrict' }),
+    workflowId: uuid('workflow_id')
+      .notNull()
+      .references(() => workflowInstances.id, { onDelete: 'restrict' }),
+    linkedRequestId: text('linked_request_id').notNull(),
+    linkedTermsVersion: integer('linked_terms_version').notNull(),
+    evidenceMessageId: text('evidence_message_id').notNull(),
+    channel: text('channel').notNull(),
+    classification: paybackConsentResponseClassificationEnum('classification').notNull(),
+    outcome: paybackConsentResponseOutcomeEnum('outcome').notNull(),
+    occurredAt: tstz('occurred_at').notNull(),
+  },
+  (table) => [
+    unique('payback_consent_response_events_evidence_key').on(table.aggregateId, table.evidenceMessageId),
+    index('payback_consent_response_events_workflow_timeline_idx').on(table.workflowId, table.occurredAt),
+    check('payback_consent_response_events_positive_terms_version', sql`${table.linkedTermsVersion} > 0`),
+    check('payback_consent_response_events_nonempty_request', sql`char_length(${table.linkedRequestId}) > 0`),
+    check('payback_consent_response_events_nonempty_evidence', sql`char_length(${table.evidenceMessageId}) > 0`),
+  ],
+)
+
 export type PaybackConsentAggregateRow = typeof paybackConsentAggregates.$inferSelect
 export type PaybackConsentVersionRow = typeof paybackConsentVersions.$inferSelect
 export type PaybackConsentRequestRow = typeof paybackConsentRequests.$inferSelect
+export type PaybackConsentResponseEventRow = typeof paybackConsentResponseEvents.$inferSelect

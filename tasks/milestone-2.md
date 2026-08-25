@@ -2,7 +2,7 @@
 
 Plan: [tasks/plan.md](plan.md) · Spec: [SPEC.md](../SPEC.md) · Requirements: PRD v1.0
 
-Status: **Phase 8, T62–T63, T67–T79, and T83 complete. T64–T66 are the next uncompleted tasks.**
+Status: **T57–T80 and T82–T83 complete. T81 and T84–T87 remain.**
 
 31 tasks across six phases. Milestone 2 turns the proven core spine into the first participant
 journeys while preserving three non-negotiable boundaries:
@@ -137,6 +137,8 @@ request id; provider conformance records no raw PII in logs.
 
 ## T64 — Korean intent pipeline
 
+Status: **Complete (2026-08-25).**
+
 Implement deterministic preprocessing first, then schema-constrained AI classification for the PRD
 §19.2 taxonomy. Low confidence, ambiguity, unsupported intent, and opt-out route explicitly.
 
@@ -148,6 +150,8 @@ operator takeover and opt-out remain higher-priority than automation.
 **Dependencies:** T63, T46
 
 ## T65 — Korean date/time extraction and normalization
+
+Status: **Complete (2026-08-25).**
 
 Normalize explicit and relative Korean date/time expressions against an injected Seoul clock and
 campaign timezone. Extraction produces structured candidates; the reservation rules remain the only
@@ -161,6 +165,8 @@ clarification or review; daylight/period boundaries have named fixtures.
 **Dependencies:** T63, T49
 
 ## T66 — Injection defenses, budgets, and evaluation gate
+
+Status: **Complete (2026-08-25). Production release remains gated on the provider, overseas-processing decision, and representative corpus.**
 
 Add prompt-injection fixtures, untrusted-content delimiting, output-schema enforcement, model/prompt
 version tracking, token/cost budgets, and an evaluation report gate.
@@ -359,6 +365,8 @@ responses cannot satisfy it.
 
 ## T80 — Explicit response and one clarification
 
+Status: **Complete (2026-08-25).**
+
 Classify explicit agree/decline responses deterministically where possible; ambiguity creates exactly
 one approved clarification and no agreed state.
 
@@ -376,6 +384,8 @@ and creates review when fulfillment has begun.
 **Dependencies:** T80
 
 ## T82 — AC-05: consent versioning
+
+Status: **Complete (2026-08-25). T81's broader decline/withdrawal policy remains a separate release dependency.**
 
 Implement PRD §26.3 AC-05 verbatim: consent to an old terms version cannot authorize the current
 payback flow, while one explicit response to the current request can.

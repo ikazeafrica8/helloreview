@@ -177,13 +177,17 @@ export {
   paybackConsentVersions,
   paybackConsentHeads,
   paybackConsentRequests,
+  paybackConsentResponseEvents,
   paybackConsentStateEnum,
   paybackConsentActorTypeEnum,
+  paybackConsentResponseClassificationEnum,
+  paybackConsentResponseOutcomeEnum,
 } from './payback-consent.js'
 export type {
   PaybackConsentAggregateRow,
   PaybackConsentVersionRow,
   PaybackConsentRequestRow,
+  PaybackConsentResponseEventRow,
 } from './payback-consent.js'
 export {
   reservations,
