@@ -19,11 +19,13 @@ export const paybackConsentActorTypeEnum = pgEnum('payback_consent_actor_type', 
 export const paybackConsentResponseClassificationEnum = pgEnum('payback_consent_response_classification', [
   'explicit_agreement',
   'explicit_decline',
+  'explicit_withdrawal',
   'ambiguous',
 ])
 export const paybackConsentResponseOutcomeEnum = pgEnum('payback_consent_response_outcome', [
   'agreed',
   'declined',
+  'withdrawn',
   'clarification_sent',
   'human_review_required',
   'current_request_required',

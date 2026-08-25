@@ -58,6 +58,40 @@ export type ReservationRuleSet = Readonly<{
   configuration?: ReservationRuleConfiguration
 }>
 
+const completeReservationConfigurationSchema = z.strictObject({
+  expectedCampaignId: z.string().trim().min(1),
+  businesses: z
+    .array(z.strictObject({ normalizedName: z.string().trim().min(1), normalizedBranch: z.string() }))
+    .min(1),
+  campaignStartsOn: z.iso.date(),
+  campaignEndsOn: z.iso.date(),
+  allowedIsoWeekdays: z.array(z.number().int().min(1).max(7)).min(1),
+  windowsByIsoWeekday: z.record(
+    z.string().regex(/^[1-7]$/),
+    z.array(
+      z.strictObject({
+        startsAt: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d:[0-5]\d$/),
+        endsAt: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d:[0-5]\d$/),
+        startInclusive: z.boolean(),
+        endInclusive: z.boolean(),
+      }),
+    ),
+  ),
+  timezone: z.literal('Asia/Seoul'),
+  bookingMethod: z.enum(['visit_a', 'visit_b', 'visit_c']),
+  requireCurrentBusinessApproval: z.boolean(),
+  acceptedReservationStatus: z.literal('completed'),
+  minimumLeadMinutes: z.number().int().nonnegative(),
+  blackoutDates: z.array(z.iso.date()),
+  requiredCampaignStatus: z.literal('active'),
+  capacityRestrictionConfigured: z.boolean(),
+})
+
+export const parseReservationRuleConfiguration = (value: unknown): ReservationRuleConfiguration | undefined => {
+  const parsed = completeReservationConfigurationSchema.safeParse(value)
+  return parsed.success ? parsed.data : undefined
+}
+
 export type ReservationValidation = Readonly<{
   outcome: 'pass' | 'fail' | 'configuration_error'
   ruleVersion: number
