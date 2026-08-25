@@ -125,6 +125,19 @@ try {
     `REVOKE UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER
        ON business_approvals, guideline_delivery_attempts FROM ${PRIVILEGE_GROUP}`,
   )
+  await client.query(
+    `REVOKE UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER
+       ON attachments, attachment_security_events, attachment_lifecycle_events, attachment_grant_events
+       FROM ${PRIVILEGE_GROUP}`,
+  )
+  await client.query(
+    `REVOKE UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER
+       ON selection_recommendations, selection_manual_decisions, selection_shadow_comparisons,
+          shipping_addresses, shipping_address_reveals,
+          payback_consent_aggregates, payback_consent_versions, payback_consent_requests,
+          reservations, reservation_versions
+       FROM ${PRIVILEGE_GROUP}`,
+  )
 
   // The function revoke, repeated from the migration for a case the migration cannot reach: this
   // runs AFTER every migration, so a SECURITY DEFINER function created by a LATER migration is
@@ -173,11 +186,48 @@ try {
     fail(`${appUser} cannot INSERT into audit_logs. Every audited action would fail closed.`)
   }
 
+  const appendOnlyHistoryTables = [
+    'attachments',
+    'attachment_security_events',
+    'attachment_lifecycle_events',
+    'attachment_grant_events',
+    'selection_recommendations',
+    'selection_manual_decisions',
+    'selection_shadow_comparisons',
+    'shipping_addresses',
+    'shipping_address_reveals',
+    'payback_consent_aggregates',
+    'payback_consent_versions',
+    'payback_consent_requests',
+    'reservations',
+    'reservation_versions',
+  ]
+  const appendOnlyHistoryPrivileges = await client.query(
+    `SELECT table_name,
+            has_table_privilege($1, table_name, 'SELECT') AS can_select,
+            has_table_privilege($1, table_name, 'INSERT') AS can_insert,
+            has_table_privilege($1, table_name, 'UPDATE') AS can_update,
+            has_table_privilege($1, table_name, 'DELETE') AS can_delete,
+            has_table_privilege($1, table_name, 'TRUNCATE') AS can_truncate
+       FROM unnest($2::text[]) AS protected_table(table_name)`,
+    [appUser, appendOnlyHistoryTables],
+  )
+  for (const table of appendOnlyHistoryPrivileges.rows) {
+    if (table.can_select !== true || table.can_insert !== true) {
+      await client.query('ROLLBACK')
+      fail(`${appUser} cannot append and read ${table.table_name}. Immutable workflow evidence would fail closed.`)
+    }
+    if (table.can_update === true || table.can_delete === true || table.can_truncate === true) {
+      await client.query('ROLLBACK')
+      fail(`${appUser} can rewrite append-only history in ${table.table_name}.`)
+    }
+  }
+
   await client.query('COMMIT')
 
   process.stdout.write(
     `  provisioned ${appUser} in ${PRIVILEGE_GROUP}\n` +
-      '    audit_logs: INSERT and SELECT only — UPDATE, DELETE and TRUNCATE are revoked\n',
+      '    append-only history: INSERT and SELECT only — UPDATE, DELETE and TRUNCATE are revoked\n',
   )
 } catch (error) {
   await client.query('ROLLBACK').catch(() => undefined)

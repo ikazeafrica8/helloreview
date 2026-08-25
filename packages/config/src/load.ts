@@ -23,6 +23,18 @@ export type ApiConfig = Readonly<{
   applicationReconciliationWindowSeconds: number
   applicationReconciliationRetrySeconds: number
   applicationFreshnessThresholdSeconds: number
+  s3Endpoint: string
+  s3Bucket: string
+  /** Secret. Scoped object-store service-account identifier. */
+  s3AccessKeyId: string
+  /** Secret. Scoped object-store service-account credential. */
+  s3SecretAccessKey: string
+  /** Secret. Base64-encoded 32-byte client-side AES key. */
+  attachmentEncryptionKeyBase64: string
+  /** Secret. Base64-encoded 32-byte client-side key dedicated to shipping addresses. */
+  shippingAddressEncryptionKeyBase64: string
+  attachmentMaxBytes: number
+  attachmentReadGrantTtlSeconds: number
 }>
 
 export type WorkerConfig = Readonly<{
@@ -111,6 +123,14 @@ export const loadApiConfig = (source: EnvironmentSource): ApiConfig =>
     applicationReconciliationWindowSeconds: parsed.APPLICATION_RECONCILIATION_WINDOW_SECONDS,
     applicationReconciliationRetrySeconds: parsed.APPLICATION_RECONCILIATION_RETRY_SECONDS,
     applicationFreshnessThresholdSeconds: parsed.APPLICATION_FRESHNESS_THRESHOLD_SECONDS,
+    s3Endpoint: parsed.S3_ENDPOINT,
+    s3Bucket: parsed.S3_BUCKET,
+    s3AccessKeyId: parsed.S3_ACCESS_KEY_ID,
+    s3SecretAccessKey: parsed.S3_SECRET_ACCESS_KEY,
+    attachmentEncryptionKeyBase64: parsed.ATTACHMENT_ENCRYPTION_KEY_BASE64,
+    shippingAddressEncryptionKeyBase64: parsed.SHIPPING_ADDRESS_ENCRYPTION_KEY_BASE64,
+    attachmentMaxBytes: parsed.ATTACHMENT_MAX_BYTES,
+    attachmentReadGrantTtlSeconds: parsed.ATTACHMENT_READ_GRANT_TTL_SECONDS,
   }))
 
 export const loadWorkerConfig = (source: EnvironmentSource): WorkerConfig =>

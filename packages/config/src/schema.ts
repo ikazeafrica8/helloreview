@@ -87,7 +87,7 @@ const replayWindowSeconds = z
       .refine((value) => value >= 30 && value <= 3_600, { message: 'must be between 30 and 3600 seconds' }),
   )
 
-const boundedSeconds = (fallback: string, minimum: number, maximum: number) =>
+const boundedWholeNumber = (fallback: string, minimum: number, maximum: number, unit: string) =>
   z
     .string()
     .optional()
@@ -95,16 +95,31 @@ const boundedSeconds = (fallback: string, minimum: number, maximum: number) =>
     .pipe(
       z
         .string()
-        .regex(/^\d+$/, { message: 'must be a whole number of seconds' })
+        .regex(/^\d+$/, { message: `must be a whole number of ${unit}` })
         .transform(Number)
         .refine((value) => value >= minimum && value <= maximum, {
-          message: `must be between ${String(minimum)} and ${String(maximum)} seconds`,
+          message: `must be between ${String(minimum)} and ${String(maximum)} ${unit}`,
         }),
     )
+
+const boundedSeconds = (fallback: string, minimum: number, maximum: number) =>
+  boundedWholeNumber(fallback, minimum, maximum, 'seconds')
 
 const reconciliationWindowSeconds = boundedSeconds('300', 30, 86_400)
 const reconciliationRetrySeconds = boundedSeconds('30', 1, 3_600)
 const applicationFreshnessSeconds = boundedSeconds('900', 30, 86_400)
+const attachmentMaxBytes = boundedWholeNumber('10485760', 1, 52_428_800, 'bytes')
+const attachmentReadGrantTtlSeconds = boundedSeconds('300', 30, 900)
+const encryptionKey = z.string().refine(
+  (value) => {
+    try {
+      return Buffer.from(value, 'base64').byteLength === 32
+    } catch {
+      return false
+    }
+  },
+  { message: 'must be base64 encoding exactly 32 bytes' },
+)
 
 /** Everything the api reads. */
 export const apiConfigSchema = z.object({
@@ -118,6 +133,14 @@ export const apiConfigSchema = z.object({
   APPLICATION_RECONCILIATION_WINDOW_SECONDS: reconciliationWindowSeconds,
   APPLICATION_RECONCILIATION_RETRY_SECONDS: reconciliationRetrySeconds,
   APPLICATION_FRESHNESS_THRESHOLD_SECONDS: applicationFreshnessSeconds,
+  S3_ENDPOINT: connectableUrl(['http:', 'https:']),
+  S3_BUCKET: z.string().regex(/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/),
+  S3_ACCESS_KEY_ID: z.string().min(3).max(128),
+  S3_SECRET_ACCESS_KEY: z.string().min(8),
+  ATTACHMENT_ENCRYPTION_KEY_BASE64: encryptionKey,
+  SHIPPING_ADDRESS_ENCRYPTION_KEY_BASE64: encryptionKey,
+  ATTACHMENT_MAX_BYTES: attachmentMaxBytes,
+  ATTACHMENT_READ_GRANT_TTL_SECONDS: attachmentReadGrantTtlSeconds,
 })
 
 /**
@@ -155,6 +178,10 @@ export const SECRET_KEYS: ReadonlySet<string> = new Set([
   'REDIS_URL',
   'MASKING_PEPPER',
   'WEBHOOK_SECRET_WEBSITE',
+  'S3_ACCESS_KEY_ID',
+  'S3_SECRET_ACCESS_KEY',
+  'ATTACHMENT_ENCRYPTION_KEY_BASE64',
+  'SHIPPING_ADDRESS_ENCRYPTION_KEY_BASE64',
 ])
 
 export const isSecret = (key: string): boolean => SECRET_KEYS.has(key)

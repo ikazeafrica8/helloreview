@@ -37,6 +37,12 @@ const VALID = {
   API_PORT: '13000',
   MASKING_PEPPER: 'a-test-pepper-at-least-16-chars',
   WEBHOOK_SECRET_WEBSITE: 'a-test-webhook-secret-of-at-least-32-characters',
+  S3_ENDPOINT: 'http://127.0.0.1:19000',
+  S3_BUCKET: 'helloreview-attachments',
+  S3_ACCESS_KEY_ID: 'test-access-key',
+  S3_SECRET_ACCESS_KEY: 'test-secret-access-key',
+  ATTACHMENT_ENCRYPTION_KEY_BASE64: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
+  SHIPPING_ADDRESS_ENCRYPTION_KEY_BASE64: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
 }
 
 describe('loadApiConfig', () => {
@@ -55,15 +61,21 @@ describe('loadApiConfig', () => {
     // values around until something works.
     const { problems } = expectConfigurationError(() => loadApiConfig({}))
 
-    // Five required keys today. The count is asserted as well as the names so that adding a key
+    // Required keys are counted so adding one without a corresponding assertion fails loudly.
     // without adding it here fails loudly rather than silently leaving it unchecked.
-    expect(problems).toHaveLength(5)
+    expect(problems).toHaveLength(11)
     const joined = problems.join('\n')
     expect(joined).toMatch(/DATABASE_URL/)
     expect(joined).toMatch(/REDIS_URL/)
     expect(joined).toMatch(/API_PORT/)
     expect(joined).toMatch(/MASKING_PEPPER/)
     expect(joined).toMatch(/WEBHOOK_SECRET_WEBSITE/)
+    expect(joined).toMatch(/S3_ENDPOINT/)
+    expect(joined).toMatch(/S3_BUCKET/)
+    expect(joined).toMatch(/S3_ACCESS_KEY_ID/)
+    expect(joined).toMatch(/S3_SECRET_ACCESS_KEY/)
+    expect(joined).toMatch(/ATTACHMENT_ENCRYPTION_KEY_BASE64/)
+    expect(joined).toMatch(/SHIPPING_ADDRESS_ENCRYPTION_KEY_BASE64/)
   })
 
   test('never echoes a value, because a malformed URL still carries a password', () => {
@@ -102,16 +114,22 @@ describe('loadApiConfig', () => {
     expect(config.applicationReconciliationWindowSeconds).toBe(300)
     expect(config.applicationReconciliationRetrySeconds).toBe(30)
     expect(config.applicationFreshnessThresholdSeconds).toBe(900)
+    expect(config.attachmentMaxBytes).toBe(10_485_760)
+    expect(config.attachmentReadGrantTtlSeconds).toBe(300)
 
     const supplied = loadApiConfig({
       ...VALID,
       APPLICATION_RECONCILIATION_WINDOW_SECONDS: '600',
       APPLICATION_RECONCILIATION_RETRY_SECONDS: '60',
       APPLICATION_FRESHNESS_THRESHOLD_SECONDS: '1800',
+      ATTACHMENT_MAX_BYTES: '20971520',
+      ATTACHMENT_READ_GRANT_TTL_SECONDS: '600',
     })
     expect(supplied.applicationReconciliationWindowSeconds).toBe(600)
     expect(supplied.applicationReconciliationRetrySeconds).toBe(60)
     expect(supplied.applicationFreshnessThresholdSeconds).toBe(1800)
+    expect(supplied.attachmentMaxBytes).toBe(20_971_520)
+    expect(supplied.attachmentReadGrantTtlSeconds).toBe(600)
   })
 
   test.each([
@@ -235,6 +253,10 @@ describe('redaction', () => {
     // The pepper is what makes a masked identifier unlinkable; leaking it undoes the masking.
     expect(isSecret('MASKING_PEPPER')).toBe(true)
     expect(isSecret('API_PORT')).toBe(false)
+    expect(isSecret('S3_ACCESS_KEY_ID')).toBe(true)
+    expect(isSecret('S3_SECRET_ACCESS_KEY')).toBe(true)
+    expect(isSecret('ATTACHMENT_ENCRYPTION_KEY_BASE64')).toBe(true)
+    expect(isSecret('SHIPPING_ADDRESS_ENCRYPTION_KEY_BASE64')).toBe(true)
   })
 
   test('secrets are replaced wholesale, never truncated', () => {

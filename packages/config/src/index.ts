@@ -15,6 +15,7 @@ export {
   ConfigurationError,
 } from './load.js'
 export type { ApiConfig, WorkerConfig, ApplicationImportConfig, Environment } from './load.js'
+export { ATTACHMENT_MAX_BYTES, ATTACHMENT_READ_GRANT_TTL_SECONDS, SHIPPING_ADDRESS_ENCRYPTION_KEY } from './tokens.js'
 export { apiConfigSchema, workerConfigSchema, applicationImportConfigSchema, SECRET_KEYS, isSecret } from './schema.js'
 
 export { redisConnectionOptions } from './redis-connection.js'

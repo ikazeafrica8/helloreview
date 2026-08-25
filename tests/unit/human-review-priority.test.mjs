@@ -11,6 +11,8 @@ describe('human-review priority table', () => {
     [HUMAN_REVIEW_REASON.IDENTITY_CONFLICT, 'high'],
     [HUMAN_REVIEW_REASON.MISSING_SCORE_OR_PROVIDER_OUTAGE, 'normal'],
     [HUMAN_REVIEW_REASON.BORDERLINE_SELECTION, 'normal'],
+    [HUMAN_REVIEW_REASON.SELECTION_REVOKED, 'high'],
+    [HUMAN_REVIEW_REASON.SHIPPING_CHANGE_AFTER_CUTOFF, 'normal'],
     [HUMAN_REVIEW_REASON.SUSPICIOUS_SCREENSHOT, 'high'],
     [HUMAN_REVIEW_REASON.VISIT_C_APPROVAL_REVOKED, 'critical'],
     [HUMAN_REVIEW_REASON.GUIDELINE_MAY_HAVE_BEEN_SENT_PREMATURELY, 'critical'],
@@ -23,6 +25,6 @@ describe('human-review priority table', () => {
   })
 
   test('the table covers every declared reason code exactly once', () => {
-    expect(Object.values(HUMAN_REVIEW_REASON)).toHaveLength(13)
+    expect(Object.values(HUMAN_REVIEW_REASON)).toHaveLength(15)
   })
 })

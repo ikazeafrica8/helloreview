@@ -52,3 +52,31 @@ export type {
 } from './fakes/outbound-fake.js'
 export { outboundConformanceChecks } from './conformance/outbound.suite.js'
 export type { OutboundConformanceCheck } from './conformance/outbound.suite.js'
+
+export { ATTACHMENT_STORAGE, ATTACHMENT_STORAGE_FAILURE, AttachmentStorageError } from './ports/attachment-storage.js'
+export type {
+  AttachmentObjectRequest,
+  AttachmentStorage,
+  AttachmentStorageFailureCode,
+  PutEncryptedAttachmentRequest,
+  ReadSignedAttachmentRequest,
+  SignAttachmentReadRequest,
+  SignedAttachmentRead,
+  StoredAttachment,
+} from './ports/attachment-storage.js'
+export { createFakeAttachmentStorage } from './fakes/attachment-storage-fake.js'
+export type { FakeAttachmentStorage } from './fakes/attachment-storage-fake.js'
+export { createS3CompatibleAttachmentStorage } from './s3/s3-compatible-attachment-storage.js'
+export type { S3CompatibleAttachmentStorageConfig } from './s3/s3-compatible-attachment-storage.js'
+export { attachmentStorageConformanceChecks } from './conformance/attachment-storage.suite.js'
+export type { AttachmentStorageConformanceCheck } from './conformance/attachment-storage.suite.js'
+
+export { MALWARE_SCANNER, createUnavailableMalwareScanner } from './ports/malware-scanner.js'
+export type { MalwareScanner, MalwareScanRequest, MalwareScanResult } from './ports/malware-scanner.js'
+export { createFakeMalwareScanner } from './fakes/malware-scanner-fake.js'
+export type { FakeMalwareScanner } from './fakes/malware-scanner-fake.js'
+
+export { AI_PROVIDER_CASCADE } from './ports/ai-text-provider.js'
+export type { AiTextProvider } from './ports/ai-text-provider.js'
+export { createFakeAiTextProvider, createUnavailableAiTextProvider } from './fakes/ai-text-provider-fake.js'
+export type { FakeAiProvider, FakeAiProviderStep } from './fakes/ai-text-provider-fake.js'

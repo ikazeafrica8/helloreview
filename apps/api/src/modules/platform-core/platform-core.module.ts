@@ -9,8 +9,23 @@ import {
 } from '@nestjs/common'
 import { Pool } from 'pg'
 import { Redis } from 'ioredis'
-import { readEnvironment, loadApiConfig, type ApiConfig } from '@helloreview/config'
+import {
+  ATTACHMENT_MAX_BYTES,
+  ATTACHMENT_READ_GRANT_TTL_SECONDS,
+  SHIPPING_ADDRESS_ENCRYPTION_KEY,
+  readEnvironment,
+  loadApiConfig,
+  type ApiConfig,
+} from '@helloreview/config'
 import { createLogger, type Logger as StructuredLogger } from '@helloreview/observability'
+import {
+  ATTACHMENT_STORAGE,
+  MALWARE_SCANNER,
+  createS3CompatibleAttachmentStorage,
+  createUnavailableMalwareScanner,
+  type AttachmentStorage,
+  type MalwareScanner,
+} from '@helloreview/adapters'
 import { APP_CONFIG, APP_LOGGER, POSTGRES_POOL, REDIS_CLIENT } from './tokens.js'
 import { CorrelationMiddleware } from './correlation/correlation.middleware.js'
 import { HealthController } from './health/health.controller.js'
@@ -90,9 +105,51 @@ const PROBE_TIMEOUT_MS = 2_000
       useFactory: (config: ApiConfig): StructuredLogger =>
         createLogger({ module: 'api', environment: config.environment }),
     },
+    {
+      provide: ATTACHMENT_STORAGE,
+      inject: [APP_CONFIG],
+      useFactory: (config: ApiConfig): AttachmentStorage =>
+        createS3CompatibleAttachmentStorage({
+          endpoint: config.s3Endpoint,
+          bucket: config.s3Bucket,
+          accessKeyId: config.s3AccessKeyId,
+          secretAccessKey: config.s3SecretAccessKey,
+          encryptionKey: Buffer.from(config.attachmentEncryptionKeyBase64, 'base64'),
+        }),
+    },
+    {
+      provide: MALWARE_SCANNER,
+      // No scanner vendor has been approved. The only safe deployed default is a closed gate.
+      useFactory: (): MalwareScanner => createUnavailableMalwareScanner(),
+    },
+    {
+      provide: ATTACHMENT_MAX_BYTES,
+      inject: [APP_CONFIG],
+      useFactory: (config: ApiConfig): number => config.attachmentMaxBytes,
+    },
+    {
+      provide: ATTACHMENT_READ_GRANT_TTL_SECONDS,
+      inject: [APP_CONFIG],
+      useFactory: (config: ApiConfig): number => config.attachmentReadGrantTtlSeconds,
+    },
+    {
+      provide: SHIPPING_ADDRESS_ENCRYPTION_KEY,
+      inject: [APP_CONFIG],
+      useFactory: (config: ApiConfig): Buffer => Buffer.from(config.shippingAddressEncryptionKeyBase64, 'base64'),
+    },
     HealthService,
   ],
-  exports: [APP_CONFIG, APP_LOGGER, POSTGRES_POOL, REDIS_CLIENT],
+  exports: [
+    APP_CONFIG,
+    APP_LOGGER,
+    POSTGRES_POOL,
+    REDIS_CLIENT,
+    ATTACHMENT_STORAGE,
+    MALWARE_SCANNER,
+    ATTACHMENT_MAX_BYTES,
+    ATTACHMENT_READ_GRANT_TTL_SECONDS,
+    SHIPPING_ADDRESS_ENCRYPTION_KEY,
+  ],
 })
 export class PlatformCoreModule implements NestModule, OnApplicationShutdown {
   private readonly logger = new Logger(PlatformCoreModule.name)
