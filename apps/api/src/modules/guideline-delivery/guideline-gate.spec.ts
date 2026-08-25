@@ -171,6 +171,9 @@ describe('PRD §16.9 guideline readiness', () => {
         now,
       ),
     ).toMatchObject({ reasonCode: GUIDELINE_BLOCK.CONSENT_NOT_CURRENT })
+    expect(
+      evaluateGuidelineReadiness({ ...snapshot, workflow: { ...snapshot.workflow, payback_consent: 'declined' } }, now),
+    ).toMatchObject({ reasonCode: GUIDELINE_BLOCK.CONSENT_NOT_CURRENT })
     expect(evaluateGuidelineReadiness({ ...snapshot, paybackPrerequisitesSatisfied: false }, now)).toMatchObject({
       reasonCode: GUIDELINE_BLOCK.PAYBACK_PREREQUISITES_NOT_MET,
     })

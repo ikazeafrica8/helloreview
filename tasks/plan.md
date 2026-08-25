@@ -3,7 +3,7 @@
 | Field          | Value                                                                                                               |
 | -------------- | ------------------------------------------------------------------------------------------------------------------- |
 | Plan version   | 1.1                                                                                                                 |
-| Status         | Milestone 1 complete; Milestone 2 underway; T81 and T84–T87 remain                                                  |
+| Status         | Milestones 1–2 implementation complete; Checkpoint F awaits external AI/privacy approval and human review           |
 | Spec           | [SPEC.md](../SPEC.md) (capability map in §3)                                                                        |
 | Requirements   | [PRD v1.0](../HelloReview%20Reviewer%20Campaign%20Automation%20Platform%20—%20Product%20Requirements%20Document.md) |
 | Task lists     | [Milestone 1](todo.md) · [Milestone 2](milestone-2.md) — markdown, no external tracker designated                   |

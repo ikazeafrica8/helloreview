@@ -151,86 +151,127 @@ export class ReservationService {
     if (input.status === 'cancelled' && input.cancellationReason === null)
       throw new ReservationServiceError('RESERVATION_CANCELLATION_REASON_REQUIRED')
 
-    return runInTransaction(this.pool, async (tx) => {
-      const workflow = await tx.query(
-        `SELECT id, participant_id, campaign_id, campaign_type, visit_method
+    return runInTransaction(this.pool, async (tx) => this.recordVersionInTransaction(tx, input))
+  }
+
+  async recordVersionInTransaction(
+    tx: DbTransaction,
+    input: ReservationVersionInput,
+  ): Promise<RecordedReservationVersion> {
+    this.authorize(input)
+    if (input.sourceReference.trim() === '') throw new ReservationServiceError('RESERVATION_SOURCE_REQUIRED')
+    if (
+      input.validationState === 'valid' &&
+      (input.validationAuthority !== 'deterministic_rules' || input.ruleVersion === null)
+    )
+      throw new ReservationServiceError('RESERVATION_RULE_VALIDATION_REQUIRED')
+    if (input.validationAuthority === 'deterministic_rules' && input.ruleVersion === null)
+      throw new ReservationServiceError('RESERVATION_RULE_VERSION_REQUIRED')
+    if (input.status === 'cancelled' && input.cancellationReason === null)
+      throw new ReservationServiceError('RESERVATION_CANCELLATION_REASON_REQUIRED')
+
+    const workflow = await tx.query(
+      `SELECT id, participant_id, campaign_id, campaign_type, visit_method
            FROM workflow_instances WHERE id = $1 AND participant_id = $2 FOR UPDATE`,
-        [input.workflowId, input.participantId],
-      )
-      const workflowRow = workflow.rows[0]
-      if (workflowRow === undefined) throw new ReservationServiceError('RESERVATION_WORKFLOW_NOT_FOUND')
-      if (workflowRow.campaign_type !== 'visit' || workflowRow.visit_method !== 'visit_a')
-        throw new ReservationServiceError('VISIT_A_WORKFLOW_REQUIRED')
-      const reservationId = await this.ensureAggregate(tx, workflowRow, input)
-      const duplicate = await tx.query(
-        `SELECT ${VERSION_COLUMNS}
+      [input.workflowId, input.participantId],
+    )
+    const workflowRow = workflow.rows[0]
+    if (workflowRow === undefined) throw new ReservationServiceError('RESERVATION_WORKFLOW_NOT_FOUND')
+    if (workflowRow.campaign_type !== 'visit' || workflowRow.visit_method !== 'visit_a')
+      throw new ReservationServiceError('VISIT_A_WORKFLOW_REQUIRED')
+    const reservationId = await this.ensureAggregate(tx, workflowRow, input)
+    const duplicate = await tx.query(
+      `SELECT ${VERSION_COLUMNS}
            FROM reservations r JOIN reservation_versions v ON v.reservation_id = r.id
           WHERE r.id = $1 AND v.source_reference = $2`,
-        [reservationId, input.sourceReference],
-      )
-      if (duplicate.rows[0] !== undefined) return { reservation: snapshot(duplicate.rows[0]), deduplicated: true }
-      const currentResult = await tx.query(
-        `SELECT ${VERSION_COLUMNS}
+      [reservationId, input.sourceReference],
+    )
+    if (duplicate.rows[0] !== undefined) return { reservation: snapshot(duplicate.rows[0]), deduplicated: true }
+    const currentResult = await tx.query(
+      `SELECT ${VERSION_COLUMNS}
            FROM reservations r
            JOIN reservation_heads h ON h.reservation_id = r.id
            JOIN reservation_versions v ON v.id = h.version_id
           WHERE r.id = $1`,
-        [reservationId],
-      )
-      const current = currentResult.rows[0]
-      const version = current === undefined ? 1 : rowInteger(current, 'version') + 1
-      const supersedesVersionId = current === undefined ? null : rowText(current, 'version_id')
-      const inserted = await tx.query(
-        `INSERT INTO reservation_versions (
+      [reservationId],
+    )
+    const current = currentResult.rows[0]
+    if (
+      current !== undefined &&
+      current.occurred_at instanceof Date &&
+      input.occurredAt.getTime() < current.occurred_at.getTime()
+    )
+      throw new ReservationServiceError('RESERVATION_STALE_SOURCE_EVENT')
+    const version = current === undefined ? 1 : rowInteger(current, 'version') + 1
+    const supersedesVersionId = current === undefined ? null : rowText(current, 'version_id')
+    const inserted = await tx.query(
+      `INSERT INTO reservation_versions (
            reservation_id, workflow_id, version, source, source_reference,
            extraction_provenance, reserved_date, reserved_time, timezone, business_reference,
            visit_method, status, cancellation_reason, validation_state, validation_authority,
            rule_version, validation_evidence, supersedes_version_id, actor_reference, occurred_at
          ) VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17::jsonb,$18,$19,$20)
          RETURNING id`,
-        [
-          reservationId,
-          input.workflowId,
-          version,
-          input.source,
-          input.sourceReference,
-          JSON.stringify(input.extractionProvenance),
-          input.reservedDate,
-          input.reservedTime,
-          input.timezone,
-          input.businessReference,
-          input.visitMethod,
-          input.status,
-          input.cancellationReason,
-          input.validationState,
-          input.validationAuthority,
-          input.ruleVersion,
-          JSON.stringify(input.validationEvidence),
-          supersedesVersionId,
-          input.actorReference,
-          input.occurredAt,
-        ],
-      )
-      const versionId = rowText(inserted.rows[0] ?? {}, 'id')
-      await tx.query(
-        `INSERT INTO reservation_heads (reservation_id, version_id, updated_at)
+      [
+        reservationId,
+        input.workflowId,
+        version,
+        input.source,
+        input.sourceReference,
+        JSON.stringify(input.extractionProvenance),
+        input.reservedDate,
+        input.reservedTime,
+        input.timezone,
+        input.businessReference,
+        input.visitMethod,
+        input.status,
+        input.cancellationReason,
+        input.validationState,
+        input.validationAuthority,
+        input.ruleVersion,
+        JSON.stringify(input.validationEvidence),
+        supersedesVersionId,
+        input.actorReference,
+        input.occurredAt,
+      ],
+    )
+    const versionId = rowText(inserted.rows[0] ?? {}, 'id')
+    await tx.query(
+      `INSERT INTO reservation_heads (reservation_id, version_id, updated_at)
          VALUES ($1,$2,$3)
          ON CONFLICT (reservation_id) DO UPDATE SET version_id = EXCLUDED.version_id, updated_at = EXCLUDED.updated_at`,
-        [reservationId, versionId, input.occurredAt],
-      )
-      await tx.query(
-        `UPDATE workflow_instances
+      [reservationId, versionId, input.occurredAt],
+    )
+    await tx.query(
+      `UPDATE workflow_instances
             SET reservation_state = $2, reservation_origin_at = $3,
+                guideline_state = CASE WHEN $4 IN ('cancelled','rescheduled') THEN 'not_ready' ELSE guideline_state END,
+                guideline_origin_at = CASE WHEN $4 IN ('cancelled','rescheduled') THEN $3 ELSE guideline_origin_at END,
                 version = version + 1, updated_at = $3 WHERE id = $1`,
-        [input.workflowId, workflowState(input), input.occurredAt],
-      )
-      const recorded = await this.byVersionId(tx, versionId)
-      return { reservation: recorded, deduplicated: false }
-    })
+      [input.workflowId, workflowState(input), input.occurredAt, input.status],
+    )
+    const recorded = await this.byVersionId(tx, versionId)
+    return { reservation: recorded, deduplicated: false }
   }
 
   async current(workflowId: string, participantId: string): Promise<ReservationVersionSnapshot | null> {
     const result = await this.pool.query<Record<string, unknown>>(
+      `SELECT ${VERSION_COLUMNS}
+         FROM reservations r
+         JOIN reservation_heads h ON h.reservation_id = r.id
+         JOIN reservation_versions v ON v.id = h.version_id
+        WHERE r.workflow_id = $1 AND r.participant_id = $2`,
+      [workflowId, participantId],
+    )
+    return result.rows[0] === undefined ? null : snapshot(result.rows[0])
+  }
+
+  async currentInTransaction(
+    tx: DbTransaction,
+    workflowId: string,
+    participantId: string,
+  ): Promise<ReservationVersionSnapshot | null> {
+    const result = await tx.query(
       `SELECT ${VERSION_COLUMNS}
          FROM reservations r
          JOIN reservation_heads h ON h.reservation_id = r.id

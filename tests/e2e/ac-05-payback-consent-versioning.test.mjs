@@ -66,6 +66,22 @@ describe('AC-05 old payback consent', () => {
           requestId: 'ac05-request-v2',
           occurredAt: paybackAt(6),
         })
+        expect(
+          (
+            await pool.query(
+              `SELECT reason, protected_action, detail
+                 FROM audit_logs
+                WHERE target_id = $1 AND reason = 'PAYBACK_TERMS_SUPERSEDED'`,
+              [ids.workflowId],
+            )
+          ).rows,
+        ).toEqual([
+          expect.objectContaining({
+            reason: 'PAYBACK_TERMS_SUPERSEDED',
+            protected_action: 'yes',
+            detail: expect.objectContaining({ previous_terms_version: 1, current_terms_version: 2 }),
+          }),
+        ])
 
         const stale = await service.recordResponse({
           ...commonResponse,

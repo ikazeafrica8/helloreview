@@ -47,6 +47,7 @@ export type RequestedPaybackConsent = Readonly<{
 export type PaybackConsentResponseOutcome =
   | 'agreed'
   | 'declined'
+  | 'withdrawn'
   | 'clarification_sent'
   | 'human_review_required'
   | 'current_request_required'
@@ -76,6 +77,18 @@ export type RecordedPaybackConsentResponse = Readonly<{
   deduplicated: boolean
 }>
 
+export type WithdrawPaybackConsentInput = Readonly<{
+  workflowId: string
+  participantId: string
+  requestId: string
+  termsVersion: number
+  evidenceMessageId: string
+  channel: 'KAKAO'
+  participantReference: string
+  fulfillmentBegun: boolean
+  occurredAt: Date
+}>
+
 export class PaybackConsentError extends Error {
   override readonly name = 'PaybackConsentError'
   constructor(readonly reasonCode: string) {
@@ -95,6 +108,7 @@ const CONSENT_STATES: readonly PaybackConsentState[] = [
 const RESPONSE_OUTCOMES: readonly PaybackConsentResponseOutcome[] = [
   'agreed',
   'declined',
+  'withdrawn',
   'clarification_sent',
   'human_review_required',
   'current_request_required',
@@ -125,7 +139,13 @@ const responseOutcome = (value: unknown): PaybackConsentResponseOutcome => {
 }
 
 const responseClassification = (value: unknown): PaybackConsentResponseClassification => {
-  if (value === 'explicit_agreement' || value === 'explicit_decline' || value === 'ambiguous') return value
+  if (
+    value === 'explicit_agreement' ||
+    value === 'explicit_decline' ||
+    value === 'explicit_withdrawal' ||
+    value === 'ambiguous'
+  )
+    return value
   throw new Error('payback consent response query returned invalid classification')
 }
 
@@ -274,6 +294,10 @@ export class PaybackConsentService {
         [aggregateId, input.workflowId, input.requestId, ruleId, termsVersion, notification.id, input.occurredAt],
       )
       const current = await this.currentInTransaction(tx, aggregateId)
+      const superseded =
+        current.termsVersion !== null && current.termsVersion !== termsVersion
+          ? { state: current.state, requestId: current.requestId, termsVersion: current.termsVersion }
+          : null
       const version = current.version + 1
       const inserted = await tx.query(
         `INSERT INTO payback_consent_versions (
@@ -306,6 +330,22 @@ export class PaybackConsentService {
                 version = version + 1, updated_at = $2 WHERE id = $1`,
         [input.workflowId, input.occurredAt],
       )
+      if (superseded !== null) {
+        await this.auditConsent(tx, {
+          workflowId: input.workflowId,
+          actorType: 'system',
+          actorReference: input.actorId,
+          reasonCode: 'PAYBACK_TERMS_SUPERSEDED',
+          occurredAt: input.occurredAt,
+          detail: {
+            previous_state: superseded.state,
+            previous_request_id: superseded.requestId,
+            previous_terms_version: superseded.termsVersion,
+            current_request_id: input.requestId,
+            current_terms_version: termsVersion,
+          },
+        })
+      }
       const consent = await this.currentInTransaction(tx, aggregateId)
       return { consent, notification, deduplicated: false }
     })
@@ -437,6 +477,146 @@ export class PaybackConsentService {
           WHERE id = $1`,
         [input.workflowId, outcome, input.occurredAt],
       )
+      await this.auditConsent(tx, {
+        workflowId: input.workflowId,
+        actorType: 'participant',
+        actorReference: input.participantReference,
+        reasonCode: outcome === 'agreed' ? 'CURRENT_TERMS_EXPLICITLY_AGREED' : 'CURRENT_TERMS_EXPLICITLY_DECLINED',
+        occurredAt: input.occurredAt,
+        detail: {
+          request_id: input.requestId,
+          terms_version: input.termsVersion,
+          evidence_message_id: input.evidenceMessageId,
+        },
+      })
+      return { responseEventId, outcome, classification, consent, deduplicated: false }
+    })
+  }
+
+  async withdraw(input: WithdrawPaybackConsentInput): Promise<RecordedPaybackConsentResponse> {
+    if (input.requestId.trim() === '' || input.requestId.length > 200)
+      throw new PaybackConsentError('PAYBACK_WITHDRAWAL_REQUEST_ID_INVALID')
+    if (!Number.isSafeInteger(input.termsVersion) || input.termsVersion < 1)
+      throw new PaybackConsentError('PAYBACK_WITHDRAWAL_TERMS_VERSION_INVALID')
+    if (input.evidenceMessageId.trim() === '' || input.evidenceMessageId.length > 200)
+      throw new PaybackConsentError('PAYBACK_WITHDRAWAL_EVIDENCE_ID_INVALID')
+    if (!(input.occurredAt instanceof Date) || Number.isNaN(input.occurredAt.getTime()))
+      throw new PaybackConsentError('PAYBACK_WITHDRAWAL_OCCURRED_AT_INVALID')
+
+    return runInTransaction(this.pool, async (tx) => {
+      const workflowResult = await tx.query(
+        `SELECT id, campaign_type FROM workflow_instances
+          WHERE id = $1 AND participant_id = $2 FOR UPDATE`,
+        [input.workflowId, input.participantId],
+      )
+      const workflow = workflowResult.rows[0]
+      if (workflow === undefined) throw new PaybackConsentError('PAYBACK_WORKFLOW_NOT_FOUND')
+      if (workflow.campaign_type !== 'payback') throw new PaybackConsentError('PAYBACK_CAMPAIGN_REQUIRED')
+      const aggregateResult = await tx.query(
+        `SELECT id FROM payback_consent_aggregates WHERE workflow_id = $1 AND participant_id = $2`,
+        [input.workflowId, input.participantId],
+      )
+      const aggregateRow = aggregateResult.rows[0]
+      if (aggregateRow === undefined) throw new PaybackConsentError('PAYBACK_CONSENT_NOT_REQUESTED')
+      const aggregateId = rowText(aggregateRow, 'id')
+      const current = await this.currentInTransaction(tx, aggregateId)
+      const existing = await tx.query(
+        `SELECT id, outcome, classification FROM payback_consent_response_events
+          WHERE aggregate_id = $1 AND evidence_message_id = $2`,
+        [aggregateId, input.evidenceMessageId],
+      )
+      const existingRow = existing.rows[0]
+      if (existingRow !== undefined) {
+        return {
+          responseEventId: rowText(existingRow, 'id'),
+          outcome: responseOutcome(existingRow.outcome),
+          classification: responseClassification(existingRow.classification),
+          consent: current,
+          deduplicated: true,
+        }
+      }
+      if (
+        current.state !== 'agreed' ||
+        current.requestId !== input.requestId ||
+        current.termsVersion !== input.termsVersion ||
+        input.occurredAt.getTime() < current.occurredAt.getTime()
+      )
+        throw new PaybackConsentError('PAYBACK_CURRENT_AGREEMENT_REQUIRED')
+
+      const responseInput: RecordPaybackConsentResponseInput = {
+        ...input,
+        responseText: '',
+        recipientReference: input.participantReference,
+        clarificationTemplateVersion: 1,
+        automationActorId: 'payback-consent-system',
+      }
+      const classification = 'explicit_withdrawal' as const
+      const outcome = 'withdrawn' as const
+      const responseEventId = await this.insertResponseEvent(tx, aggregateId, responseInput, classification, outcome)
+      const consent = await this.appendResponseVersion(tx, current, responseInput, outcome, classification, {
+        reasonCode: 'CURRENT_TERMS_CONSENT_WITHDRAWN',
+        actorType: 'participant',
+        actorReference: input.participantReference,
+      })
+      await tx.query(
+        `UPDATE workflow_instances
+            SET payback_consent_state = 'withdrawn', payback_consent_origin_at = $2,
+                human_handoff_state = CASE
+                  WHEN $3 AND human_handoff_state IN ('not_required','requested') THEN 'queued'
+                  ELSE human_handoff_state
+                END,
+                human_handoff_origin_at = CASE
+                  WHEN $3 AND human_handoff_state IN ('not_required','requested') THEN $2
+                  ELSE human_handoff_origin_at
+                END,
+                automation_mode_state = CASE
+                  WHEN $3 AND automation_mode_state = 'active' THEN 'paused_for_human'
+                  ELSE automation_mode_state
+                END,
+                automation_mode_origin_at = CASE
+                  WHEN $3 AND automation_mode_state = 'active' THEN $2
+                  ELSE automation_mode_origin_at
+                END,
+                version = version + 1, updated_at = $2
+          WHERE id = $1`,
+        [input.workflowId, input.occurredAt, input.fulfillmentBegun],
+      )
+      if (input.fulfillmentBegun) {
+        await tx.query(
+          `INSERT INTO human_review_tasks (
+             workflow_reference, reason_code, priority, status, case_packet,
+             automation_paused, deduplication_key, created_at, updated_at
+           ) VALUES ($1,'CONSENT_WITHDRAWN_AFTER_FULFILLMENT','high','open',$2::jsonb,true,$3,$4,$4)
+           ON CONFLICT (deduplication_key) DO NOTHING`,
+          [
+            input.workflowId,
+            JSON.stringify({
+              stateCode: 'withdrawn',
+              summaryCode: 'PAYBACK_CONSENT_WITHDRAWN_AFTER_FULFILLMENT',
+              evidenceCodes: [`TERMS_VERSION_${String(input.termsVersion)}`, input.evidenceMessageId],
+              allowedActionCodes: ['REVIEW_FULFILLMENT', 'KEEP_AUTOMATION_PAUSED'],
+              recommendationCode: 'REVIEW_FULFILLMENT',
+            }),
+            `payback-withdrawal:${aggregateId}:${input.evidenceMessageId}`,
+            input.occurredAt,
+          ],
+        )
+      }
+      await this.auditConsent(tx, {
+        workflowId: input.workflowId,
+        actorType: 'participant',
+        actorReference: input.participantReference,
+        reasonCode: input.fulfillmentBegun
+          ? 'CURRENT_TERMS_CONSENT_WITHDRAWN_AFTER_FULFILLMENT'
+          : 'CURRENT_TERMS_CONSENT_WITHDRAWN',
+        occurredAt: input.occurredAt,
+        detail: {
+          request_id: input.requestId,
+          terms_version: input.termsVersion,
+          evidence_message_id: input.evidenceMessageId,
+          fulfillment_begun: input.fulfillmentBegun,
+        },
+      })
       return { responseEventId, outcome, classification, consent, deduplicated: false }
     })
   }
@@ -517,7 +697,7 @@ export class PaybackConsentService {
     tx: DbTransaction,
     current: PaybackConsentSnapshot,
     input: RecordPaybackConsentResponseInput,
-    state: 'agreed' | 'declined' | 'human_review_required',
+    state: 'agreed' | 'declined' | 'withdrawn' | 'human_review_required',
     classification: PaybackConsentResponseClassification,
     actor: Readonly<{
       reasonCode: string
@@ -601,6 +781,33 @@ export class PaybackConsentService {
           recommendationCode: 'REVIEW_PAYBACK_CONSENT',
         }),
         `payback-consent-ambiguity:${aggregateId}:${String(input.termsVersion)}`,
+        input.occurredAt,
+      ],
+    )
+  }
+
+  private async auditConsent(
+    tx: DbTransaction,
+    input: Readonly<{
+      workflowId: string
+      actorType: 'system' | 'participant'
+      actorReference: string
+      reasonCode: string
+      occurredAt: Date
+      detail: Record<string, unknown>
+    }>,
+  ): Promise<void> {
+    await tx.query(
+      `INSERT INTO audit_logs (
+         actor_type, actor_id, action, target_type, target_id, result,
+         reason, protected_action, detail, occurred_at
+       ) VALUES ($1,$2,'CONSENT_RECORDED','workflow',$3,'success',$4,'yes',$5::jsonb,$6)`,
+      [
+        input.actorType,
+        input.actorReference,
+        input.workflowId,
+        input.reasonCode,
+        JSON.stringify(input.detail),
         input.occurredAt,
       ],
     )

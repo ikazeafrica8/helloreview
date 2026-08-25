@@ -34,9 +34,20 @@
       "dependsOn": ["workflow-core", "campaign-config", "messaging"]
     },
     "reservation": {
-      "dependsOn": ["workflow-core", "rules-engine", "ai-orchestration", "business-approval"]
+      "$comment": "Visit A owns reservation extraction and participant corrections, so campaign normalization and messaging are explicit dependencies.",
+      "dependsOn": [
+        "workflow-core",
+        "rules-engine",
+        "ai-orchestration",
+        "business-approval",
+        "campaign-config",
+        "messaging"
+      ]
     },
-    "guideline-delivery": { "dependsOn": ["workflow-core", "rules-engine", "messaging"] },
+    "guideline-delivery": {
+      "$comment": "T87 composes a validated Visit A reservation into guideline delivery without allowing extraction evidence to bypass readiness.",
+      "dependsOn": ["workflow-core", "rules-engine", "messaging", "reservation"]
+    },
     "privacy-ops": { "dependsOn": ["workflow-core", "attachments", "audit-log"] },
     "admin-api": {
       "$comment": "SPEC.md §3.1 says 'all business-flow modules, audit-log'. Enumerated, because a rule cannot read prose.",

@@ -24,11 +24,15 @@ then submits another explicit agreement linked to the old request. Version 2 rem
 `awaiting_response`, and the version-2 request remains the current request. One explicit response
 linked to version 2 can then record agreement.
 
-## Deliberately not included
+## Terms supersession, decline, and withdrawal
 
-T81 remains pending. Its complete terms-supersession lifecycle, withdrawal policy, fulfillment-begun
-review behavior, and corresponding guideline/audit tests must land before the payback flow is
-considered complete for production.
+- A newly current terms version creates a new request and records protected supersession evidence;
+  an incomplete older request cannot authorize the new terms.
+- An explicit decline is terminal for that request and guideline readiness remains blocked.
+- Withdrawal is a distinct immutable participant response and consent version. When fulfillment has
+  begun, it queues one high-priority review and pauses active automation; replay is deduplicated.
+- Agreement, decline, supersession, and withdrawal decisions are reconstructable from protected
+  audit entries without storing raw participant text in the audit log.
 
 ## Verification
 

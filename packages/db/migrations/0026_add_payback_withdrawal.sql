@@ -1,0 +1,2 @@
+ALTER TYPE "public"."payback_consent_response_classification" ADD VALUE 'explicit_withdrawal' BEFORE 'ambiguous';--> statement-breakpoint
+ALTER TYPE "public"."payback_consent_response_outcome" ADD VALUE 'withdrawn' BEFORE 'clarification_sent';

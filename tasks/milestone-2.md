@@ -2,7 +2,7 @@
 
 Plan: [tasks/plan.md](plan.md) · Spec: [SPEC.md](../SPEC.md) · Requirements: PRD v1.0
 
-Status: **T57–T80 and T82–T83 complete. T81 and T84–T87 remain.**
+Status: **T57–T87 complete. Checkpoint F remains gated by external AI/privacy approval and human review.**
 
 31 tasks across six phases. Milestone 2 turns the proven core spine into the first participant
 journeys while preserving three non-negotiable boundaries:
@@ -376,6 +376,8 @@ one approved clarification and no agreed state.
 
 ## T81 — Terms supersession, decline, and withdrawal
 
+Status: **Complete (2026-08-25).**
+
 New terms invalidate incomplete requests; decline stops progression; withdrawal preserves evidence
 and creates review when fulfillment has begun.
 
@@ -414,6 +416,8 @@ mark a reservation valid.
 
 ## T84 — Visit A text intake and date/time candidates
 
+Status: **Complete (2026-08-25).**
+
 Convert participant text into structured reservation candidates through deterministic parsing and the
 bounded AI extraction fallback. Ambiguous candidates request clarification instead of guessing.
 
@@ -422,6 +426,8 @@ bounded AI extraction fallback. Ambiguous candidates request clarification inste
 **Dependencies:** T65, T66, T83
 
 ## T85 — Reservation validation and specific corrections
+
+Status: **Complete (2026-08-25).**
 
 Run every structured candidate through the existing fourteen-rule set and persist the full rule
 evidence. Participant corrections name the failed rule and approved corrective action.
@@ -432,6 +438,8 @@ evidence. Participant corrections name the failed rule and approved corrective a
 
 ## T86 — Cancellation, rescheduling, and stale evidence
 
+Status: **Complete (2026-08-25).**
+
 Cancellation and rescheduling create new history, revoke prior readiness, reject stale source events,
 and deduplicate corrections.
 
@@ -440,6 +448,8 @@ and deduplicate corrections.
 **Dependencies:** T85, T39
 
 ## T87 — Visit A journey E2E
+
+Status: **Complete (2026-08-25).**
 
 Selected participant → text reservation → structured extraction → deterministic validation → specific
 correction or readiness → one guideline delivery. Repeat and stale events produce no duplicate side
@@ -454,7 +464,7 @@ effect.
 - [x] Attachment attack corpus and cross-owner authorization tests pass.
 - [ ] AI evaluation thresholds and protected-state boundary pass; approved provider/privacy decisions are recorded.
 - [x] Selection remains recommendation-only and shadow comparisons are auditable.
-- [ ] Shipping and Visit A journeys pass with duplicate/stale-event proofs.
-- [ ] AC-05 passes and all prior Milestone 1 acceptance tests remain green.
+- [x] Shipping and Visit A journeys pass with duplicate/stale-event proofs.
+- [x] AC-05 passes and all prior Milestone 1 acceptance tests remain green.
 - [ ] Coverage thresholds, security tier, rollback notes, and operator runbooks pass review.
 - [ ] Review with human before Milestone 3.

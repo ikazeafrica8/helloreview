@@ -1,4 +1,5 @@
-export type PaybackConsentResponseClassification = 'explicit_agreement' | 'explicit_decline' | 'ambiguous'
+export type PaybackConsentResponseClassification =
+  'explicit_agreement' | 'explicit_decline' | 'explicit_withdrawal' | 'ambiguous'
 
 const AGREEMENT_RESPONSES: ReadonlySet<string> = new Set(['동의합니다', '네 동의합니다', '예 동의합니다'])
 

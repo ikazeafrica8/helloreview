@@ -1,7 +1,7 @@
 export { RulesEngineModule } from './rules-engine.module.js'
 export { evaluateRule } from './rule-evaluator.js'
 export type { DeterministicRule, RuleEvaluationResult } from './rule-evaluator.js'
-export { evaluateReservationRules } from './reservation-rules.js'
+export { evaluateReservationRules, parseReservationRuleConfiguration } from './reservation-rules.js'
 export type {
   ReservationEvidence,
   ReservationRuleConfiguration,

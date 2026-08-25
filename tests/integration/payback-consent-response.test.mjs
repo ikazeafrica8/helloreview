@@ -159,4 +159,122 @@ describe('T80 payback consent response handling', () => {
       }
     })
   })
+
+  test('records protected audit evidence for decline and prevents further consent progression', async () => {
+    await withPostgres(async ({ url }) => {
+      await applyMigrations(url)
+      const pool = new Pool({ connectionString: url })
+      try {
+        const ids = await seedPaybackConsentWorkflow(pool, 'decline-audit')
+        const service = serviceFor(pool)
+        await service.requestCurrentTerms(requestInput(ids))
+        await service.recordResponse(responseInput(ids, { responseText: '동의하지 않습니다' }))
+
+        const audit = await pool.query(
+          `SELECT action, result, reason, protected_action, detail
+             FROM audit_logs WHERE target_id = $1 ORDER BY occurred_at`,
+          [ids.workflowId],
+        )
+        expect(audit.rows).toEqual([
+          expect.objectContaining({
+            action: 'CONSENT_RECORDED',
+            result: 'success',
+            reason: 'CURRENT_TERMS_EXPLICITLY_DECLINED',
+            protected_action: 'yes',
+          }),
+        ])
+        await expect(
+          service.recordResponse(
+            responseInput(ids, {
+              responseText: '동의합니다',
+              evidenceMessageId: 'post-decline-agreement',
+              occurredAt: paybackAt(2),
+            }),
+          ),
+        ).resolves.toMatchObject({ outcome: 'ignored_no_active_request', consent: { state: 'declined' } })
+      } finally {
+        await pool.end()
+      }
+    })
+  })
+
+  test('withdraws current consent immutably and creates one review when fulfillment began', async () => {
+    await withPostgres(async ({ url }) => {
+      await applyMigrations(url)
+      const pool = new Pool({ connectionString: url })
+      try {
+        const ids = await seedPaybackConsentWorkflow(pool, 'withdrawal')
+        const service = serviceFor(pool)
+        await service.requestCurrentTerms(requestInput(ids))
+        await service.recordResponse(responseInput(ids, { responseText: '동의합니다' }))
+        const withdrawalInput = {
+          workflowId: ids.workflowId,
+          participantId: ids.participantId,
+          requestId: 'payback-request-v1',
+          termsVersion: 1,
+          evidenceMessageId: 'payback-withdrawal-1',
+          channel: 'KAKAO',
+          participantReference: 'masked-participant-payback',
+          fulfillmentBegun: true,
+          occurredAt: paybackAt(2),
+        }
+        const withdrawal = await service.withdraw(withdrawalInput)
+        expect(withdrawal).toMatchObject({
+          outcome: 'withdrawn',
+          classification: 'explicit_withdrawal',
+          consent: { state: 'withdrawn' },
+          deduplicated: false,
+        })
+        await expect(service.withdraw(withdrawalInput)).resolves.toMatchObject({
+          outcome: 'withdrawn',
+          deduplicated: true,
+        })
+        expect((await service.history(ids.workflowId, ids.participantId)).map(({ state }) => state)).toEqual([
+          'not_requested',
+          'awaiting_response',
+          'agreed',
+          'withdrawn',
+        ])
+        expect(
+          (
+            await pool.query(
+              `SELECT payback_consent_state, human_handoff_state, automation_mode_state
+                 FROM workflow_instances WHERE id = $1`,
+              [ids.workflowId],
+            )
+          ).rows[0],
+        ).toEqual({
+          payback_consent_state: 'withdrawn',
+          human_handoff_state: 'queued',
+          automation_mode_state: 'paused_for_human',
+        })
+        expect(
+          (
+            await pool.query(
+              `SELECT count(*)::integer AS count FROM human_review_tasks WHERE workflow_reference = $1`,
+              [ids.workflowId],
+            )
+          ).rows[0].count,
+        ).toBe(1)
+        expect(
+          (
+            await pool.query(
+              `SELECT reason, protected_action FROM audit_logs WHERE target_id = $1 ORDER BY occurred_at`,
+              [ids.workflowId],
+            )
+          ).rows,
+        ).toEqual([
+          { reason: 'CURRENT_TERMS_EXPLICITLY_AGREED', protected_action: 'yes' },
+          { reason: 'CURRENT_TERMS_CONSENT_WITHDRAWN_AFTER_FULFILLMENT', protected_action: 'yes' },
+        ])
+        await expect(
+          pool.query(`UPDATE payback_consent_response_events SET outcome = 'agreed' WHERE evidence_message_id = $1`, [
+            withdrawalInput.evidenceMessageId,
+          ]),
+        ).rejects.toThrow(/append-only/)
+      } finally {
+        await pool.end()
+      }
+    })
+  })
 })
