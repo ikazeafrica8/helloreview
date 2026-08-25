@@ -2,7 +2,7 @@
 
 Plan: [tasks/plan.md](plan.md) · Spec: [SPEC.md](../SPEC.md) · Requirements: PRD v1.0
 
-Status: **Proposed at Checkpoint E — human review required before T57.**
+Status: **Phase 8, T62–T63, T67–T79, and T83 complete. T64–T66 are the next uncompleted tasks.**
 
 31 tasks across six phases. Milestone 2 turns the proven core spine into the first participant
 journeys while preserving three non-negotiable boundaries:
@@ -31,6 +31,8 @@ journeys while preserving three non-negotiable boundaries:
 
 ## T57 — Attachment evidence schema
 
+Status: **Complete (2026-08-25).**
+
 Store immutable attachment metadata: owning workflow, participant, source message, opaque provider
 reference, declared and detected type, size, content hash, security state, storage reference, and
 timestamps. Raw file bytes never enter workflow events, Redis jobs, logs, or audit detail.
@@ -44,6 +46,8 @@ are append-only; ordinary queries expose no signed URL or storage credential.
 
 ## T58 — Attachment storage port and fake
 
+Status: **Complete (2026-08-25).**
+
 Define encrypted put/get/delete and short-lived signed-read operations behind a provider-neutral
 port. Add an in-repo fake and a shared conformance suite; no production object-store vendor is bound.
 
@@ -56,6 +60,8 @@ the fake passes the same contract a future MinIO/S3 adapter must pass.
 
 ## T59 — Secure ingest pipeline
 
+Status: **Complete (2026-08-25).**
+
 Stream uploads through size limits, extension-independent signature detection, type allowlist,
 content hashing, malware-scanner port, and quarantine before any downstream consumer can read them.
 
@@ -67,6 +73,8 @@ malware all fail closed with specific reason codes; only `clean` evidence become
 **Dependencies:** T58
 
 ## T60 — Ownership-bound upload and download grants
+
+Status: **Complete (2026-08-25).**
 
 Issue one-time upload grants and short-lived read grants scoped to one workflow and expected
 participant. Consumption is atomic, single-use, audited, and protected against cross-participant
@@ -81,6 +89,8 @@ rejected without revealing whether another participant's object exists.
 
 ## T61 — Attachment quarantine and lifecycle gate
 
+Status: **Complete (2026-08-25).**
+
 Connect clean attachments to workflow evidence, retain quarantined objects for operator review, and
 record legal-hold/deletion eligibility without inventing retention periods that have not been
 approved.
@@ -88,7 +98,8 @@ approved.
 **Acceptance:** unsafe evidence cannot progress a workflow; deletion is disabled when policy is
 missing or legal hold is active; one E2E trace proves secure ingest to workflow evidence.
 
-**Verification:** E2E, security, and retention-state transition tests.
+**Verification:** E2E, security, retention-state transition tests, and the
+[secure-attachment runbook](../docs/secure-attachments.md).
 
 **Dependencies:** T60, T38
 
@@ -97,6 +108,8 @@ missing or legal hold is active; one E2E trace proves secure ingest to workflow 
 # Phase 9 — AI orchestration boundary
 
 ## T62 — AI request, extraction, and recommendation contracts
+
+Status: **Complete (2026-08-25).**
 
 Define versioned Korean intent, entity, date/time, confidence, refusal, and provenance schemas.
 Protected business-state fields are absent from AI write contracts by construction.
@@ -109,6 +122,8 @@ model, prompt, schema, and input version.
 **Dependencies:** T14
 
 ## T63 — AI provider port, fake, timeout, and fallback
+
+Status: **Complete (2026-08-25).**
 
 Add a provider-neutral text extraction port, deterministic fake, bounded timeout, retry policy, and
 configured model cascade. No real provider is enabled before the hosting/overseas-processing decision.
@@ -163,6 +178,8 @@ exhaustion falls back safely; release thresholds and stop criteria are explicit.
 
 ## T67 — Immutable selection decision evidence
 
+Status: **Complete (2026-08-25).**
+
 Store recommendation versions with application, campaign, input facts, threshold/rule version,
 result, reason, component outcomes, freshness, actor, and time. Manual decisions remain separately
 identifiable and auditable.
@@ -175,6 +192,8 @@ an authorized human command; participant output excludes internal ranking detail
 **Dependencies:** T29, T34
 
 ## T68 — Manual-pilot ranking evidence adapter
+
+Status: **Complete (2026-08-25).**
 
 Read `blogger_level`, `blog_daily_visitors`, and coarse `blogger_region` from the verified website CSV
 import. `blogger_level` is source-owned ranking evidence and remains separate from application
@@ -190,6 +209,8 @@ configured; visitor evidence carries a defined measurement period or is treated 
 
 ## T69 — Pure recommendation evaluator and manual-review band
 
+Status: **Complete (2026-08-25).**
+
 Evaluate versioned selection facts into recommend-select, recommend-not-select, or human-review.
 Missing/stale evidence, absent threshold, borderline values, or unresolved region mapping always
 return review.
@@ -202,6 +223,8 @@ default rejection message is invented when campaign policy is missing.
 **Dependencies:** T68, T48
 
 ## T70 — Shadow-mode and automatic-selection hard gate
+
+Status: **Complete (2026-08-25).**
 
 Persist recommendations beside operator outcomes for comparison while keeping automatic selection
 disabled globally and per campaign.
@@ -216,6 +239,8 @@ automatic selection transitions.
 
 ## T71 — Manual overrides and selection revocation
 
+Status: **Complete (2026-08-25).**
+
 Authorized operators may accept/override recommendations with actor, reason, prior/new result, and
 immutable audit evidence. Revocation pauses downstream reservation and guideline work.
 
@@ -227,6 +252,8 @@ the required review task and stops ordinary automation.
 **Dependencies:** T70, T38
 
 ## T72 — Selection shadow-mode E2E
+
+Status: **Complete (2026-08-25).**
 
 Import a manual website CSV row, generate one recommendation, record one operator decision, and prove
 the comparison record contains no participant-facing score disclosure and no automatic selection.
@@ -241,6 +268,8 @@ the comparison record contains no participant-facing score disclosure and no aut
 
 ## T73 — Versioned and protected shipping addresses
 
+Status: **Complete (2026-08-25).**
+
 Store encrypted, versioned addresses owned by one workflow, with masked ordinary reads and immutable
 change history.
 
@@ -252,6 +281,8 @@ reads are indistinguishable from missing records.
 **Dependencies:** T57, T34
 
 ## T74 — One-time secure address form
+
+Status: **Complete (2026-08-25).**
 
 Issue a single-use, expiring workflow-bound form token after selection. Kakao messages carry only the
 form link, never the address.
@@ -265,6 +296,8 @@ address requests are suppressed.
 
 ## T75 — Campaign-configurable address validation
 
+Status: **Complete (2026-08-25).**
+
 Validate required fields, Korean phone, postal code, and campaign-specific constraints with specific
 approved corrections.
 
@@ -277,6 +310,8 @@ configuration error, never a pass.
 
 ## T76 — Address change, cutoff, lock, and dedupe
 
+Status: **Complete (2026-08-25).**
+
 Allow versioned changes before cutoff, lock after fulfillment cutoff, and route later changes to
 human review. A valid current address is not requested twice.
 
@@ -285,6 +320,8 @@ human review. A valid current address is not requested twice.
 **Dependencies:** T75, T43
 
 ## T77 — Shipping journey E2E
+
+Status: **Complete (2026-08-25).**
 
 Selected participant → one-time form → valid versioned address → guideline readiness → one provider
 message, with duplicate submission and cross-owner attack cases.
@@ -297,6 +334,8 @@ message, with duplicate submission and cross-owner attack cases.
 
 ## T78 — Versioned consent aggregate
 
+Status: **Complete (2026-08-25).**
+
 Persist Not Requested, Awaiting Response, Agreed, Declined, Withdrawn, and Human Review Required with
 terms version, evidence message, channel, classification, actor, and timestamp.
 
@@ -308,6 +347,8 @@ queryable and cannot be inferred from free text alone.
 **Dependencies:** T24, T34
 
 ## T79 — Current-terms consent request
+
+Status: **Complete (2026-08-25).**
 
 Send one request tied to the active terms and request id. Old, unrelated, duplicate, or superseded
 responses cannot satisfy it.
@@ -348,6 +389,8 @@ payback flow, while one explicit response to the current request can.
 # Phase 13 — Visit A reservation
 
 ## T83 — Reservation aggregate and immutable versions
+
+Status: **Complete (2026-08-25).**
 
 Store structured reservation versions, source/evidence, extraction provenance, validation result,
 rule version, status, cancellation, and supersession history.
@@ -398,9 +441,9 @@ effect.
 
 # Checkpoint F — Participant flows proven
 
-- [ ] Attachment attack corpus and cross-owner authorization tests pass.
+- [x] Attachment attack corpus and cross-owner authorization tests pass.
 - [ ] AI evaluation thresholds and protected-state boundary pass; approved provider/privacy decisions are recorded.
-- [ ] Selection remains recommendation-only and shadow comparisons are auditable.
+- [x] Selection remains recommendation-only and shadow comparisons are auditable.
 - [ ] Shipping and Visit A journeys pass with duplicate/stale-event proofs.
 - [ ] AC-05 passes and all prior Milestone 1 acceptance tests remain green.
 - [ ] Coverage thresholds, security tier, rollback notes, and operator runbooks pass review.

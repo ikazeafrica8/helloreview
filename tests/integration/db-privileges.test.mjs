@@ -129,6 +129,44 @@ describe('the application database role', () => {
         await refuse('UPDATE audit_logs', `UPDATE audit_logs SET action = 'TAMPERED'`, /permission denied/i)
         await refuse('TRUNCATE audit_logs', 'TRUNCATE audit_logs', /permission denied/i)
 
+        const protectedHistoryTables = [
+          'attachments',
+          'attachment_security_events',
+          'attachment_lifecycle_events',
+          'attachment_grant_events',
+          'selection_recommendations',
+          'selection_manual_decisions',
+          'selection_shadow_comparisons',
+          'shipping_addresses',
+          'shipping_address_reveals',
+          'payback_consent_aggregates',
+          'payback_consent_versions',
+          'payback_consent_requests',
+          'reservations',
+          'reservation_versions',
+        ]
+        const protectedHistory = await app.query(
+          `SELECT table_name,
+                  has_table_privilege(current_user, table_name, 'SELECT') AS can_select,
+                  has_table_privilege(current_user, table_name, 'INSERT') AS can_insert,
+                  has_table_privilege(current_user, table_name, 'UPDATE') AS can_update,
+                  has_table_privilege(current_user, table_name, 'DELETE') AS can_delete,
+                  has_table_privilege(current_user, table_name, 'TRUNCATE') AS can_truncate
+             FROM unnest($1::text[]) AS protected_table(table_name)
+            ORDER BY table_name`,
+          [protectedHistoryTables],
+        )
+        expect(protectedHistory.rows).toEqual(
+          protectedHistoryTables.sort().map((tableName) => ({
+            table_name: tableName,
+            can_select: true,
+            can_insert: true,
+            can_update: false,
+            can_delete: false,
+            can_truncate: false,
+          })),
+        )
+
         // The one that ENABLE ALWAYS alone could not stop, and the reason for this whole change.
         await refuse(
           'ALTER TABLE audit_logs DISABLE TRIGGER ALL',

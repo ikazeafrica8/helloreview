@@ -45,3 +45,25 @@ export type { MessagePurpose } from './purposes.js'
 // PRD §17.4 canonical outbound idempotency identity.
 export { OUTBOUND_CHANNELS, buildDedupeKey } from './dedupe-key.js'
 export type { DedupeKeyInput, OutboundChannel } from './dedupe-key.js'
+
+export {
+  AI_TASKS,
+  AI_INTENT_CODES,
+  AI_PROTECTED_STATE_BOUNDARY,
+  aiRequestSchema,
+  aiIntentEvidenceSchema,
+  aiDateTimeEvidenceSchema,
+  aiAdvisoryEvidenceSchema,
+  aiEvidenceSchema,
+  aiResultSchema,
+} from './ai.js'
+export type {
+  AiTask,
+  AiRequest,
+  AiIntentEvidence,
+  AiDateTimeEvidence,
+  AiAdvisoryEvidence,
+  AiEvidence,
+  AiResult,
+  AiProtectedStateBoundary,
+} from './ai.js'

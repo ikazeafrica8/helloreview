@@ -129,3 +129,69 @@ export type {
   ApplicationImportBatchRow,
   NewApplicationImportBatchRow,
 } from './applications.js'
+export {
+  attachments,
+  attachmentSecurityEvents,
+  attachmentLifecycleEvents,
+  attachmentAccessGrants,
+  attachmentGrantEvents,
+  attachmentSecurityStateEnum,
+  attachmentLifecycleEventTypeEnum,
+  attachmentGrantKindEnum,
+  attachmentGrantEventTypeEnum,
+} from './attachments.js'
+export type {
+  AttachmentRow,
+  NewAttachmentRow,
+  AttachmentSecurityEventRow,
+  AttachmentLifecycleEventRow,
+  AttachmentAccessGrantRow,
+  AttachmentGrantEventRow,
+} from './attachments.js'
+export {
+  selectionRecommendations,
+  selectionManualDecisions,
+  selectionDecisionHeads,
+  selectionShadowComparisons,
+  selectionRecommendationResultEnum,
+  selectionManualDecisionResultEnum,
+  selectionShadowOutcomeEnum,
+} from './selection.js'
+export type {
+  SelectionRecommendationRow,
+  SelectionManualDecisionRow,
+  SelectionDecisionHeadRow,
+  SelectionShadowComparisonRow,
+} from './selection.js'
+export {
+  shippingAddresses,
+  shippingAddressHeads,
+  shippingFormGrants,
+  shippingAddressReveals,
+  shippingAddressValidationStateEnum,
+  shippingAddressChangeSourceEnum,
+} from './shipping.js'
+export type { ShippingAddressRow, ShippingFormGrantRow, ShippingAddressRevealRow } from './shipping.js'
+export {
+  paybackConsentAggregates,
+  paybackConsentVersions,
+  paybackConsentHeads,
+  paybackConsentRequests,
+  paybackConsentStateEnum,
+  paybackConsentActorTypeEnum,
+} from './payback-consent.js'
+export type {
+  PaybackConsentAggregateRow,
+  PaybackConsentVersionRow,
+  PaybackConsentRequestRow,
+} from './payback-consent.js'
+export {
+  reservations,
+  reservationVersions,
+  reservationHeads,
+  reservationVersionSourceEnum,
+  reservationValidationStateEnum,
+  reservationValidationAuthorityEnum,
+  reservationStatusEnum,
+} from './reservations.js'
+export type { ReservationRow, ReservationVersionRow } from './reservations.js'

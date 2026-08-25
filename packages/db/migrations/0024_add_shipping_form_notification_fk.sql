@@ -1,0 +1,1 @@
+ALTER TABLE "shipping_form_grants" ADD CONSTRAINT "shipping_form_grants_outbound_notification_id_outbound_notifications_id_fk" FOREIGN KEY ("outbound_notification_id") REFERENCES "public"."outbound_notifications"("id") ON DELETE restrict ON UPDATE no action;

@@ -3,11 +3,11 @@
 | Field          | Value                                                                                                               |
 | -------------- | ------------------------------------------------------------------------------------------------------------------- |
 | Plan version   | 1.1                                                                                                                 |
-| Status         | Milestone 1 complete; Milestone 2 proposed at Checkpoint E                                                          |
+| Status         | Milestone 1 complete; Milestone 2 underway; T64–T66 next                                                            |
 | Spec           | [SPEC.md](../SPEC.md) (capability map in §3)                                                                        |
 | Requirements   | [PRD v1.0](../HelloReview%20Reviewer%20Campaign%20Automation%20Platform%20—%20Product%20Requirements%20Document.md) |
 | Task lists     | [Milestone 1](todo.md) · [Milestone 2](milestone-2.md) — markdown, no external tracker designated                   |
-| Detailed scope | Milestone 1: 56 tasks across 8 phases; Milestone 2: 31 proposed tasks across 6 phases                               |
+| Detailed scope | Milestone 1: 56 tasks across 8 phases; Milestone 2: 31 tasks across 6 phases                                        |
 | Outlined scope | Milestones 3–4, broken down at their checkpoints                                                                    |
 
 ---
