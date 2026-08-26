@@ -17,6 +17,9 @@ export type RecordBusinessApprovalInput = Readonly<{
   issuedAt: Date | null
   expiresAt: Date | null
   recordedAt: Date
+  /** Optional for legacy internal callers; admin commands always supply it. */
+  expectedWorkflowVersion?: number
+  correlationId?: string
 }>
 
 export type RecordedBusinessApproval = Readonly<{
@@ -50,7 +53,7 @@ export class BusinessApprovalService {
     }
     return runInTransaction(this.pool, async (tx) => {
       const workflowResult = await tx.query(
-        `SELECT id, campaign_id, application_id, visit_method
+        `SELECT id, campaign_id, application_id, visit_method, version
            FROM workflow_instances WHERE id = $1 FOR UPDATE`,
         [input.workflowId],
       )
@@ -62,6 +65,8 @@ export class BusinessApprovalService {
         rowText(workflow, 'visit_method') !== 'visit_c'
       )
         throw new BusinessApprovalError(BUSINESS_APPROVAL_REASON.APPROVAL_SCOPE_MISMATCH)
+      if (input.expectedWorkflowVersion !== undefined && Number(workflow.version) !== input.expectedWorkflowVersion)
+        throw new BusinessApprovalError('STALE_WORKFLOW_VERSION')
 
       const current = await this.approvals.current(tx, input.workflowId, true)
       if (
@@ -95,6 +100,29 @@ export class BusinessApprovalService {
         ],
       )
       const approvalId = rowText(inserted.rows[0] ?? {}, 'id')
+      await tx.query(
+        `INSERT INTO audit_logs (
+           occurred_at, actor_type, actor_id, action, target_type, target_id,
+           result, reason, correlation_id, protected_action, detail
+         ) VALUES ($1,$2,$3,'BUSINESS_APPROVAL_CHANGED','business_approval',$4,
+                   'success',$5,$6,'yes',$7::jsonb)`,
+        [
+          input.recordedAt,
+          input.source === 'authorized_operator' ? 'operator' : 'system',
+          input.approverReference,
+          approvalId,
+          input.reasonCode,
+          input.correlationId ?? null,
+          JSON.stringify({
+            workflowId: input.workflowId,
+            campaignId: input.campaignId,
+            applicationId: input.applicationId,
+            version,
+            state: input.state,
+            scopeCode: input.scopeCode,
+          }),
+        ],
+      )
       await tx.query(
         `INSERT INTO business_approval_heads (workflow_id, approval_id, updated_at)
          VALUES ($1,$2,$3)

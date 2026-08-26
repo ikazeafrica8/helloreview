@@ -1,4 +1,5 @@
-import { index, pgEnum, pgTable, text, unique, uuid } from 'drizzle-orm/pg-core'
+import { check, index, integer, pgEnum, pgTable, text, unique, uuid } from 'drizzle-orm/pg-core'
+import { sql } from 'drizzle-orm'
 import { tstz } from '../columns.js'
 import { campaignTypeEnum, visitMethodEnum } from './enums.js'
 
@@ -45,6 +46,8 @@ export const campaigns = pgTable(
     visitMethod: visitMethodEnum('visit_method').notNull().default('not_applicable'),
 
     status: campaignStatusEnum('status').notNull().default('draft'),
+    /** Optimistic command version. Every administrative mutation increments it. */
+    version: integer('version').notNull().default(1),
 
     /**
      * Campaign operating period.
@@ -64,6 +67,7 @@ export const campaigns = pgTable(
     unique('campaigns_code_key').on(table.code),
     index('campaigns_status_idx').on(table.status),
     index('campaigns_period_idx').on(table.startsAt, table.endsAt),
+    check('campaigns_positive_version', sql`${table.version} > 0`),
   ],
 )
 

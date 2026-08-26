@@ -1,14 +1,14 @@
 # Implementation Plan: HelloReview Reviewer Campaign Automation Platform
 
-| Field          | Value                                                                                                               |
-| -------------- | ------------------------------------------------------------------------------------------------------------------- |
-| Plan version   | 1.1                                                                                                                 |
-| Status         | Milestones 1–2 and Milestone 3 T88–T97 complete; external AI/privacy and operations-policy approvals remain         |
-| Spec           | [SPEC.md](../SPEC.md) (capability map in §3)                                                                        |
-| Requirements   | [PRD v1.0](../HelloReview%20Reviewer%20Campaign%20Automation%20Platform%20—%20Product%20Requirements%20Document.md) |
-| Task lists     | [Milestone 1](todo.md) · [Milestone 2](milestone-2.md) · [Milestone 3](milestone-3.md)                              |
-| Detailed scope | Milestone 1: 56 tasks; Milestone 2: 31 tasks; Milestone 3: 30 tasks                                                 |
-| Outlined scope | Milestone 4, broken down at its checkpoint                                                                          |
+| Field          | Value                                                                                                                         |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Plan version   | 1.1                                                                                                                           |
+| Status         | Milestones 1–2 plus Milestone 3 T88–T99 and T103–T108 complete; policy approvals and remaining operations UI/API tasks remain |
+| Spec           | [SPEC.md](../SPEC.md) (capability map in §3)                                                                                  |
+| Requirements   | [PRD v1.0](../HelloReview%20Reviewer%20Campaign%20Automation%20Platform%20—%20Product%20Requirements%20Document.md)           |
+| Task lists     | [Milestone 1](todo.md) · [Milestone 2](milestone-2.md) · [Milestone 3](milestone-3.md)                                        |
+| Detailed scope | Milestone 1: 56 tasks; Milestone 2: 31 tasks; Milestone 3: 30 tasks                                                           |
+| Outlined scope | Milestone 4, broken down at its checkpoint                                                                                    |
 
 ---
 

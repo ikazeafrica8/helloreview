@@ -6,7 +6,8 @@
     "moduleResolution": "NodeNext",
     "noEmit": true,
     "allowJs": true,
-    "checkJs": false
+    "checkJs": false,
+    "experimentalDecorators": true
   },
   "include": ["tests/**/*.ts", "tests/**/*.mjs", "tools/**/*.ts", "tools/**/*.mjs", "*.config.ts", "eslint.config.js"]
 }

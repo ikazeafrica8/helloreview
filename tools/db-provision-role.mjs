@@ -138,7 +138,11 @@ try {
           payback_consent_response_events,
           reservations, reservation_versions,
           human_review_task_events, human_review_holding_messages,
-          privacy_request_events, privacy_request_processing_pauses
+          privacy_request_events, privacy_request_processing_pauses,
+          privacy_retention_schedules, privacy_retention_schedule_entries,
+          privacy_legal_holds, privacy_legal_hold_events,
+          privacy_deletion_eligibility_evaluations,
+          admin_retry_operations
        FROM ${PRIVILEGE_GROUP}`,
   )
 
@@ -209,6 +213,12 @@ try {
     'human_review_holding_messages',
     'privacy_request_events',
     'privacy_request_processing_pauses',
+    'privacy_retention_schedules',
+    'privacy_retention_schedule_entries',
+    'privacy_legal_holds',
+    'privacy_legal_hold_events',
+    'privacy_deletion_eligibility_evaluations',
+    'admin_retry_operations',
   ]
   const appendOnlyHistoryPrivileges = await client.query(
     `SELECT table_name,

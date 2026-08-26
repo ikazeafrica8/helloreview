@@ -85,6 +85,8 @@ export type {
 } from './workflow-instances.js'
 export { automationPauses, automationPauseScopeEnum, automationPauseKindEnum } from './automation-pauses.js'
 export type { AutomationPauseRow, NewAutomationPauseRow } from './automation-pauses.js'
+export { adminRetryOperations } from './admin-operations.js'
+export type { AdminRetryOperationRow } from './admin-operations.js'
 export { businessApprovals, businessApprovalHeads, businessApprovalSourceEnum } from './business-approvals.js'
 export type { BusinessApprovalRow, NewBusinessApprovalRow, BusinessApprovalHeadRow } from './business-approvals.js'
 export {
@@ -227,3 +229,20 @@ export type {
   PrivacyRequestEventRow,
   PrivacyRequestProcessingPauseRow,
 } from './privacy-requests.js'
+export {
+  privacyRetentionSchedules,
+  privacyRetentionScheduleEntries,
+  privacyLegalHolds,
+  privacyLegalHoldEvents,
+  privacyDeletionEligibilityEvaluations,
+  privacyRetentionDataClassEnum,
+  privacyRetentionDispositionEnum,
+  privacyLegalHoldScopeEnum,
+  privacyLegalHoldEventTypeEnum,
+  privacyDeletionEligibilityDecisionEnum,
+} from './privacy-retention.js'
+export type {
+  PrivacyRetentionScheduleRow,
+  PrivacyLegalHoldRow,
+  PrivacyDeletionEligibilityEvaluationRow,
+} from './privacy-retention.js'
