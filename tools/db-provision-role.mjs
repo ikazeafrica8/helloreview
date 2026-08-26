@@ -136,7 +136,8 @@ try {
           shipping_addresses, shipping_address_reveals,
           payback_consent_aggregates, payback_consent_versions, payback_consent_requests,
           payback_consent_response_events,
-          reservations, reservation_versions
+          reservations, reservation_versions,
+          human_review_task_events, human_review_holding_messages
        FROM ${PRIVILEGE_GROUP}`,
   )
 
@@ -203,6 +204,8 @@ try {
     'payback_consent_response_events',
     'reservations',
     'reservation_versions',
+    'human_review_task_events',
+    'human_review_holding_messages',
   ]
   const appendOnlyHistoryPrivileges = await client.query(
     `SELECT table_name,

@@ -466,5 +466,8 @@ effect.
 - [x] Selection remains recommendation-only and shadow comparisons are auditable.
 - [x] Shipping and Visit A journeys pass with duplicate/stale-event proofs.
 - [x] AC-05 passes and all prior Milestone 1 acceptance tests remain green.
-- [ ] Coverage thresholds, security tier, rollback notes, and operator runbooks pass review.
+- [ ] Coverage thresholds, security tier, rollback notes, and operator runbooks pass review. The
+      decision-independent runbook is recorded in
+      [docs/operations-readiness.md](../docs/operations-readiness.md); current review evidence is being
+      collected on the Milestone 3 branch.
 - [ ] Review with human before Milestone 3.

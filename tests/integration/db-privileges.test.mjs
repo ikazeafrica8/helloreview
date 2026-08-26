@@ -145,6 +145,8 @@ describe('the application database role', () => {
           'payback_consent_response_events',
           'reservations',
           'reservation_versions',
+          'human_review_task_events',
+          'human_review_holding_messages',
         ]
         const protectedHistory = await app.query(
           `SELECT table_name,

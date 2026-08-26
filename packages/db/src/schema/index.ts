@@ -109,8 +109,20 @@ export {
   identityMatchCategoryEnum,
   identityResolutionStatusEnum,
 } from './identity-resolution.js'
-export { humanReviewTasks, humanReviewPriorityEnum, humanReviewStatusEnum } from './human-review-tasks.js'
-export type { HumanReviewTaskRow, NewHumanReviewTaskRow } from './human-review-tasks.js'
+export {
+  humanReviewTasks,
+  humanReviewTaskEvents,
+  humanReviewHoldingMessages,
+  humanReviewPriorityEnum,
+  humanReviewStatusEnum,
+  humanReviewTaskEventTypeEnum,
+} from './human-review-tasks.js'
+export type {
+  HumanReviewTaskRow,
+  NewHumanReviewTaskRow,
+  HumanReviewTaskEventRow,
+  HumanReviewHoldingMessageRow,
+} from './human-review-tasks.js'
 export type {
   ApplicationVerificationTokenRow,
   NewApplicationVerificationTokenRow,

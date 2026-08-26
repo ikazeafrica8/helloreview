@@ -6,11 +6,24 @@ import { AutomationPauseService } from './automation-pause.service.js'
 import { WorkflowCorrectionService } from './workflow-correction.service.js'
 import { WorkflowInstanceService } from './workflow-instance.service.js'
 import { WorkflowTransitionService } from './workflow-transition.service.js'
+import { HumanHandoffProjectionService } from './human-handoff-projection.service.js'
 
 /** Durable multidimensional workflow projection and its append-only decision ledger. */
 @Module({
   imports: [IdentityResolutionModule, CampaignConfigModule, AuditLogModule],
-  providers: [WorkflowInstanceService, AutomationPauseService, WorkflowTransitionService, WorkflowCorrectionService],
-  exports: [WorkflowInstanceService, AutomationPauseService, WorkflowTransitionService, WorkflowCorrectionService],
+  providers: [
+    WorkflowInstanceService,
+    AutomationPauseService,
+    WorkflowTransitionService,
+    WorkflowCorrectionService,
+    HumanHandoffProjectionService,
+  ],
+  exports: [
+    WorkflowInstanceService,
+    AutomationPauseService,
+    WorkflowTransitionService,
+    WorkflowCorrectionService,
+    HumanHandoffProjectionService,
+  ],
 })
 export class WorkflowCoreModule {}
