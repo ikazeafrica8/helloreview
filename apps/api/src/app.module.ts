@@ -17,6 +17,7 @@ import { SelectionModule } from './modules/selection/index.js'
 import { ShippingModule } from './modules/shipping/index.js'
 import { PaybackConsentModule } from './modules/payback-consent/index.js'
 import { ReservationModule } from './modules/reservation/index.js'
+import { PrivacyOpsModule } from './modules/privacy-ops/index.js'
 
 /**
  * Composition root. Every capability-map module from SPEC.md §3.1 is imported here as it lands, in
@@ -42,6 +43,7 @@ import { ReservationModule } from './modules/reservation/index.js'
     ShippingModule,
     PaybackConsentModule,
     ReservationModule,
+    PrivacyOpsModule,
   ],
 })
 export class AppModule {}

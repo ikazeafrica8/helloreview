@@ -384,12 +384,16 @@ export class HumanReviewOperationsService {
     input: Readonly<{
       taskId: string
       operatorId: string
+      authorized: boolean
       expectedWorkflowVersion: number
       reasonCode: string
       correlationId: string
       occurredAt: Date
     }>,
   ): Promise<HumanReviewOperationalTask> {
+    if (!input.authorized) {
+      throw new HumanReviewOperationError(HUMAN_REVIEW_OPERATION_REASON.OPERATOR_NOT_AUTHORIZED)
+    }
     return this.withTransaction(async (client, tx) => {
       const task = await this.taskInside(client, input.taskId)
       const workflowId = this.workflowIdForOperations(task)
@@ -449,12 +453,16 @@ export class HumanReviewOperationsService {
     input: Readonly<{
       taskId: string
       operatorId: string
+      authorized: boolean
       expectedWorkflowVersion: number
       reasonCode: string
       correlationId: string
       occurredAt: Date
     }>,
   ): Promise<HumanReviewOperationalTask> {
+    if (!input.authorized) {
+      throw new HumanReviewOperationError(HUMAN_REVIEW_OPERATION_REASON.OPERATOR_NOT_AUTHORIZED)
+    }
     return this.withTransaction(async (client, tx) => {
       const task = await this.taskInside(client, input.taskId)
       const workflowId = this.workflowIdForOperations(task)
@@ -499,6 +507,7 @@ export class HumanReviewOperationsService {
     input: Readonly<{
       taskId: string
       operatorId: string
+      authorized: boolean
       expectedWorkflowVersion: number
       resolutionCode: string
       resolutionReason: string
@@ -507,6 +516,9 @@ export class HumanReviewOperationsService {
       occurredAt: Date
     }>,
   ): Promise<HumanReviewOperationalTask> {
+    if (!input.authorized) {
+      throw new HumanReviewOperationError(HUMAN_REVIEW_OPERATION_REASON.OPERATOR_NOT_AUTHORIZED)
+    }
     if (!OPERATION_CODE.test(input.resolutionCode)) {
       throw new HumanReviewOperationError(HUMAN_REVIEW_OPERATION_REASON.RESOLUTION_CODE_INVALID)
     }
@@ -547,6 +559,7 @@ export class HumanReviewOperationsService {
         rejected = new HumanReviewOperationError(HUMAN_REVIEW_OPERATION_REASON.CAMPAIGN_NOT_ACTIVE)
       }
       const activePauses = await this.pauses.effectiveForRecord(client, {
+        id: workflow.workflowId,
         participantId: workflow.participantId,
         campaignId: workflow.campaignId,
         campaignType: workflow.campaignType,

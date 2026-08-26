@@ -116,6 +116,7 @@ export class WorkflowTransitionService {
         } else {
           const activePauses = input.automated
             ? await this.pauses.effectiveForRecord(client, {
+                id: workflow.id,
                 participantId: workflow.participantId,
                 campaignId: workflow.campaignId,
                 campaignType: workflow.snapshot.campaign_type,

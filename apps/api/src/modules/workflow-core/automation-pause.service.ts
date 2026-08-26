@@ -1,20 +1,34 @@
 import { Inject, Injectable } from '@nestjs/common'
 import { POSTGRES_POOL } from '@helloreview/db'
 import { Pool, type PoolClient } from 'pg'
-import { PauseAuthorizationError, WorkflowNotFoundError, WorkflowScopeConflictError } from './errors.js'
+import {
+  EmergencyKillSwitchValidationError,
+  EmergencyResumeValidationError,
+  PauseAuthorizationError,
+  WorkflowNotFoundError,
+  WorkflowScopeConflictError,
+} from './errors.js'
 import { appendAtomicAudit, type WorkflowActorType } from './persistence.js'
 import { WORKFLOW_AUDIT_ACTION, WORKFLOW_TRANSITION_REASON } from './reason-codes.js'
 import type { CampaignType } from './state-model.js'
 import type { WorkflowRecord } from './workflow-record.js'
 
-export type AutomationPauseKind = 'standard' | 'emergency_kill_switch'
-export type AutomationPauseScope = 'global' | 'campaign' | 'workflow_type' | 'participant'
+export type AutomationPauseKind = 'standard' | 'emergency_kill_switch' | 'privacy_request'
+export type AutomationPauseScope =
+  'global' | 'campaign' | 'workflow_type' | 'participant' | 'participant_campaign' | 'workflow'
 
 export type AutomationPauseTarget =
   | Readonly<{ scope: 'global'; kind: AutomationPauseKind }>
   | Readonly<{ scope: 'campaign'; kind: 'standard'; campaignId: string }>
   | Readonly<{ scope: 'workflow_type'; kind: 'standard'; workflowType: CampaignType }>
-  | Readonly<{ scope: 'participant'; kind: 'standard'; participantId: string }>
+  | Readonly<{ scope: 'participant'; kind: 'standard' | 'privacy_request'; participantId: string }>
+  | Readonly<{
+      scope: 'participant_campaign'
+      kind: 'privacy_request'
+      participantId: string
+      campaignId: string
+    }>
+  | Readonly<{ scope: 'workflow'; kind: 'privacy_request'; workflowId: string }>
 
 export type AutomationPauseRecord = Readonly<{
   id: string
@@ -23,11 +37,13 @@ export type AutomationPauseRecord = Readonly<{
   campaignId: string | null
   workflowType: CampaignType | null
   participantId: string | null
+  workflowId: string | null
   reasonCode: string
   activatedAt: Date
 }>
 
 export type AutomationPauseWorkflowScope = Readonly<{
+  workflowId: string
   participantId: string
   campaignId: string
   campaignType: CampaignType
@@ -46,6 +62,10 @@ export const pauseAppliesToWorkflow = (
       return pause.workflowType === workflow.campaignType
     case 'participant':
       return pause.participantId === workflow.participantId
+    case 'participant_campaign':
+      return pause.participantId === workflow.participantId && pause.campaignId === workflow.campaignId
+    case 'workflow':
+      return pause.workflowId === workflow.workflowId
   }
 }
 
@@ -56,11 +76,55 @@ type PauseActor = Readonly<{
   correlationId: string
 }>
 
-export type ActivatePauseInput = AutomationPauseTarget &
-  PauseActor &
-  Readonly<{ reasonCode: string; activatedAt?: Date }>
+export type ActivatePauseInput = PauseActor &
+  Readonly<{ reasonCode: string; activatedAt?: Date }> &
+  (
+    | Readonly<{ scope: 'global'; kind: 'emergency_kill_switch'; incidentReference: string }>
+    | Readonly<{ scope: 'global'; kind: 'standard' }>
+    | Readonly<{ scope: 'campaign'; kind: 'standard'; campaignId: string }>
+    | Readonly<{ scope: 'workflow_type'; kind: 'standard'; workflowType: CampaignType }>
+    | Readonly<{ scope: 'participant'; kind: 'standard'; participantId: string }>
+  )
 
-export type DeactivatePauseInput = PauseActor & Readonly<{ pauseId: string; reasonCode: string; deactivatedAt?: Date }>
+export type EmergencyResumeValidation = Readonly<{
+  incidentResolved: boolean
+  reconciliationComplete: boolean
+  currentStateValidated: boolean
+  policyVersion: string
+  evaluatedAt: Date
+}>
+
+export type DeactivatePauseInput = PauseActor &
+  Readonly<{
+    pauseId: string
+    reasonCode: string
+    emergencyValidation?: EmergencyResumeValidation
+    deactivatedAt?: Date
+  }>
+
+export type EmergencyKillSwitchStatus =
+  Readonly<{ state: 'inactive' }> | Readonly<{ state: 'active'; pause: AutomationPauseRecord }>
+
+const CODE = /^[A-Z][A-Z0-9_]*$/
+const POLICY_VERSION = /^[a-z][a-z0-9-]*-v[0-9]+$/
+const REFERENCE = /^[A-Za-z0-9][A-Za-z0-9:._/-]*$/
+const MAX_VALIDATION_AGE_MS = 5 * 60_000
+
+const isCurrentEmergencyValidation = (
+  validation: EmergencyResumeValidation | undefined,
+  deactivatedAt: Date,
+): boolean => {
+  if (validation === undefined || Number.isNaN(validation.evaluatedAt.getTime())) return false
+  const age = deactivatedAt.getTime() - validation.evaluatedAt.getTime()
+  return (
+    validation.incidentResolved &&
+    validation.reconciliationComplete &&
+    validation.currentStateValidated &&
+    POLICY_VERSION.test(validation.policyVersion) &&
+    age >= 0 &&
+    age <= MAX_VALIDATION_AGE_MS
+  )
+}
 
 const pauseFromRow = (row: Record<string, unknown>): AutomationPauseRecord => {
   const id = row.id
@@ -69,10 +133,18 @@ const pauseFromRow = (row: Record<string, unknown>): AutomationPauseRecord => {
   const activatedAt = row.activated_at
   const reasonCode = row.reason_code
   if (typeof id !== 'string' || typeof reasonCode !== 'string') throw new Error('pause query returned invalid text')
-  if (scope !== 'global' && scope !== 'campaign' && scope !== 'workflow_type' && scope !== 'participant') {
+  if (
+    scope !== 'global' &&
+    scope !== 'campaign' &&
+    scope !== 'workflow_type' &&
+    scope !== 'participant' &&
+    scope !== 'participant_campaign' &&
+    scope !== 'workflow'
+  ) {
     throw new Error('pause query returned invalid scope')
   }
-  if (kind !== 'standard' && kind !== 'emergency_kill_switch') throw new Error('pause query returned invalid kind')
+  if (kind !== 'standard' && kind !== 'emergency_kill_switch' && kind !== 'privacy_request')
+    throw new Error('pause query returned invalid kind')
   if (!(activatedAt instanceof Date) || Number.isNaN(activatedAt.getTime())) {
     throw new Error('pause query returned invalid activated_at')
   }
@@ -91,6 +163,7 @@ const pauseFromRow = (row: Record<string, unknown>): AutomationPauseRecord => {
     campaignId: nullableString(row.campaign_id),
     workflowType,
     participantId: nullableString(row.participant_id),
+    workflowId: nullableString(row.workflow_id),
     reasonCode,
     activatedAt,
   }
@@ -106,6 +179,10 @@ const targetId = (target: AutomationPauseTarget): string => {
       return target.workflowType
     case 'participant':
       return target.participantId
+    case 'participant_campaign':
+      return `${target.participantId}:${target.campaignId}`
+    case 'workflow':
+      return target.workflowId
   }
 }
 
@@ -115,12 +192,29 @@ export class AutomationPauseService {
 
   async activate(input: ActivatePauseInput): Promise<AutomationPauseRecord> {
     const activatedAt = input.activatedAt ?? new Date()
+    if (Number.isNaN(activatedAt.getTime()) || !CODE.test(input.reasonCode)) {
+      throw new EmergencyKillSwitchValidationError(
+        'Automation pause reason and activation time are invalid',
+        WORKFLOW_TRANSITION_REASON.EMERGENCY_INCIDENT_REFERENCE_REQUIRED,
+      )
+    }
+    if (
+      input.kind === 'emergency_kill_switch' &&
+      (input.incidentReference.length > 200 ||
+        !REFERENCE.test(input.incidentReference) ||
+        !REFERENCE.test(input.correlationId))
+    ) {
+      throw new EmergencyKillSwitchValidationError(
+        'Emergency activation requires a pseudonymous incident reference',
+        WORKFLOW_TRANSITION_REASON.EMERGENCY_INCIDENT_REFERENCE_REQUIRED,
+      )
+    }
     const client = await this.pool.connect()
     let failure: Error | undefined
     let pause: AutomationPauseRecord | undefined
     try {
       await client.query('BEGIN')
-      if (!input.authorized) {
+      if (!input.authorized || (input.kind === 'emergency_kill_switch' && input.actorType !== 'operator')) {
         await this.auditAttempt(
           client,
           input,
@@ -137,11 +231,11 @@ export class AutomationPauseService {
       } else {
         const inserted = await client.query<Record<string, unknown>>(
           `INSERT INTO automation_pauses (
-             scope, kind, campaign_id, workflow_type, participant_id, reason_code,
+             scope, kind, campaign_id, workflow_type, participant_id, workflow_id, reason_code,
              activated_by_type, activated_by_id, activated_at, created_at, updated_at
-           ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$9,$9)
+           ) VALUES ($1,$2,$3,$4,$5,null,$6,$7,$8,$9,$9,$9)
            ON CONFLICT DO NOTHING
-           RETURNING id, scope, kind, campaign_id, workflow_type, participant_id, reason_code, activated_at`,
+           RETURNING id, scope, kind, campaign_id, workflow_type, participant_id, workflow_id, reason_code, activated_at`,
           [
             input.scope,
             input.kind,
@@ -176,7 +270,9 @@ export class AutomationPauseService {
             input,
             WORKFLOW_AUDIT_ACTION.PAUSED,
             'success',
-            WORKFLOW_TRANSITION_REASON.PAUSE_ACTIVATED,
+            input.kind === 'emergency_kill_switch'
+              ? WORKFLOW_TRANSITION_REASON.EMERGENCY_SWITCH_ACTIVATED
+              : WORKFLOW_TRANSITION_REASON.PAUSE_ACTIVATED,
             activatedAt,
           )
           await client.query('COMMIT')
@@ -195,12 +291,18 @@ export class AutomationPauseService {
 
   async deactivate(input: DeactivatePauseInput): Promise<void> {
     const deactivatedAt = input.deactivatedAt ?? new Date()
+    if (Number.isNaN(deactivatedAt.getTime()) || !CODE.test(input.reasonCode)) {
+      throw new EmergencyResumeValidationError(
+        'Automation resume reason and time are invalid',
+        WORKFLOW_TRANSITION_REASON.EMERGENCY_RESUME_VALIDATION_REQUIRED,
+      )
+    }
     const client = await this.pool.connect()
     let failure: Error | undefined
     try {
       await client.query('BEGIN')
       const current = await client.query<Record<string, unknown>>(
-        `SELECT id, scope, kind, campaign_id, workflow_type, participant_id, reason_code, activated_at,
+        `SELECT id, scope, kind, campaign_id, workflow_type, participant_id, workflow_id, reason_code, activated_at,
                 deactivated_at
            FROM automation_pauses WHERE id = $1 FOR UPDATE`,
         [input.pauseId],
@@ -218,12 +320,28 @@ export class AutomationPauseService {
             : pause.scope === 'workflow_type' && pause.workflowType !== null
               ? { scope: 'workflow_type', kind: 'standard', workflowType: pause.workflowType }
               : pause.scope === 'participant' && pause.participantId !== null
-                ? { scope: 'participant', kind: 'standard', participantId: pause.participantId }
-                : (() => {
-                    throw new Error('pause row has an incoherent scope target')
-                  })()
+                ? {
+                    scope: 'participant',
+                    kind: pause.kind === 'privacy_request' ? pause.kind : 'standard',
+                    participantId: pause.participantId,
+                  }
+                : pause.scope === 'participant_campaign' &&
+                    pause.kind === 'privacy_request' &&
+                    pause.participantId !== null &&
+                    pause.campaignId !== null
+                  ? {
+                      scope: 'participant_campaign',
+                      kind: 'privacy_request',
+                      participantId: pause.participantId,
+                      campaignId: pause.campaignId,
+                    }
+                  : pause.scope === 'workflow' && pause.kind === 'privacy_request' && pause.workflowId !== null
+                    ? { scope: 'workflow', kind: 'privacy_request', workflowId: pause.workflowId }
+                    : (() => {
+                        throw new Error('pause row has an incoherent scope target')
+                      })()
       const auditInput = { ...target, ...input }
-      if (!input.authorized) {
+      if (!input.authorized || (pause.kind === 'emergency_kill_switch' && input.actorType !== 'operator')) {
         await this.auditAttempt(
           client,
           auditInput,
@@ -236,6 +354,20 @@ export class AutomationPauseService {
         failure = new PauseAuthorizationError(
           'Actor is not authorized to resume automation',
           WORKFLOW_TRANSITION_REASON.PAUSE_NOT_AUTHORIZED,
+        )
+      } else if (pause.kind === 'privacy_request') {
+        await this.auditAttempt(
+          client,
+          auditInput,
+          WORKFLOW_AUDIT_ACTION.RESUMED,
+          'rejected',
+          WORKFLOW_TRANSITION_REASON.PRIVACY_PAUSE_REQUIRES_PRIVACY_WORKFLOW,
+          deactivatedAt,
+        )
+        await client.query('COMMIT')
+        failure = new WorkflowScopeConflictError(
+          'Privacy-request pauses can only be resumed by the privacy workflow',
+          WORKFLOW_TRANSITION_REASON.PRIVACY_PAUSE_REQUIRES_PRIVACY_WORKFLOW,
         )
       } else if (row.deactivated_at !== null) {
         await this.auditAttempt(
@@ -250,6 +382,29 @@ export class AutomationPauseService {
         failure = new WorkflowScopeConflictError(
           'Automation pause is not active',
           WORKFLOW_TRANSITION_REASON.PAUSE_NOT_ACTIVE,
+        )
+      } else if (
+        pause.kind === 'emergency_kill_switch' &&
+        !isCurrentEmergencyValidation(input.emergencyValidation, deactivatedAt)
+      ) {
+        await this.auditAttempt(
+          client,
+          auditInput,
+          WORKFLOW_AUDIT_ACTION.RESUMED,
+          'rejected',
+          WORKFLOW_TRANSITION_REASON.EMERGENCY_RESUME_VALIDATION_REQUIRED,
+          deactivatedAt,
+          {
+            incident_resolved: input.emergencyValidation?.incidentResolved ?? false,
+            reconciliation_complete: input.emergencyValidation?.reconciliationComplete ?? false,
+            current_state_validated: input.emergencyValidation?.currentStateValidated ?? false,
+            validation_policy_version: input.emergencyValidation?.policyVersion ?? null,
+          },
+        )
+        await client.query('COMMIT')
+        failure = new EmergencyResumeValidationError(
+          'Emergency resume requires current incident, reconciliation, and state validation',
+          WORKFLOW_TRANSITION_REASON.EMERGENCY_RESUME_VALIDATION_REQUIRED,
         )
       } else {
         await client.query(
@@ -266,9 +421,21 @@ export class AutomationPauseService {
           targetType: `automation_pause:${target.scope}`,
           targetId: targetId(target),
           result: 'success',
-          reason: WORKFLOW_TRANSITION_REASON.PAUSE_DEACTIVATED,
+          reason:
+            pause.kind === 'emergency_kill_switch'
+              ? WORKFLOW_TRANSITION_REASON.EMERGENCY_SWITCH_DEACTIVATED
+              : WORKFLOW_TRANSITION_REASON.PAUSE_DEACTIVATED,
           correlationId: input.correlationId,
-          detail: { pause_id: input.pauseId, kind: pause.kind },
+          detail: {
+            pause_id: input.pauseId,
+            kind: pause.kind,
+            ...(pause.kind === 'emergency_kill_switch' && input.emergencyValidation !== undefined
+              ? {
+                  validation_policy_version: input.emergencyValidation.policyVersion,
+                  validation_evaluated_at: input.emergencyValidation.evaluatedAt.toISOString(),
+                }
+              : {}),
+          },
           occurredAt: deactivatedAt,
         })
         await client.query('COMMIT')
@@ -284,7 +451,7 @@ export class AutomationPauseService {
 
   async effectiveForWorkflow(workflowId: string): Promise<readonly AutomationPauseRecord[]> {
     const context = await this.pool.query<Record<string, unknown>>(
-      `SELECT participant_id, campaign_id, campaign_type FROM workflow_instances WHERE id = $1`,
+      `SELECT id, participant_id, campaign_id, campaign_type FROM workflow_instances WHERE id = $1`,
       [workflowId],
     )
     const row = context.rows[0]
@@ -301,6 +468,7 @@ export class AutomationPauseService {
     const client = await this.pool.connect()
     try {
       return await this.effectiveForRecord(client, {
+        id: workflowId,
         participantId: row.participant_id,
         campaignId: row.campaign_id,
         campaignType: workflowType,
@@ -310,13 +478,25 @@ export class AutomationPauseService {
     }
   }
 
+  async emergencyStatus(): Promise<EmergencyKillSwitchStatus> {
+    const result = await this.pool.query<Record<string, unknown>>(
+      `SELECT id, scope, kind, campaign_id, workflow_type, participant_id, workflow_id, reason_code, activated_at
+         FROM automation_pauses
+        WHERE scope = 'global' AND kind = 'emergency_kill_switch' AND deactivated_at IS NULL
+        ORDER BY activated_at DESC, id DESC
+        LIMIT 1`,
+    )
+    const row = result.rows[0]
+    return row === undefined ? { state: 'inactive' } : { state: 'active', pause: pauseFromRow(row) }
+  }
+
   async effectiveForRecord(
     client: PoolClient,
-    workflow: Pick<WorkflowRecord, 'participantId' | 'campaignId'> & Readonly<{ campaignType: CampaignType }>,
+    workflow: Pick<WorkflowRecord, 'id' | 'participantId' | 'campaignId'> & Readonly<{ campaignType: CampaignType }>,
   ): Promise<readonly AutomationPauseRecord[]> {
     const campaignType = workflow.campaignType
     const result = await client.query<Record<string, unknown>>(
-      `SELECT id, scope, kind, campaign_id, workflow_type, participant_id, reason_code, activated_at
+      `SELECT id, scope, kind, campaign_id, workflow_type, participant_id, workflow_id, reason_code, activated_at
          FROM automation_pauses
         WHERE deactivated_at IS NULL
           AND (
@@ -324,14 +504,17 @@ export class AutomationPauseService {
             OR (scope = 'campaign' AND campaign_id = $1)
             OR (scope = 'workflow_type' AND workflow_type = $2)
             OR (scope = 'participant' AND participant_id = $3)
+            OR (scope = 'participant_campaign' AND participant_id = $3 AND campaign_id = $1)
+            OR (scope = 'workflow' AND workflow_id = $4)
           )
         ORDER BY activated_at, id`,
-      [workflow.campaignId, campaignType, workflow.participantId],
+      [workflow.campaignId, campaignType, workflow.participantId, workflow.id],
     )
     const scope = {
       participantId: workflow.participantId,
       campaignId: workflow.campaignId,
       campaignType,
+      workflowId: workflow.id,
     }
     return result.rows.map(pauseFromRow).filter((pause) => pauseAppliesToWorkflow(pause, scope))
   }
@@ -343,6 +526,7 @@ export class AutomationPauseService {
     result: 'success' | 'rejected',
     reason: string,
     occurredAt: Date,
+    detail: Readonly<Record<string, unknown>> = {},
   ): Promise<void> {
     return appendAtomicAudit(client, {
       actorType: input.actorType,
@@ -353,7 +537,11 @@ export class AutomationPauseService {
       result,
       reason,
       correlationId: input.correlationId,
-      detail: { kind: input.kind },
+      detail: {
+        kind: input.kind,
+        ...('incidentReference' in input ? { incident_reference: input.incidentReference } : {}),
+        ...detail,
+      },
       occurredAt,
     })
   }

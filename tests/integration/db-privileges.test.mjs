@@ -147,6 +147,8 @@ describe('the application database role', () => {
           'reservation_versions',
           'human_review_task_events',
           'human_review_holding_messages',
+          'privacy_request_events',
+          'privacy_request_processing_pauses',
         ]
         const protectedHistory = await app.query(
           `SELECT table_name,

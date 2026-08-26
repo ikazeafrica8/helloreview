@@ -164,6 +164,7 @@ describe('workflow core transactional behavior', () => {
           to: 'not_applied',
           triggeringEventId: 'correction-1',
           ...actor,
+          scopeCode: 'WORKFLOW',
           reasonCode: 'OPERATOR_CORRECTED_STATE',
           occurredAt: new Date('2026-08-24T10:02:00Z'),
         })
@@ -177,6 +178,24 @@ describe('workflow core transactional behavior', () => {
         expect((await corrections.currentEvents(workflow.id)).some((event) => event.id === acceptedEvent.id)).toBe(
           false,
         )
+        expect(
+          (
+            await pool.query(
+              `SELECT detail FROM audit_logs
+                WHERE action = 'CORRECTION_APPLIED' AND target_id = $1 AND result = 'success'`,
+              [workflow.id],
+            )
+          ).rows[0],
+        ).toMatchObject({
+          detail: {
+            override_evidence: {
+              schemaVersion: 'sensitive-override-evidence-v1',
+              scopeCode: 'WORKFLOW',
+              priorValueCode: 'application_requested',
+              newValueCode: 'not_applied',
+            },
+          },
+        })
 
         await expect(
           transitions.apply({
@@ -262,6 +281,7 @@ describe('workflow core transactional behavior', () => {
           to: 'delivery_failed',
           triggeringEventId: 'correction-delivered-guideline',
           ...actor,
+          scopeCode: 'WORKFLOW',
           reasonCode: 'OPERATOR_INVALIDATED_DELIVERY',
           occurredAt: new Date('2026-08-24T10:11:00Z'),
         })

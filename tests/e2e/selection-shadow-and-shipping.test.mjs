@@ -90,6 +90,7 @@ describe('T72/T77 selection-shadow and shipping release gates', () => {
           actorType: 'operator',
           actorReference: 'operator-e2e',
           authorized: true,
+          scopeCode: 'WORKFLOW',
           reasonCode: 'MANUAL_OVERRIDE',
           correlationId: 'selection-e2e',
           occurredAt: new Date(now.getTime() + 1_000),

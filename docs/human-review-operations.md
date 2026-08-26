@@ -1,8 +1,8 @@
 # Human-review operations
 
-This runbook covers T88–T92: masked case packets, durable handoff episodes, holding-message
-deduplication, operator assignment, policy-required SLA timestamps, and validated return to
-automation.
+This runbook covers T88–T95: masked case packets, durable handoff episodes, holding-message
+deduplication, operator assignment, policy-required SLA timestamps, validated return to automation,
+sensitive override evidence, and the emergency kill switch.
 
 ## Safety boundary
 
@@ -87,6 +87,39 @@ and ownership stay unchanged. A successful return records resolution, releases o
 the handoff projection to `returned_to_automation`, and changes automation mode to `active` in one
 transaction.
 
+## Sensitive override evidence
+
+Every permitted manual selection decision and workflow correction records a
+`sensitive-override-evidence-v1` object inside the same protected, append-only audit transaction as
+the state change. It contains the authorized operator reference, scope, target, field, prior and new
+state tokens, reason code, correlation ID, and canonical timestamp. Empty reasons, unauthorized
+actors, unchanged values, free-form values, raw phone references, and missing scope fail closed.
+
+Generic workflow correction is not an alternative route around a domain gate. It cannot promote a
+workflow into protected positive states such as selected, consented, approved, reservation-valid,
+guideline-ready/delivered, or automation-active. Those states remain owned by their deterministic
+domain services. Safe corrections can still move incorrect evidence toward a fail-safe state; for
+example, invalidating a delivered-guideline projection records the immutable supersession and opens
+the existing critical-incident path.
+
+## Emergency kill switch
+
+The emergency switch is one durable global `emergency_kill_switch` pause. Activation requires an
+authorized operator, incident reason code, pseudonymous incident reference, correlation ID, and
+timestamp. `emergencyStatus()` exposes only `active`/`inactive` and the safe pause projection.
+
+Emergency resume is a separate command and authorization decision. In addition to a resume reason,
+it requires a current versioned validation confirming:
+
+- the incident is resolved;
+- reconciliation is complete;
+- current workflow state has been validated;
+- the validation is no older than five minutes and is not from the future.
+
+Unauthorized, duplicate, missing, incomplete, or stale attempts leave the switch active and retain
+protected audit evidence. Ordinary automated work stays blocked while the switch is active; only
+transitions already classified as essential by the deterministic transition policy remain eligible.
+
 ## Verification
 
 ```powershell
@@ -94,11 +127,16 @@ pnpm db:check
 pnpm build:fresh
 pnpm typecheck
 pnpm lint
-pnpm exec vitest run --project unit tests/unit/human-review-case-packet.test.mjs tests/unit/human-review-sla.test.mjs
+pnpm exec vitest run --project unit tests/unit/human-review-case-packet.test.mjs tests/unit/human-review-sla.test.mjs tests/unit/sensitive-override-evidence.test.mjs
 pnpm exec vitest run --project integration tests/integration/human-review-operations.test.mjs
+pnpm exec vitest run --project integration tests/integration/emergency-kill-switch.test.mjs
+pnpm exec vitest run --project e2e tests/e2e/human-handoff-journey.test.mjs
 ```
 
 The integration journey proves duplicate holding suppression, stored-policy replay, append-only
 evidence, exclusive assignment, release/reassignment, queue filtering, opt-out rejection,
 active-pause rejection, successful audited return, missing-policy no-deadline behavior, and safe
 visibility of legacy pre-workflow tasks.
+
+The T95 E2E journey additionally proves one complete trigger-to-resume episode with duplicate,
+unauthorized, stale, and incomplete attempts before the final successful audited return.

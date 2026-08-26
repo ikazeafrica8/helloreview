@@ -211,3 +211,19 @@ export {
   reservationStatusEnum,
 } from './reservations.js'
 export type { ReservationRow, ReservationVersionRow } from './reservations.js'
+export {
+  privacyRequests,
+  privacyRequestEvents,
+  privacyRequestProcessingPauses,
+  privacyRequestTypeEnum,
+  privacyIdentityVerificationStateEnum,
+  privacyRequestStatusEnum,
+  privacyRequestActorTypeEnum,
+  privacyRequestEventTypeEnum,
+} from './privacy-requests.js'
+export type {
+  PrivacyRequestRow,
+  NewPrivacyRequestRow,
+  PrivacyRequestEventRow,
+  PrivacyRequestProcessingPauseRow,
+} from './privacy-requests.js'

@@ -13,6 +13,10 @@ participant-facing template changes.
   until every evaluation stop criterion is resolved.
 - Missing policy fails closed: no automatic selection, no retention deletion job, and no unsafe
   attachment release.
+- Privacy intake records an unverified claim and masked evidence only. Approved minimal
+  verified-channel checks can advance identity, while exact participant/campaign/workflow pauses
+  remain active. Verification does not authorize disclosure, correction, export, deletion, or an
+  affected-processing resume.
 
 ## Pre-release checks
 
@@ -65,7 +69,9 @@ recorded result.
 5. Reconcile inbox and outbox state before retrying. Reuse the original idempotency key; never create
    a second logical send to make progress.
 6. Validate current workflow versions and deterministic readiness gates before resuming.
-7. Deactivate the pause only through an authorized, audited command with a reason.
+7. For an emergency switch, confirm incident resolution, reconciliation completion, and current-state
+   validation under the approved versioned resume policy.
+8. Deactivate the pause only through a separately authorized, audited command with a reason.
 
 Rollback never deletes or rewrites business history. If a state needs correction, append a new
 correction/superseding version. Database downgrade or destructive cleanup requires a separate,

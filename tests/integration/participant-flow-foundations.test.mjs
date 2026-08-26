@@ -196,6 +196,7 @@ describe('selection shadow mode foundations', () => {
             actorType: 'participant',
             actorReference: 'participant',
             authorized: false,
+            scopeCode: 'WORKFLOW',
             reasonCode: 'MANUAL_OVERRIDE',
             correlationId: 'selection-unauthorized',
             occurredAt: at(2),
@@ -208,6 +209,7 @@ describe('selection shadow mode foundations', () => {
           actorType: 'operator',
           actorReference: 'operator-1',
           authorized: true,
+          scopeCode: 'WORKFLOW',
           reasonCode: 'MANUAL_OVERRIDE',
           correlationId: 'selection-approved',
           occurredAt: at(3),
@@ -245,6 +247,26 @@ describe('selection shadow mode foundations', () => {
             ])
           ).rows,
         ).toEqual([{ reason_code: 'SELECTION_REVOKED' }])
+        expect(
+          (
+            await pool.query(
+              `SELECT action, detail FROM audit_logs
+                WHERE target_type = 'selection_decision' AND target_id = $1`,
+              [decision.id],
+            )
+          ).rows[0],
+        ).toMatchObject({
+          action: 'SELECTION_OVERRIDDEN',
+          detail: {
+            override_evidence: {
+              schemaVersion: 'sensitive-override-evidence-v1',
+              scopeCode: 'WORKFLOW',
+              priorValueCode: 'not_reviewed',
+              newValueCode: 'manually_selected',
+              reasonCode: 'MANUAL_OVERRIDE',
+            },
+          },
+        })
         await expect(
           pool.query(`UPDATE selection_recommendations SET reason_code = 'REWRITTEN' WHERE id = $1`, [
             recommendation.id,

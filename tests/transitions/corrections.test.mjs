@@ -95,4 +95,27 @@ describe('workflow correction and supersession policy', () => {
       nextSnapshot: { guideline: 'delivery_failed' },
     })
   })
+
+  test.each([
+    [{ dimension: 'selection', to: 'manually_selected' }, 'not_reviewed'],
+    [{ dimension: 'payback_consent', to: 'agreed' }, 'not_requested'],
+    [{ dimension: 'business_approval', to: 'approved' }, 'pending'],
+    [{ dimension: 'reservation', to: 'valid' }, 'validation_pending'],
+    [{ dimension: 'guideline', to: 'delivered' }, 'not_ready'],
+    [{ dimension: 'automation_mode', to: 'active' }, 'paused_by_rule'],
+  ])('does not permit generic correction to manufacture protected state %j', (change, currentState) => {
+    const snapshot = { ...baseline(), [change.dimension]: currentState }
+    const plan = planWorkflowCorrection(snapshot, change, {
+      dimension: change.dimension,
+      targetState: currentState,
+      result: 'success',
+      superseded: false,
+    })
+    expect(plan).toMatchObject({
+      approved: false,
+      reasonCode: 'WORKFLOW_CORRECTION_PROTECTED_INVARIANT',
+      sideEffects: [],
+    })
+    expect(plan.nextSnapshot).toBe(snapshot)
+  })
 })

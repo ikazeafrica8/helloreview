@@ -17,6 +17,12 @@ export type {
   CurrentWorkflowEvent,
   WorkflowCorrectionOutcome,
 } from './workflow-correction.service.js'
+export {
+  buildSensitiveOverrideEvidence,
+  isProtectedWorkflowPromotion,
+  SENSITIVE_OVERRIDE_EVIDENCE_VERSION,
+} from './sensitive-override-evidence.js'
+export type { BuildSensitiveOverrideEvidenceInput, SensitiveOverrideEvidence } from './sensitive-override-evidence.js'
 export { AutomationPauseService, pauseAppliesToWorkflow } from './automation-pause.service.js'
 export type {
   ActivatePauseInput,
@@ -26,6 +32,8 @@ export type {
   AutomationPauseTarget,
   AutomationPauseWorkflowScope,
   DeactivatePauseInput,
+  EmergencyKillSwitchStatus,
+  EmergencyResumeValidation,
 } from './automation-pause.service.js'
 export {
   WORKFLOW_STATES,
@@ -65,6 +73,8 @@ export type {
 export { WORKFLOW_AUDIT_ACTION, WORKFLOW_TRANSITION_REASON } from './reason-codes.js'
 export {
   AutomationPausedError,
+  EmergencyKillSwitchValidationError,
+  EmergencyResumeValidationError,
   PauseAuthorizationError,
   StaleWorkflowEventError,
   StaleWorkflowVersionError,
