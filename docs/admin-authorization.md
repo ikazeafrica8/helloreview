@@ -1,8 +1,10 @@
 # Administrative authorization
 
 This document covers T103's provider-neutral operator principal and T104's deny-by-default
-authorization boundary. It does not select an identity provider, approve the production role matrix,
-or expose an administrative HTTP endpoint.
+authorization boundary. T105–T110 use this boundary for the administrative service surface and its
+end-to-end proof. It does not select an identity provider, approve the production role matrix, or
+expose an administrative HTTP endpoint. Sensitive access has an additional independent policy
+documented in [Sensitive reveal and export controls](sensitive-access-controls.md).
 
 ## Operator principal
 

@@ -2,8 +2,8 @@
 
 Plan: [tasks/plan.md](plan.md) · Spec: [SPEC.md](../SPEC.md) · Requirements: PRD v1.0
 
-Status: **T88–T99 and T103–T108 complete. T100–T102 and T109–T117 remain planned or policy-blocked.
-Policy-dependent production activation remains blocked until the named decisions are approved.**
+Status: **T88–T99 and T103–T117 complete. T100–T102 remain policy-blocked. Policy-dependent
+production activation remains blocked until the named decisions are approved.**
 
 Milestone 3 makes the tested automation spine operable without weakening its safety boundaries.
 Human ownership remains explicit, selection remains manual, sensitive reads are audited, and every
@@ -312,16 +312,32 @@ privilege tests require an available Docker-compatible runtime.
 
 ## T109 — Sensitive reveal and export controls
 
+Status: **Complete with production activation blocked (2026-08-26).**
+
 Keep masked reads as default; require explicit authorization and audit for reveal/export.
 
 **Blocked for production activation by:** approved reveal/export and RBAC policy
 
+Implemented a second strict `sensitive-access-policy-v1` gate in addition to admin RBAC. Test-only
+reveals require a globally scoped privacy reviewer, phishing-resistant assurance, an allowed reason,
+and a one-record limit. Rejected attempts are protected audit events; successful address reveal
+evidence and its protected audit row commit atomically. Bulk export remains an audited unavailable
+safe fallback, so no real PII file can be produced before policy, destination, and durable job
+decisions are approved. See [sensitive access controls](../docs/sensitive-access-controls.md).
+
 ## T110 — Admin API authorization E2E
+
+Status: **Complete (2026-08-26).**
 
 Prove role/scope allow and deny cases, stale commands, masked defaults, audited reveals, and retries
 that preserve idempotency.
 
 **Dependencies:** T103–T109
+
+The isolated PostgreSQL E2E applies all migrations and proves campaign scope allow/deny, stale
+authorization, masked search defaults, rejected/successful reveal evidence, stale retry state, and
+one immutable receipt across an identical retry replay. The real-database proof also corrected the
+participant search projection to return the application lifecycle status selected by its contract.
 
 ---
 
@@ -329,36 +345,93 @@ that preserve idempotency.
 
 ## T111 — Console shell and accessibility baseline
 
+Status: **Complete (2026-08-26).**
+
 Create the Next.js operator application shell, Korean-first navigation, session boundary, error
 states, keyboard navigation, and accessible status semantics.
 
+Added `apps/admin` on pinned Next.js 16.3.3 with Korean top-level navigation, a separate exact
+twenty-page PRD registry, a production-locked provider-neutral session boundary, request-time
+session evaluation, semantic status and error states, keyboard skip navigation, a responsive mobile
+menu, reduced-motion support, and reproducible local font loading. Production build, desktop/mobile
+browser checks, keyboard focus, runtime error inspection, and axe WCAG 2 A/AA all pass. See the
+[operator console foundation](../docs/operator-console.md).
+
 ## T112 — Overview, participant search, and timeline
+
+Status: **Complete (2026-08-26) against the deterministic console adapter. Production data access
+remains locked until the authenticated HTTP adapter and missing timeline projections exist.**
 
 Implement PRD §20.1 pages 1–3 with masked defaults and visible automation/ownership state.
 
+Added overview metrics, POST-based masked participant search with stable pagination,
+campaign-scoped detail, separate application-status and blogger-evidence fields, and the complete
+PRD §20.3 timeline UI contract. Search terms stay out of URLs. The typed response reports support
+for every category without raw payloads or PII. A production adapter must mark unsupported
+persisted categories unavailable rather than fabricate history. The participant-search Server
+Action independently re-checks the session, canonical action authorization, and campaign scope.
+
 ## T113 — Work queues
+
+Status: **Complete (2026-08-26) against the deterministic console adapter.**
 
 Implement human review, business approval, failed jobs, notification history, and duplicate
 suppression pages (pages 4, 9, and 12–14).
 
+Added pseudonymous queues with ownership, SLA, attempt, state, version, and safe command evidence.
+Production rows and mutations remain locked until authorized query and command transports exist.
+
 ## T114 — Campaign and content editors
+
+Status: **Complete (2026-08-26) against the deterministic console adapter.**
 
 Implement pages 5–8 and 10–11 with version preview, validation, maker-checker state, and no direct
 database writes.
 
+Added campaign detail, selection and reservation rule, message template, and guideline editors with
+editable deterministic fixture payloads, coded schema preview outcomes, expected versions,
+maker-checker evidence, and the draft/approved/scheduled/active/retired lifecycle. Editor content is
+not persisted or transmitted, and the console performs no direct database writes. Campaign state
+options match the command contract (`draft`, `active`, `paused`, `closed`), and its deterministic
+preview rejects impossible calendar dates and non-increasing campaign periods.
+
 ## T115 — Governance and system pages
+
+Status: **Complete (2026-08-26) against the deterministic console adapter.**
 
 Implement integration health, audit, privacy, user/role, pause, and AI/cost pages (15–20).
 
+Added integration health, audit, privacy, users/roles, automation pause, and AI/cost surfaces. The
+AI page preserves T63's no-provider safe fallback and zero estimated provider cost. The production
+adapter returns no records until authorized read services exist.
+
 ## T116 — Destructive-action safeguards
+
+Status: **Complete (2026-08-26).**
 
 Add explicit confirmations, reason capture, stale-version handling, masked/reveal affordances, and
 clear pause/production-block banners.
 
+Added typed reason, exact-confirmation, expected-version, stale-state, preview, and policy-denial
+outcomes. Canonical authorization actions are shared by API and console while fixture scenarios stay
+separate. The discriminated contract makes versions impossible on blocked actions, and policy is
+evaluated before input or stale-state checks. Sensitive values stay masked, reveal remains denied,
+bulk export is unavailable, and every page shows the emergency pause and production-change
+boundaries.
+
 ## T117 — Operator-console release E2E
+
+Status: **Complete (2026-08-26).**
 
 Cover every §20.1 route plus representative permitted/denied commands, keyboard navigation, stale
 updates, human ownership, and emergency pause visibility.
+
+Added a Playwright release suite and a Windows-safe server runner. The fixture lane covers all
+twenty canonical routes from the shared registry, masked participant and campaign-scope behavior,
+timeline pagination, deterministic editors, permitted, preview, stale, and denied outcomes,
+keyboard/mobile navigation, emergency banners, and representative desktop/mobile axe WCAG A/AA
+checks. A second lane runs the built standalone production artifact in its default locked state.
+Browser and server runtime errors fail either lane.
 
 **Dependencies:** T111–T116
 
@@ -368,7 +441,7 @@ updates, human ownership, and emergency pause visibility.
 
 - [x] Human handoff is complete, deduplicated, assignable, SLA-aware, and only resumes after current-state validation.
 - [ ] Privacy requests and approved retention/legal-hold operations pass end to end.
-- [ ] Administrative commands are deny-by-default, scoped, versioned, and audited.
-- [ ] All twenty PRD §20.1 console pages exist with masked defaults and accessibility checks.
+- [x] Administrative commands are deny-by-default, scoped, versioned, and audited.
+- [x] All twenty PRD §20.1 console pages exist with masked defaults and accessibility checks.
 - [ ] Security, coverage, integration, and operator E2E gates pass.
 - [ ] Review with human before Milestone 4.

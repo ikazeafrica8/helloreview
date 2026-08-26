@@ -22,6 +22,8 @@ export const AUDIT_ACTION = {
   CORRECTION_APPLIED: 'CORRECTION_APPLIED',
   /** §20.5 — revealing a masked field is itself an audited access (FR-ADM-009). */
   SENSITIVE_FIELD_REVEALED: 'SENSITIVE_FIELD_REVEALED',
+  /** §20.5 — bulk export attempts are protected even while the real export path is disabled. */
+  SENSITIVE_DATA_EXPORT_REQUESTED: 'SENSITIVE_DATA_EXPORT_REQUESTED',
   /** §13.14 — the emergency stop, and who used it (FR-HUM-008). */
   AUTOMATION_PAUSED: 'AUTOMATION_PAUSED',
   /** §14 — accepted/rejected workflow decisions share one atomic evidence boundary. */
@@ -71,6 +73,7 @@ export const PROTECTED_ACTIONS: ReadonlySet<string> = new Set<AuditAction>([
   AUDIT_ACTION.CONSENT_RECORDED,
   AUDIT_ACTION.CORRECTION_APPLIED,
   AUDIT_ACTION.SENSITIVE_FIELD_REVEALED,
+  AUDIT_ACTION.SENSITIVE_DATA_EXPORT_REQUESTED,
   AUDIT_ACTION.AUTOMATION_PAUSED,
   AUDIT_ACTION.WORKFLOW_CREATED,
   AUDIT_ACTION.WORKFLOW_TRANSITIONED,

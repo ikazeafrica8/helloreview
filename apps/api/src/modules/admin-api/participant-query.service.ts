@@ -125,6 +125,7 @@ export class ParticipantAdminQueryService {
       `SELECT p.id AS participant_id, w.id AS workflow_id, a.id AS application_id,
               w.campaign_id, coalesce(p.name, a.applicant_name) AS name,
               coalesce(p.phone_normalized, a.phone_normalized) AS phone_normalized,
+              a.status::text AS application_status,
               a.blogger_level, a.blog_daily_visitors, a.blogger_region, w.created_at
          FROM workflow_instances w
          JOIN participants p ON p.id = w.participant_id
