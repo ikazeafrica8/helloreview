@@ -28,6 +28,14 @@ export class PauseAuthorizationError extends ForbiddenError {
   override readonly name = 'PauseAuthorizationError'
 }
 
+export class EmergencyKillSwitchValidationError extends UnprocessableCommandError {
+  override readonly name = 'EmergencyKillSwitchValidationError'
+}
+
+export class EmergencyResumeValidationError extends UnprocessableCommandError {
+  override readonly name = 'EmergencyResumeValidationError'
+}
+
 export class WorkflowCorrectionAuthorizationError extends ForbiddenError {
   override readonly name = 'WorkflowCorrectionAuthorizationError'
 }

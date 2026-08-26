@@ -165,6 +165,7 @@ describe('T89-T92 human-review operations', () => {
         const assigned = await service.assign({
           taskId: opened.task.id,
           operatorId: 'operator_1',
+          authorized: true,
           expectedWorkflowVersion: 2,
           reasonCode: 'OPERATOR_CLAIMED',
           correlationId: 'cor_handoff_assign',
@@ -175,6 +176,7 @@ describe('T89-T92 human-review operations', () => {
           service.assign({
             taskId: opened.task.id,
             operatorId: 'operator_2',
+            authorized: true,
             expectedWorkflowVersion: 4,
             reasonCode: 'SECOND_OPERATOR_CLAIMED',
             correlationId: 'cor_handoff_assign_other',
@@ -184,6 +186,7 @@ describe('T89-T92 human-review operations', () => {
         const released = await service.release({
           taskId: opened.task.id,
           operatorId: 'operator_1',
+          authorized: true,
           expectedWorkflowVersion: 4,
           reasonCode: 'OPERATOR_SHIFT_ENDED',
           correlationId: 'cor_handoff_release',
@@ -193,6 +196,7 @@ describe('T89-T92 human-review operations', () => {
         const reassigned = await service.assign({
           taskId: opened.task.id,
           operatorId: 'operator_1',
+          authorized: true,
           expectedWorkflowVersion: 6,
           reasonCode: 'OPERATOR_RECLAIMED',
           correlationId: 'cor_handoff_reassign',
@@ -207,6 +211,7 @@ describe('T89-T92 human-review operations', () => {
           service.resolveAndReturn({
             taskId: opened.task.id,
             operatorId: 'operator_1',
+            authorized: true,
             expectedWorkflowVersion: 8,
             resolutionCode: 'COMPLAINT_REVIEWED',
             resolutionReason: 'Operator reviewed current workflow evidence.',
@@ -238,6 +243,7 @@ describe('T89-T92 human-review operations', () => {
           service.resolveAndReturn({
             taskId: opened.task.id,
             operatorId: 'operator_1',
+            authorized: true,
             expectedWorkflowVersion: 8,
             resolutionCode: 'COMPLAINT_REVIEWED',
             resolutionReason: 'Operator reviewed current workflow evidence.',
@@ -292,6 +298,7 @@ describe('T89-T92 human-review operations', () => {
           service.resolveAndReturn({
             taskId: opened.task.id,
             operatorId: 'operator_1',
+            authorized: true,
             expectedWorkflowVersion: 8,
             resolutionCode: 'COMPLAINT_REVIEWED',
             resolutionReason: 'Operator reviewed current workflow evidence.',
@@ -310,6 +317,7 @@ describe('T89-T92 human-review operations', () => {
         const resolved = await service.resolveAndReturn({
           taskId: opened.task.id,
           operatorId: 'operator_1',
+          authorized: true,
           expectedWorkflowVersion: 8,
           resolutionCode: 'COMPLAINT_REVIEWED',
           resolutionReason: 'Operator reviewed current workflow evidence.',
@@ -424,6 +432,7 @@ describe('T89-T92 human-review operations', () => {
           service.assign({
             taskId,
             operatorId: 'operator_legacy',
+            authorized: true,
             expectedWorkflowVersion: 0,
             reasonCode: 'OPERATOR_CLAIMED',
             correlationId: 'cor_legacy_assign',

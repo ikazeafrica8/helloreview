@@ -12,6 +12,7 @@ import { appendAtomicAudit, appendWorkflowEvent, type WorkflowActorType } from '
 import { WORKFLOW_AUDIT_ACTION, WORKFLOW_TRANSITION_REASON } from './reason-codes.js'
 import type { WorkflowSnapshot, WorkflowStateChange } from './state-model.js'
 import { WORKFLOW_SIDE_EFFECT } from './transition-table.js'
+import { buildSensitiveOverrideEvidence, type SensitiveOverrideEvidence } from './sensitive-override-evidence.js'
 import { WorkflowInstanceService } from './workflow-instance.service.js'
 import { WORKFLOW_DIMENSION_COLUMNS, type WorkflowRecord } from './workflow-record.js'
 
@@ -24,6 +25,7 @@ export type ApplyWorkflowCorrectionInput = WorkflowStateChange &
     actorType: WorkflowActorType
     actorId: string
     authorized: boolean
+    scopeCode: string
     reasonCode: string
     correlationId: string
     occurredAt?: Date
@@ -121,7 +123,21 @@ export class WorkflowCorrectionService {
             plan.reasonCode,
           )
         } else {
-          outcome = await this.persistCorrection(client, workflow, input, plan, occurredAt)
+          const overrideEvidence = buildSensitiveOverrideEvidence({
+            operationCode: 'WORKFLOW_CORRECTION',
+            scopeCode: input.scopeCode,
+            targetReference: workflow.id,
+            fieldCode: input.dimension.toUpperCase(),
+            priorValueCode: workflow.snapshot[input.dimension],
+            newValueCode: input.to,
+            reasonCode: input.reasonCode,
+            actorType: input.actorType,
+            actorReference: input.actorId,
+            authorized: input.authorized,
+            correlationId: input.correlationId,
+            recordedAt: occurredAt,
+          })
+          outcome = await this.persistCorrection(client, workflow, input, plan, overrideEvidence, occurredAt)
           await client.query('COMMIT')
         }
       }
@@ -173,6 +189,7 @@ export class WorkflowCorrectionService {
     workflow: WorkflowRecord,
     input: ApplyWorkflowCorrectionInput,
     plan: Extract<WorkflowCorrectionPlan, Readonly<{ approved: true }>>,
+    overrideEvidence: SensitiveOverrideEvidence,
     occurredAt: Date,
   ): Promise<WorkflowCorrectionOutcome> {
     const columns = WORKFLOW_DIMENSION_COLUMNS[input.dimension]
@@ -278,6 +295,7 @@ export class WorkflowCorrectionService {
         superseded_event_id: input.priorEventId,
         correction_event_id: correctionEventId,
         workflow_version: nextVersion,
+        override_evidence: overrideEvidence,
       },
       occurredAt,
     })

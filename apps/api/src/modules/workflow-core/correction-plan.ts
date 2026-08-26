@@ -1,5 +1,6 @@
 import { WORKFLOW_TRANSITION_REASON } from './reason-codes.js'
 import { applyWorkflowStateChange, type WorkflowSnapshot, type WorkflowStateChange } from './state-model.js'
+import { isProtectedWorkflowPromotion } from './sensitive-override-evidence.js'
 import { WORKFLOW_SIDE_EFFECT, type WorkflowSideEffectCode } from './transition-table.js'
 
 export type CorrectionPriorEvent = Readonly<{
@@ -15,6 +16,7 @@ export type WorkflowCorrectionPlan =
       reasonCode:
         | typeof WORKFLOW_TRANSITION_REASON.CORRECTION_EVENT_NOT_CURRENT
         | typeof WORKFLOW_TRANSITION_REASON.CORRECTION_TARGET_INVALID
+        | typeof WORKFLOW_TRANSITION_REASON.CORRECTION_PROTECTED_INVARIANT
       nextSnapshot: WorkflowSnapshot
       sideEffects: readonly []
       criticalIncidentRequired: false
@@ -51,6 +53,15 @@ export const planWorkflowCorrection = (
     return {
       approved: false,
       reasonCode: WORKFLOW_TRANSITION_REASON.CORRECTION_TARGET_INVALID,
+      nextSnapshot: snapshot,
+      sideEffects: [],
+      criticalIncidentRequired: false,
+    }
+  }
+  if (isProtectedWorkflowPromotion(change)) {
+    return {
+      approved: false,
+      reasonCode: WORKFLOW_TRANSITION_REASON.CORRECTION_PROTECTED_INVARIANT,
       nextSnapshot: snapshot,
       sideEffects: [],
       criticalIncidentRequired: false,

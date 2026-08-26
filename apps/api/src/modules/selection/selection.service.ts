@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import { Inject, Injectable } from '@nestjs/common'
 import { POSTGRES_POOL, runInTransaction, type DbTransaction } from '@helloreview/db'
 import type { Pool } from 'pg'
+import { buildSensitiveOverrideEvidence, type SensitiveOverrideEvidence } from '../workflow-core/index.js'
 import {
   evaluateSelectionRecommendation,
   type RankingEvidence,
@@ -29,6 +30,7 @@ export type RecordManualSelectionDecisionInput = Readonly<{
   actorType: 'operator' | 'system' | 'participant'
   actorReference: string
   authorized: boolean
+  scopeCode: string
   reasonCode: string
   correlationId: string
   occurredAt: Date
@@ -175,6 +177,7 @@ export class SelectionService {
       recommendationId: input.recommendationId,
       decision: input.decision,
       actorReference: input.actorReference,
+      scopeCode: input.scopeCode,
       reasonCode: input.reasonCode,
       correlationId: input.correlationId,
     })
@@ -203,6 +206,26 @@ export class SelectionService {
       const priorState = rowText(workflow, 'selection_state')
       if (input.decision === 'revoked' && priorState !== 'manually_selected' && priorState !== 'auto_selected')
         throw new SelectionServiceError('SELECTION_REVOCATION_INVALID_STATE')
+      const nextState =
+        input.decision === 'selected'
+          ? 'manually_selected'
+          : input.decision === 'not_selected'
+            ? 'not_selected'
+            : 'human_review_required'
+      const overrideEvidence = buildSensitiveOverrideEvidence({
+        operationCode: 'SELECTION_MANUAL_DECISION',
+        scopeCode: input.scopeCode,
+        targetReference: input.workflowId,
+        fieldCode: 'SELECTION_STATE',
+        priorValueCode: priorState,
+        newValueCode: nextState,
+        reasonCode: input.reasonCode,
+        actorType: input.actorType,
+        actorReference: input.actorReference,
+        authorized: input.authorized,
+        correlationId: input.correlationId,
+        recordedAt: input.occurredAt,
+      })
 
       let recommendationResult: SelectionEvaluation['result'] | null = null
       if (input.recommendationId !== null) {
@@ -246,12 +269,6 @@ export class SelectionService {
          ON CONFLICT (workflow_id) DO UPDATE SET decision_id = EXCLUDED.decision_id, updated_at = EXCLUDED.updated_at`,
         [input.workflowId, decisionId, input.occurredAt],
       )
-      const nextState =
-        input.decision === 'selected'
-          ? 'manually_selected'
-          : input.decision === 'not_selected'
-            ? 'not_selected'
-            : 'human_review_required'
       if (input.decision === 'revoked') {
         await tx.query(
           `UPDATE workflow_instances
@@ -303,7 +320,7 @@ export class SelectionService {
           [input.recommendationId, decisionId, comparison, input.occurredAt],
         )
       }
-      await this.insertAudit(tx, input, decisionId, priorState, nextState)
+      await this.insertAudit(tx, input, decisionId, overrideEvidence)
       return { id: decisionId, version, decision: input.decision, shadowOutcome: comparison, deduplicated: false }
     })
   }
@@ -323,8 +340,7 @@ export class SelectionService {
     tx: DbTransaction,
     input: RecordManualSelectionDecisionInput,
     decisionId: string,
-    priorState: string,
-    nextState: string,
+    overrideEvidence: SensitiveOverrideEvidence,
   ): Promise<void> {
     await tx.query(
       `INSERT INTO audit_logs (
@@ -334,11 +350,13 @@ export class SelectionService {
       [
         input.occurredAt,
         input.actorReference,
-        input.decision === 'revoked' ? SELECTION_REASON.SELECTION_REVOKED : 'SELECTION_DECIDED',
+        input.decision === 'revoked' || input.reasonCode === SELECTION_REASON.MANUAL_OVERRIDE
+          ? 'SELECTION_OVERRIDDEN'
+          : 'SELECTION_DECIDED',
         decisionId,
         input.reasonCode,
         input.correlationId,
-        JSON.stringify({ workflowReference: input.workflowId, priorState, nextState }),
+        JSON.stringify({ decision_id: decisionId, override_evidence: overrideEvidence }),
       ],
     )
   }
