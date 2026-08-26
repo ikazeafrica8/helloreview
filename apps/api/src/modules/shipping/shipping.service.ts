@@ -73,9 +73,18 @@ export type RevealShippingAddressInput = Readonly<{
   reasonCode: string
   correlationId: string
   occurredAt: Date
+  authorizationEvidence: Readonly<{
+    action: 'sensitive_values.reveal'
+    authorizationPolicyVersion: string
+    sensitiveAccessPolicyVersion: string
+    authorizationVersion: number
+    requestReference: string
+    sessionReference: string
+  }>
 }>
 
 const digest = (value: string): string => createHash('sha256').update(value).digest('hex')
+const SHIPPING_REVEAL_AUDIT_ACTION = 'SENSITIVE_FIELD_REVEALED'
 
 const rowText = (row: Record<string, unknown>, column: string): string => {
   const value = row[column]
@@ -297,7 +306,7 @@ export class ShippingService {
     if (!/^[A-Z][A-Z0-9_]*$/.test(input.reasonCode)) throw new ShippingServiceError('SHIPPING_REVEAL_REASON_REQUIRED')
     return runInTransaction(this.pool, async (tx) => {
       const result = await tx.query(
-        `SELECT a.id, a.encrypted_payload
+        `SELECT a.id, a.campaign_id, a.encrypted_payload
            FROM workflow_instances w
            JOIN shipping_address_heads h ON h.workflow_id = w.id
            JOIN shipping_addresses a ON a.id = h.address_id
@@ -316,6 +325,26 @@ export class ShippingService {
           input.actorReference,
           input.reasonCode,
           input.correlationId,
+          input.occurredAt,
+        ],
+      )
+      await tx.query(
+        `INSERT INTO audit_logs (
+           actor_type, actor_id, action, target_type, target_id, result, reason,
+           correlation_id, protected_action, detail, occurred_at
+         ) VALUES ('operator',$1,$2,'shipping_address',$3,'success',$4,$5,'yes',$6::jsonb,$7)`,
+        [
+          input.actorReference,
+          SHIPPING_REVEAL_AUDIT_ACTION,
+          rowText(row, 'id'),
+          input.reasonCode,
+          input.correlationId,
+          JSON.stringify({
+            workflowId: input.workflowId,
+            participantId: input.participantId,
+            campaignId: rowText(row, 'campaign_id'),
+            ...input.authorizationEvidence,
+          }),
           input.occurredAt,
         ],
       )

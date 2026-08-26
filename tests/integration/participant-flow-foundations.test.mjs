@@ -439,6 +439,14 @@ describe('shipping, payback consent, and reservation foundations', () => {
             reasonCode: 'FULFILLMENT',
             correlationId: 'reveal-rejected',
             occurredAt: at(6),
+            authorizationEvidence: {
+              action: 'sensitive_values.reveal',
+              authorizationPolicyVersion: 'admin-rbac-test-fixture-v1',
+              sensitiveAccessPolicyVersion: 'sensitive-access-test-fixture-v1',
+              authorizationVersion: 1,
+              requestReference: 'request:reveal-rejected',
+              sessionReference: 'session:reveal-rejected',
+            },
           }),
         ).rejects.toMatchObject({ reasonCode: 'SHIPPING_REVEAL_NOT_AUTHORIZED' })
         await expect(
@@ -451,6 +459,14 @@ describe('shipping, payback consent, and reservation foundations', () => {
             reasonCode: 'FULFILLMENT',
             correlationId: 'cross-owner-reveal',
             occurredAt: at(7),
+            authorizationEvidence: {
+              action: 'sensitive_values.reveal',
+              authorizationPolicyVersion: 'admin-rbac-test-fixture-v1',
+              sensitiveAccessPolicyVersion: 'sensitive-access-test-fixture-v1',
+              authorizationVersion: 1,
+              requestReference: 'request:cross-owner-reveal',
+              sessionReference: 'session:cross-owner-reveal',
+            },
           }),
         ).rejects.toMatchObject({ reasonCode: 'SHIPPING_ADDRESS_NOT_FOUND' })
         expect(
@@ -463,8 +479,36 @@ describe('shipping, payback consent, and reservation foundations', () => {
             reasonCode: 'FULFILLMENT',
             correlationId: 'approved-reveal',
             occurredAt: at(8),
+            authorizationEvidence: {
+              action: 'sensitive_values.reveal',
+              authorizationPolicyVersion: 'admin-rbac-test-fixture-v1',
+              sensitiveAccessPolicyVersion: 'sensitive-access-test-fixture-v1',
+              authorizationVersion: 1,
+              requestReference: 'request:approved-reveal',
+              sessionReference: 'session:approved-reveal',
+            },
           }),
         ).toMatchObject({ addressLine1: address.addressLine1, phone: '+821012345678' })
+        const revealEvidence = await pool.query(
+          `SELECT address_id::text, correlation_id FROM shipping_address_reveals
+            WHERE correlation_id = 'approved-reveal'`,
+        )
+        expect(revealEvidence.rows).toHaveLength(1)
+        expect(
+          (
+            await pool.query(
+              `SELECT target_id, correlation_id, result::text, protected_action FROM audit_logs
+                WHERE correlation_id = 'approved-reveal' AND action = 'SENSITIVE_FIELD_REVEALED'`,
+            )
+          ).rows,
+        ).toEqual([
+          {
+            target_id: revealEvidence.rows[0].address_id,
+            correlation_id: 'approved-reveal',
+            result: 'success',
+            protected_action: 'yes',
+          },
+        ])
         const change = await service.issueForm({ ...issueInput, requestAddressChange: true, occurredAt: at(10) })
         expect(change.outcome).toBe('issued')
         expect(

@@ -46,6 +46,10 @@ export type { MessagePurpose } from './purposes.js'
 export { OUTBOUND_CHANNELS, buildDedupeKey } from './dedupe-key.js'
 export type { DedupeKeyInput, OutboundChannel } from './dedupe-key.js'
 
+// T103 canonical administrative authorization vocabulary.
+export { ADMIN_ACTIONS } from './admin-actions.js'
+export type { AdminAction } from './admin-actions.js'
+
 export {
   AI_TASKS,
   AI_INTENT_CODES,

@@ -11,6 +11,8 @@ build/
 .turbo/
 coverage/
 .vitest/
+playwright-report/
+test-results/
 
 # Secrets — SPEC.md §8 forbids committing any of these.
 # .env.example is the only environment file that belongs in version control.

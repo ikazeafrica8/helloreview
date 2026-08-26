@@ -7,48 +7,13 @@ import {
   type AdminRole,
   type OperatorPrincipal,
 } from './operator-principal.js'
+import { ADMIN_ACTIONS, type AdminAction } from '@helloreview/contracts'
+
+export { ADMIN_ACTIONS }
+export type { AdminAction }
 
 export const ADMIN_AUTHORIZATION_POLICY_SCHEMA_VERSION = 'admin-authorization-policy-v1' as const
 export const ADMIN_AUTHORIZATION_REQUEST_SCHEMA_VERSION = 'admin-authorization-request-v1' as const
-
-export const ADMIN_ACTIONS = [
-  'operations.overview.read',
-  'participants.search',
-  'participants.timeline.read',
-  'human_tasks.queue.read',
-  'human_tasks.assign',
-  'human_tasks.resolve',
-  'human_tasks.resume_automation',
-  'overrides.approve',
-  'campaigns.read',
-  'campaigns.configure',
-  'selection_rules.publish',
-  'reservation_rules.publish',
-  'business_approvals.queue.read',
-  'business_approvals.record',
-  'message_templates.read',
-  'message_templates.publish',
-  'guidelines.read',
-  'guidelines.publish',
-  'notifications.history.read',
-  'deduplication.history.read',
-  'failed_jobs.read',
-  'failed_jobs.retry',
-  'integrations.health.read',
-  'audit_logs.read',
-  'privacy_requests.read',
-  'retention_schedules.publish',
-  'legal_holds.manage',
-  'users_roles.read',
-  'users_roles.manage',
-  'automation_pauses.read',
-  'automation_pauses.activate',
-  'automation_pauses.resume',
-  'ai_cost.read',
-  'sensitive_values.reveal',
-  'sensitive_data.export',
-] as const
-export type AdminAction = (typeof ADMIN_ACTIONS)[number]
 
 export const ADMIN_SCOPE_REQUIREMENTS = ['campaign_required', 'global_required', 'unscoped'] as const
 export type AdminScopeRequirement = (typeof ADMIN_SCOPE_REQUIREMENTS)[number]

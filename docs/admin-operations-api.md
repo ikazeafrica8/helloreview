@@ -5,6 +5,27 @@ an HTTP controller until the approved operator authentication adapter exists. A 
 HTTP adapter must construct the verified `operator-principal-v1`; it must not accept a principal,
 role, campaign scope, policy, or authorization version from request JSON.
 
+## Operator-console adapter
+
+The T112–T117 console consumes a separate server-only, asynchronous `OperatorConsoleGateway`
+contract. Campaign scope is explicit on participant reads, and timeline responses report available
+or unsupported PRD categories. Its local test adapter is deterministic and pseudonymous; its
+production adapter is locked and returns no records or commands. The Next.js application does not
+import these Nest services or connect to the database. An authenticated HTTP adapter can replace
+the locked implementation only after the identity, RBAC, campaign-scope, and transport decisions
+are approved.
+
+Server Actions re-check the provider-neutral session, canonical action authorization, and target
+campaign scope before invoking the gateway. Layout rendering is presentation gating only and is not
+an authorization boundary.
+
+Canonical administrative action IDs now live in `@helloreview/contracts`. Console scenario IDs
+remain separate, so stale and preview fixtures cannot silently become authorization actions.
+
+The fixture demonstrates the complete PRD §20.3 presentation contract. That does not expand the
+persisted timeline described below: a production adapter must report unavailable source categories
+honestly until their query services exist and must never synthesize operational history.
+
 ## Participant reads
 
 `ParticipantAdminQueryService.search` requires a campaign scope, uses bound database parameters,
