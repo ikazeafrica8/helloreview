@@ -8,7 +8,7 @@ export { tstz } from './columns.js'
 export { applyMigrations, MIGRATIONS_FOLDER } from './migrate.js'
 export { createDbClient } from './client.js'
 export type { DbClient } from './client.js'
-export { runInTransaction } from './transaction.js'
+export { bindDbTransaction, runInTransaction } from './transaction.js'
 export type { DbTransaction } from './transaction.js'
 export { POSTGRES_POOL } from './tokens.js'
 export {

@@ -3,12 +3,12 @@
 | Field          | Value                                                                                                               |
 | -------------- | ------------------------------------------------------------------------------------------------------------------- |
 | Plan version   | 1.1                                                                                                                 |
-| Status         | Milestones 1–2 implementation complete; Checkpoint F awaits external AI/privacy approval and human review           |
+| Status         | Milestones 1–2 and Milestone 3 T88–T92 complete; external AI/privacy and operations-policy approvals remain         |
 | Spec           | [SPEC.md](../SPEC.md) (capability map in §3)                                                                        |
 | Requirements   | [PRD v1.0](../HelloReview%20Reviewer%20Campaign%20Automation%20Platform%20—%20Product%20Requirements%20Document.md) |
-| Task lists     | [Milestone 1](todo.md) · [Milestone 2](milestone-2.md) — markdown, no external tracker designated                   |
-| Detailed scope | Milestone 1: 56 tasks across 8 phases; Milestone 2: 31 tasks across 6 phases                                        |
-| Outlined scope | Milestones 3–4, broken down at their checkpoints                                                                    |
+| Task lists     | [Milestone 1](todo.md) · [Milestone 2](milestone-2.md) · [Milestone 3](milestone-3.md)                              |
+| Detailed scope | Milestone 1: 56 tasks; Milestone 2: 31 tasks; Milestone 3: 30 tasks                                                 |
+| Outlined scope | Milestone 4, broken down at its checkpoint                                                                          |
 
 ---
 
@@ -146,7 +146,8 @@ the first participant journeys and **AC-05**, while keeping the manual website C
 automatic selection disabled. It introduces the scored-evaluation tier for Korean intent and date
 parsing. Maps to PRD rollout phases 2–4.
 
-**Milestone 3 — Operations Surface.** `human-tasks` (full case packet, SLA, return-to-automation),
+**Milestone 3 — Operations Surface.** Detailed as T88–T117 in
+[tasks/milestone-3.md](milestone-3.md): `human-tasks` (full case packet, SLA, return-to-automation),
 `privacy-ops`, `admin-api` with RBAC, `operator-console` across the `§20.1` page list. This is what
 makes the platform operable — until it lands, everything above is only reachable through tests.
 Maps to PRD rollout phases 1 and 3.

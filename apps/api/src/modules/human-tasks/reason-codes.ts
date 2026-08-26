@@ -17,3 +17,8 @@ export const HUMAN_REVIEW_REASON = {
 } as const
 
 export type HumanReviewReasonCode = (typeof HUMAN_REVIEW_REASON)[keyof typeof HUMAN_REVIEW_REASON]
+
+const HUMAN_REVIEW_REASON_VALUES: ReadonlySet<string> = new Set(Object.values(HUMAN_REVIEW_REASON))
+
+export const isHumanReviewReasonCode = (value: string): value is HumanReviewReasonCode =>
+  HUMAN_REVIEW_REASON_VALUES.has(value)

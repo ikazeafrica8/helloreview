@@ -1,11 +1,12 @@
 import { Module } from '@nestjs/common'
 import { HumanReviewTaskService } from './human-review-task.service.js'
+import { HumanReviewOperationsService } from './human-review-operations.service.js'
 import { MessagingModule } from '../messaging/index.js'
 import { WorkflowCoreModule } from '../workflow-core/index.js'
 
 @Module({
   imports: [WorkflowCoreModule, MessagingModule],
-  providers: [HumanReviewTaskService],
-  exports: [HumanReviewTaskService],
+  providers: [HumanReviewTaskService, HumanReviewOperationsService],
+  exports: [HumanReviewTaskService, HumanReviewOperationsService],
 })
 export class HumanTasksModule {}

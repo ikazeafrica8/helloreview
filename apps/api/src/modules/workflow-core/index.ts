@@ -3,6 +3,12 @@ export { WorkflowInstanceService, WORKFLOW_ORIGIN_DIMENSIONS } from './workflow-
 export type { CreateWorkflowInput } from './workflow-instance.service.js'
 export { WorkflowTransitionService, isPauseBlockingTransition } from './workflow-transition.service.js'
 export type { ApplyWorkflowTransitionInput, WorkflowTransitionOutcome } from './workflow-transition.service.js'
+export {
+  HUMAN_HANDOFF_PROJECTION_REASON,
+  HumanHandoffProjectionError,
+  HumanHandoffProjectionService,
+} from './human-handoff-projection.service.js'
+export type { HumanHandoffProjection } from './human-handoff-projection.service.js'
 export { WorkflowCorrectionService } from './workflow-correction.service.js'
 export { planWorkflowCorrection } from './correction-plan.js'
 export type { CorrectionPriorEvent, WorkflowCorrectionPlan } from './correction-plan.js'

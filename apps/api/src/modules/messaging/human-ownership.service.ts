@@ -56,44 +56,53 @@ export class HumanOwnershipService {
   constructor(@Inject(POSTGRES_POOL) private readonly pool: Pool) {}
 
   async takeOwnership(input: TakeOwnershipInput): Promise<OperatorOwnership> {
-    return runInTransaction(this.pool, async (tx) => {
-      await this.lockWorkflow(tx, input.workflowId)
-      const current = await this.activeInside(tx, input.workflowId)
-      if (current !== undefined) {
-        if (current.operatorId === input.operatorId) return current
-        throw new HumanOwnershipError(MESSAGING_REASON.OWNERSHIP_CONFLICT)
-      }
-
-      const inserted = await tx.query(
-        `INSERT INTO operator_assignments (workflow_id, operator_id, reason_code, started_at)
-         VALUES ($1,$2,$3,$4)
-         RETURNING id, workflow_id, operator_id, reason_code, started_at, ended_at, ended_by`,
-        [input.workflowId, input.operatorId, input.reasonCode, input.occurredAt],
-      )
-      const row = inserted.rows[0]
-      if (row === undefined) throw new Error('operator assignment insert returned no row')
-      return ownershipFrom(row)
-    })
+    return runInTransaction(this.pool, (tx) => this.takeOwnershipInside(tx, input))
   }
 
   async releaseOwnership(workflowId: string, operatorId: string, occurredAt: Date): Promise<OperatorOwnership> {
-    return runInTransaction(this.pool, async (tx) => {
-      await this.lockWorkflow(tx, workflowId)
-      const current = await this.activeInside(tx, workflowId)
-      if (current?.operatorId !== operatorId) {
-        throw new HumanOwnershipError(MESSAGING_REASON.OWNERSHIP_CONFLICT)
-      }
-      const updated = await tx.query(
-        `UPDATE operator_assignments
-            SET ended_at = $3, ended_by = $2
-          WHERE id = $1
-          RETURNING id, workflow_id, operator_id, reason_code, started_at, ended_at, ended_by`,
-        [current.id, operatorId, occurredAt],
-      )
-      const row = updated.rows[0]
-      if (row === undefined) throw new Error('operator assignment release returned no row')
-      return ownershipFrom(row)
-    })
+    return runInTransaction(this.pool, (tx) => this.releaseOwnershipInside(tx, workflowId, operatorId, occurredAt))
+  }
+
+  async takeOwnershipInside(tx: DbTransaction, input: TakeOwnershipInput): Promise<OperatorOwnership> {
+    await this.lockWorkflow(tx, input.workflowId)
+    const current = await this.activeInside(tx, input.workflowId)
+    if (current !== undefined) {
+      if (current.operatorId === input.operatorId) return current
+      throw new HumanOwnershipError(MESSAGING_REASON.OWNERSHIP_CONFLICT)
+    }
+
+    const inserted = await tx.query(
+      `INSERT INTO operator_assignments (workflow_id, operator_id, reason_code, started_at)
+       VALUES ($1,$2,$3,$4)
+       RETURNING id, workflow_id, operator_id, reason_code, started_at, ended_at, ended_by`,
+      [input.workflowId, input.operatorId, input.reasonCode, input.occurredAt],
+    )
+    const row = inserted.rows[0]
+    if (row === undefined) throw new Error('operator assignment insert returned no row')
+    return ownershipFrom(row)
+  }
+
+  async releaseOwnershipInside(
+    tx: DbTransaction,
+    workflowId: string,
+    operatorId: string,
+    occurredAt: Date,
+  ): Promise<OperatorOwnership> {
+    await this.lockWorkflow(tx, workflowId)
+    const current = await this.activeInside(tx, workflowId)
+    if (current?.operatorId !== operatorId) {
+      throw new HumanOwnershipError(MESSAGING_REASON.OWNERSHIP_CONFLICT)
+    }
+    const updated = await tx.query(
+      `UPDATE operator_assignments
+          SET ended_at = $3, ended_by = $2
+        WHERE id = $1
+        RETURNING id, workflow_id, operator_id, reason_code, started_at, ended_at, ended_by`,
+      [current.id, operatorId, occurredAt],
+    )
+    const row = updated.rows[0]
+    if (row === undefined) throw new Error('operator assignment release returned no row')
+    return ownershipFrom(row)
   }
 
   private async lockWorkflow(tx: DbTransaction, workflowId: string): Promise<void> {
