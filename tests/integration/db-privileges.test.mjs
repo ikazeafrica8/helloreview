@@ -149,6 +149,12 @@ describe('the application database role', () => {
           'human_review_holding_messages',
           'privacy_request_events',
           'privacy_request_processing_pauses',
+          'privacy_retention_schedules',
+          'privacy_retention_schedule_entries',
+          'privacy_legal_holds',
+          'privacy_legal_hold_events',
+          'privacy_deletion_eligibility_evaluations',
+          'admin_retry_operations',
         ]
         const protectedHistory = await app.query(
           `SELECT table_name,

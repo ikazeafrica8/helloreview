@@ -2,8 +2,8 @@
 
 Plan: [tasks/plan.md](plan.md) · Spec: [SPEC.md](../SPEC.md) · Requirements: PRD v1.0
 
-Status: **T88–T97 complete. T98–T117 planned. Policy-dependent tasks remain blocked until their
-named decisions are approved.**
+Status: **T88–T99 and T103–T108 complete. T100–T102 and T109–T117 remain planned or policy-blocked.
+Policy-dependent production activation remains blocked until the named decisions are approved.**
 
 Milestone 3 makes the tested automation spine operable without weakening its safety boundaries.
 Human ownership remains explicit, selection remains manual, sensitive reads are audited, and every
@@ -172,17 +172,46 @@ idempotent replay, immutable history, and protected resume. See
 
 ## T98 — Retention schedule registry
 
+Status: **Complete (2026-08-26). No production schedule is published; activation remains blocked by
+company and legal approval of every data-class period and disposition.**
+
 Store approved, versioned schedules for each PRD §21.6 data class. Missing schedules are explicit and
 block deletion.
 
-**Blocked by:** approved retention periods per data class
+**Acceptance:** strict `privacy-retention-schedule-v1` input requires all eleven data classes,
+bounded integer days, a disposition, version chain, and separate company/legal approval references;
+versions and entries are immutable; replay is idempotent and semantic conflicts fail closed; no
+default or production fixture is seeded.
+
+**Verification:** contract tests, clean migration replay, RLS/restricted-role checks, complete-entry
+and exact-supersession integration cases, and append-only mutation refusals. See
+[docs/privacy-operations.md](../docs/privacy-operations.md).
+
+**Production blocked by:** approved retention periods and dispositions per data class
 
 ## T99 — Legal hold and deletion eligibility
+
+Status: **Complete (2026-08-26). This is evidence-only and performs no deletion or masking.**
 
 Calculate eligibility from the approved schedule while legal hold always wins. Missing policy is
 `not_eligible`, not a default duration.
 
+**Acceptance:** participant, participant/data-class, and record scopes are strict and pseudonymous;
+apply/release history and each eligibility evaluation are immutable; active hold wins even when the
+schedule is absent or retention elapsed; missing policy returns `policy_missing`; retention produces
+only `retention_active` or `eligible` evidence with the approved disposition; audit detail states
+`deletion_executed = false`.
+
+**Verification:** idempotent replay/conflict cases, hold-before-policy and release-time cases,
+retention-boundary cases, append-only database triggers, RLS, and an assertion that no deletion queue
+or job object exists.
+
+**Dependencies:** T98; T100 remains separately blocked from executing an eligible result
+
 ## T100 — Audited deletion and irreversible masking jobs
+
+Status: **Blocked.** The PRD requires company/legal approval of concrete periods before deletion jobs
+can be specified. T99 intentionally provides eligibility evidence but no executor.
 
 Use dry-run, bounded batches, idempotency, storage reconciliation, and immutable completion/failure
 evidence. Business history is superseded or masked according to policy, never silently erased.
@@ -195,6 +224,8 @@ Assemble scoped results, record sensitive access, constrain exports, and preserv
 
 ## T102 — Privacy request E2E
 
+Status: **Blocked on T100 and the approved sensitive reveal/export policy required by T101.**
+
 Prove intake, verification, scope, legal hold, missing-policy stop, approved execution, and audit.
 
 **Dependencies:** T96–T101
@@ -205,15 +236,38 @@ Prove intake, verification, scope, legal hold, missing-policy stop, approved exe
 
 ## T103 — Auth-neutral operator principal contract
 
+Status: **Complete (2026-08-26). Production authentication adapter remains blocked by the SSO versus
+local-MFA decision.**
+
 Define verified principal, role, campaign scope, assurance level, and session/audit context without
 binding an identity vendor.
+
+**Acceptance:** exact versioned input requires verified state, known canonical roles, explicit global
+or campaign scope, assurance, pseudonymous session/authentication references, policy and current
+authorization versions, environment, and finite validity; provider claims and raw contact data are
+not accepted.
+
+**Verification:** contract rejection/canonicalization tests plus build and module-boundary checks. See
+[docs/admin-authorization.md](../docs/admin-authorization.md).
 
 **Blocked for production adapter by:** SSO versus local MFA decision
 
 ## T104 — Deny-by-default RBAC enforcement
 
+Status: **Complete (2026-08-26). Production activation remains blocked by approval of the real RBAC
+matrix; the repository policy is explicitly test-only.**
+
 Map every administrative command and sensitive read to a role and campaign scope. Unknown roles,
 missing scope, and stale authorization fail closed.
+
+**Acceptance:** the versioned policy covers every known T105–T109 action exactly once; unknown
+actions fail at the contract boundary; production refuses unapproved policy; role, assurance,
+campaign/global scope, environment, expiry, policy version, and current authorization version are
+independent deny gates; allow/deny results carry pseudonymous audit context.
+
+**Verification:** exhaustive matrix completeness, role/scope/assurance, stale/expiry/environment,
+test-versus-production, unknown action/role, and enforcement-helper tests. See
+[docs/admin-authorization.md](../docs/admin-authorization.md).
 
 **Blocked for production activation by:** approved RBAC matrix
 
@@ -221,19 +275,40 @@ missing scope, and stale authorization fail closed.
 
 Return masked search results and the PRD §20.3 timeline with stable pagination and no raw payloads.
 
+**Acceptance:** campaign-scoped search masks names and phones while keeping application status and
+blogger evidence separate; the stable timeline returns coded, versioned events across the complete
+participant workflow without raw payloads or sensitive content.
+
 ## T106 — Human-task and approval command API
 
 Expose assign, resolve, resume, override, and business-approval commands with expected versions and
 audited reasons.
 
+**Acceptance:** authorization uses the campaign read from the target object; stale workflow
+versions fail closed; resume requires both resolve and resume permissions plus current readiness;
+business approval and its protected audit evidence commit atomically.
+
 ## T107 — Versioned campaign-content command API
 
 Expose validated preview/publish flows for campaign rules, templates, terms, and guidelines.
+
+**Acceptance:** campaign commands use optimistic versions; rule previews are non-mutating;
+publication rechecks the locked draft; rules, payback terms, templates, and guidelines reuse their
+immutable version transitions.
 
 ## T108 — Operational diagnostics and retry API
 
 Expose health, failed jobs, notification/suppression history, idempotency-preserving retry, pauses,
 cost, and AI-evaluation state.
+
+**Acceptance:** diagnostics contain codes and metadata rather than raw payloads; retry accepts only
+failed/dead-lettered inbound jobs, is atomic and idempotent through an immutable receipt, and leaves
+the existing relay to enqueue; pauses reuse governed current-state validation; the AI/cost endpoint
+truthfully reports the no-real-provider safe-fallback state.
+
+**Verification for T105–T108:** API unit tests, workspace build/typecheck/lint, Drizzle schema check,
+and [admin operations API notes](../docs/admin-operations-api.md). Container-backed migration and
+privilege tests require an available Docker-compatible runtime.
 
 ## T109 — Sensitive reveal and export controls
 

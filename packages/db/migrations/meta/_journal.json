@@ -218,6 +218,20 @@
       "when": 1787716172815,
       "tag": "0030_add_privacy_verification_storage",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1787725354121,
+      "tag": "0031_add_privacy_retention_and_legal_holds",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1787729885745,
+      "tag": "0032_add_admin_operations_api",
+      "breakpoints": true
     }
   ]
 }

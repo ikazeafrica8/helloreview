@@ -1,8 +1,9 @@
 # Privacy operations
 
-This runbook covers T96 privacy-request intake and T97 minimal identity verification with
-affected-processing pauses. Retention schedules, legal holds, deletion/masking execution,
-sensitive reveal, export, and privacy-pause release remain later tasks.
+This runbook covers T96 privacy-request intake, T97 minimal identity verification with
+affected-processing pauses, T98 approved retention-schedule evidence, and T99 legal holds plus
+deletion-eligibility evidence. Deletion/masking execution, sensitive reveal, export, and
+privacy-pause release remain later tasks.
 
 ## Intake boundary
 
@@ -71,9 +72,38 @@ A request deadline is stored only when a caller supplies both an explicit policy
 deadline. Missing policy stores both values as null. This is a request-handling deadline, not a data
 retention period.
 
-T96 adds no retention-days, delete-after, or retention-until value. No deletion job is enabled.
-Retention schedules remain blocked until the company and legal reviewer approve periods for each
-PRD §21.6 data class.
+T96 request records still contain no retention-days, delete-after, or retention-until value. T98
+adds a separate append-only registry that accepts a schedule only when it is complete, versioned,
+and carries distinct company and legal approval references. The repository seeds no schedule and
+contains only clearly named test fixtures; production remains disabled until the company and legal
+reviewer approve periods and dispositions for every PRD §21.6 data class.
+
+## Retention schedule boundary
+
+- `privacy-retention-schedule-v1` must cover exactly the eleven coded data classes. Each entry has a
+  bounded positive integer day count and either `delete` or `irreversible_mask`; missing, duplicate,
+  unknown, or extra fields fail closed.
+- The first schedule cannot claim a predecessor. Every later version must exactly supersede the
+  current latest version and have a later effective time. Reusing a policy version with changed
+  semantics is a conflict.
+- A publication time cannot predate the recorded approval. Schedule versions and entries are
+  append-only, RLS-enabled, and inaccessible to Supabase `anon` and `authenticated` roles.
+- `privacy-retention-test-fixture-v1` appears only in tests. Its durations and approval references
+  are deterministic fixtures, not company policy, legal advice, or production approval.
+
+## Legal hold and eligibility boundary
+
+- A legal hold targets one participant, one participant plus data class, or one pseudonymous record.
+  Application and release are separate append-only events; an earlier evaluation preserves the
+  state that existed at its evaluation time.
+- Eligibility checks legal hold first. An active matching hold returns `legal_hold_active` even when
+  no schedule exists or the retention interval would otherwise have elapsed. After release, the
+  schedule is evaluated normally.
+- With no effective approved schedule, the result is `policy_missing`. With one, the result is only
+  `retention_active` or `eligible`, together with its version, date, and disposition.
+- Every evaluation is immutable and audited with `deletion_executed = false`. T99 creates no deletion
+  queue, job, function, storage mutation, masking action, or automatic link from eligibility to an
+  executor. T100 requires separate reviewed execution policy and approval.
 
 ## Verification
 
@@ -84,8 +114,10 @@ pnpm typecheck
 pnpm lint
 pnpm exec vitest run --project unit tests/unit/privacy-request-contract.test.mjs
 pnpm exec vitest run --project unit tests/unit/privacy-identity-verification.test.mjs
+pnpm exec vitest run --project unit tests/unit/privacy-retention-contract.test.mjs
 pnpm exec vitest run --project integration tests/integration/privacy-request-intake.test.mjs
 pnpm exec vitest run --project integration tests/integration/privacy-identity-verification.test.mjs
+pnpm exec vitest run --project integration tests/integration/privacy-retention-and-legal-hold.test.mjs
 pnpm exec vitest run --project integration tests/integration/migrations.test.mjs
 pnpm exec vitest run --project integration tests/integration/db-privileges.test.mjs
 pnpm exec vitest run --project security tests/security/privacy-request-intake.test.mjs
@@ -93,7 +125,8 @@ pnpm exec vitest run --project security tests/security/privacy-request-intake.te
 
 ## Rollback
 
-Application rollback may stop new intake/verification and deploy the previous service version, but
-it must leave migrations 0028–0030 and all privacy, pause-link, and audit evidence in place. Active
+Application rollback may stop new intake/verification/retention evaluation and deploy the previous
+service version, but it must leave migrations 0028–0031 and all privacy, schedule, hold, pause-link,
+eligibility, and audit evidence in place. Active
 privacy pauses remain fail-closed. Dropping tables, releasing pauses in bulk, or rewriting events is
 a destructive privacy operation and requires a separate approved recovery procedure.
