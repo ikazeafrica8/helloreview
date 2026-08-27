@@ -24,6 +24,13 @@ The server-only, asynchronous console gateway has two adapters:
 - `ProductionLockedConsoleGateway` returns no records or commands and is the default until an
   authenticated, authorized HTTP adapter is approved.
 
+Pure gateway/session contracts are isolated from the server-only environment provider so they can
+be tested deterministically without weakening the React Server Component boundary. Every read page
+re-checks its canonical action and campaign scope, then passes the verified session into the
+gateway, which repeats the same check at the data boundary. A layout session check is presentation
+gating only. The deterministic fixture grants the complete read-only action set; it grants no
+sensitive reveal/export permission.
+
 The environment parser rejects `test_fixture` when `NODE_ENV=production`. The fixture is not an
 operator identity, RBAC matrix, SSO session, cookie, token, or MFA result. Authentication is
 evaluated at request time with `await connection()`, so a build cannot freeze a test session into
@@ -65,7 +72,8 @@ exposing raw messages, identity evidence, AI/OCR material, or personal data. Its
 reports category availability. A future production adapter must return only persisted sources and
 mark unsupported categories explicitly; it must not invent events to fill current API gaps.
 The participant-search Server Action independently re-checks the session, canonical action, and
-campaign scope; the shared layout is not treated as an authorization boundary.
+campaign scope. Search and timeline cursors that were not issued by the fixture fail closed with
+`ADMIN_CURSOR_INVALID` instead of silently replaying the first page.
 
 T113 supplies the human-review, business-approval, failed-job, notification, and duplicate-history
 queues. T114 supplies campaign, selection-rule, reservation-rule, message-template, and guideline
@@ -112,6 +120,10 @@ the built standalone artifact with the default locked session and proves represe
 dynamic routes expose no fixture content. Both lanes fail on browser page errors, browser
 `console.error`, or unexpected server runtime errors. The runner terminates only the process trees
 it started and refuses to use an occupied port.
+
+Next.js owns `apps/admin/next-env.d.ts`; it is ignored as generated output. The admin typecheck runs
+`next typegen` first so a fresh checkout receives current route declarations without leaving
+environment-dependent generated changes in Git.
 
 Production rollout remains blocked on the approved authentication adapter, current RBAC and
 campaign scope, authorized read/command transports, and the policy decisions named in Milestone 3.

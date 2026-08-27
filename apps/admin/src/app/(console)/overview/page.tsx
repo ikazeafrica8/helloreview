@@ -1,13 +1,22 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
+import { ConsoleAccessDenied } from '@/components/console-access-denied'
 import { ProductionBoundaryBanner } from '@/components/production-boundary-banner'
+import { SessionRequired } from '@/components/session-required'
 import { StatusBadge } from '@/components/status-badge'
-import { getOperatorConsoleGateway } from '@/lib/console-gateway'
+import { FIXTURE_CAMPAIGN_ID } from '@/lib/console-gateway'
+import { getOperatorConsoleGateway } from '@/lib/console-gateway-provider'
+import { getOperatorConsoleSession, isOperatorConsoleAuthorized } from '@/lib/operator-session'
 
 export const metadata: Metadata = { title: '운영 현황' }
 
 export default async function OverviewPage() {
-  const metrics = await getOperatorConsoleGateway().overview()
+  const session = getOperatorConsoleSession()
+  if (session === null) return <SessionRequired />
+  if (!isOperatorConsoleAuthorized(session, 'operations.overview.read', FIXTURE_CAMPAIGN_ID))
+    return <ConsoleAccessDenied />
+  const metrics = await getOperatorConsoleGateway().overview(session, FIXTURE_CAMPAIGN_ID)
+  if (metrics === null) return <ConsoleAccessDenied />
   return (
     <main id="main-content" className="page-content" tabIndex={-1}>
       <div className="page-heading">

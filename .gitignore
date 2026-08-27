@@ -5,6 +5,7 @@ node_modules/
 dist/
 build/
 .next/
+apps/*/next-env.d.ts
 *.tsbuildinfo
 
 # Tooling caches

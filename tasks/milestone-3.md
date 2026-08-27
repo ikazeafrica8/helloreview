@@ -443,5 +443,5 @@ Browser and server runtime errors fail either lane.
 - [ ] Privacy requests and approved retention/legal-hold operations pass end to end.
 - [x] Administrative commands are deny-by-default, scoped, versioned, and audited.
 - [x] All twenty PRD §20.1 console pages exist with masked defaults and accessibility checks.
-- [ ] Security, coverage, integration, and operator E2E gates pass.
+- [x] Security, coverage, integration, and operator E2E gates pass.
 - [ ] Review with human before Milestone 4.

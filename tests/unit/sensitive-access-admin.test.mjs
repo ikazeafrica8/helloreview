@@ -2,6 +2,8 @@ import { describe, expect, test, vi } from 'vitest'
 import {
   ADMIN_RBAC_TEST_FIXTURE_POLICY,
   AdminAuthorizationDeniedError,
+  DeterministicSensitiveAccessPolicyProvider,
+  ProductionLockedSensitiveAccessPolicyProvider,
   SENSITIVE_ACCESS_OPERATIONS,
   SENSITIVE_ACCESS_TEST_FIXTURE_POLICY,
   SensitiveAccessAdminService,
@@ -44,7 +46,7 @@ const revealCommand = (overrides = {}) => ({
   participantId,
   reasonCode: 'FULFILLMENT',
   occurredAt,
-  sensitiveAccessPolicy: SENSITIVE_ACCESS_TEST_FIXTURE_POLICY,
+  sensitiveAccessPolicyVersion: SENSITIVE_ACCESS_TEST_FIXTURE_POLICY.policyVersion,
   ...overrides,
 })
 
@@ -90,7 +92,9 @@ describe('T109 strict sensitive-access policy', () => {
 })
 
 describe('T109 authorized reveal and fail-closed export commands', () => {
-  const setup = () => {
+  const setup = (
+    policyProvider = new DeterministicSensitiveAccessPolicyProvider(SENSITIVE_ACCESS_TEST_FIXTURE_POLICY),
+  ) => {
     const shipping = {
       reveal: vi.fn().mockResolvedValue({
         recipientName: '홍길동',
@@ -107,7 +111,12 @@ describe('T109 authorized reveal and fail-closed export commands', () => {
         auditEntries.push(entry)
       }),
     }
-    return { service: new SensitiveAccessAdminService(shipping, audit), shipping, audit, auditEntries }
+    return {
+      service: new SensitiveAccessAdminService(shipping, audit, policyProvider),
+      shipping,
+      audit,
+      auditEntries,
+    }
   }
 
   test('passes dual authorization evidence to the one-record reveal and leaves success auditing atomic', async () => {
@@ -151,7 +160,7 @@ describe('T109 authorized reveal and fail-closed export commands', () => {
       reasonCode: 'PRIVACY_REQUEST_FULFILLMENT',
       requestedRecordCount: 10,
       occurredAt,
-      sensitiveAccessPolicy: SENSITIVE_ACCESS_TEST_FIXTURE_POLICY,
+      sensitiveAccessPolicyVersion: SENSITIVE_ACCESS_TEST_FIXTURE_POLICY.policyVersion,
     })
     expect(result).toEqual({
       operationReference: 'export:pseudo:109',
@@ -167,5 +176,32 @@ describe('T109 authorized reveal and fail-closed export commands', () => {
     })
     expect(JSON.stringify(auditEntries)).not.toContain('홍길동')
     expect(JSON.stringify(auditEntries)).not.toContain('+821012345678')
+  })
+
+  test('resolves only the trusted current policy and rejects stale or locked policy references', async () => {
+    const stale = setup()
+    await expect(
+      stale.service.revealShippingAddress(
+        invocation(),
+        revealCommand({
+          sensitiveAccessPolicyVersion: 'sensitive-access-test-fixture-v999',
+          sensitiveAccessPolicy: {
+            status: 'approved',
+            entries: [{ operation: 'shipping_address.reveal', maximumRecords: 9999 }],
+          },
+        }),
+      ),
+    ).rejects.toMatchObject({ reasonCode: 'SENSITIVE_ACCESS_POLICY_VERSION_STALE' })
+    expect(stale.shipping.reveal).not.toHaveBeenCalled()
+    expect(stale.auditEntries[0]).toMatchObject({
+      result: 'rejected',
+      reason: 'SENSITIVE_ACCESS_POLICY_VERSION_STALE',
+    })
+
+    const locked = setup(new ProductionLockedSensitiveAccessPolicyProvider())
+    await expect(locked.service.revealShippingAddress(invocation(), revealCommand())).rejects.toMatchObject({
+      reasonCode: 'SENSITIVE_ACCESS_POLICY_PROVIDER_LOCKED',
+    })
+    expect(locked.shipping.reveal).not.toHaveBeenCalled()
   })
 })

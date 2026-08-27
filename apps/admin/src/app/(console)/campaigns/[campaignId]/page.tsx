@@ -1,7 +1,9 @@
 import type { Metadata } from 'next'
-import { notFound } from 'next/navigation'
+import { ConsoleAccessDenied } from '@/components/console-access-denied'
 import { ConsoleScreen } from '@/components/console-screen'
-import { getOperatorConsoleGateway } from '@/lib/console-gateway'
+import { SessionRequired } from '@/components/session-required'
+import { getOperatorConsoleGateway } from '@/lib/console-gateway-provider'
+import { getOperatorConsoleSession, isOperatorConsoleAuthorized } from '@/lib/operator-session'
 
 type Props = Readonly<{ params: Promise<{ campaignId: string }> }>
 
@@ -12,7 +14,10 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function CampaignDetailPage({ params }: Props) {
   const { campaignId } = await params
-  const screen = await getOperatorConsoleGateway().campaignEditor(campaignId)
-  if (screen === null) notFound()
+  const session = getOperatorConsoleSession()
+  if (session === null) return <SessionRequired />
+  if (!isOperatorConsoleAuthorized(session, 'campaigns.read', campaignId)) return <ConsoleAccessDenied />
+  const screen = await getOperatorConsoleGateway().campaignEditor(session, campaignId)
+  if (screen === null) return <ConsoleAccessDenied />
   return <ConsoleScreen screen={screen} />
 }

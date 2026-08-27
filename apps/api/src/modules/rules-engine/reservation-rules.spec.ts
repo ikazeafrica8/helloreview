@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import {
   evaluateReservationRules,
+  parseReservationRuleConfiguration,
   type ReservationEvidence,
   type ReservationRuleConfiguration,
 } from './reservation-rules.js'
@@ -48,6 +49,11 @@ const evaluate = (
 ) => evaluateReservationRules(submitted, { version, configuration: configured }, now)
 
 describe('PRD §16.7 reservation validation', () => {
+  test('accepts complete configuration and rejects malformed configuration at the parser boundary', () => {
+    expect(parseReservationRuleConfiguration(configuration)).toEqual(configuration)
+    expect(parseReservationRuleConfiguration({ ...configuration, unexpectedSetting: true })).toBeUndefined()
+  })
+
   test('evaluates all fourteen named checks with trace evidence', () => {
     const result = evaluate()
     expect(result.outcome).toBe('pass')

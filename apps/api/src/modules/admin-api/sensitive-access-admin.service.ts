@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common'
+import { Inject, Injectable } from '@nestjs/common'
 import { runWithCorrelation } from '@helloreview/observability'
 import { AUDIT_ACTION, AuditLogService } from '../audit-log/index.js'
 import { ShippingService, type NormalizedShippingAddress } from '../shipping/index.js'
@@ -9,13 +9,17 @@ import {
   SensitiveAccessPolicyError,
   type SensitiveAccessOperation,
 } from './sensitive-access-policy.js'
+import {
+  SENSITIVE_ACCESS_POLICY_PROVIDER,
+  type SensitiveAccessPolicyProvider,
+} from './sensitive-access-policy-provider.js'
 
 export type RevealShippingAddressAdminCommand = Readonly<{
   workflowId: string
   participantId: string
   reasonCode: string
   occurredAt: Date
-  sensitiveAccessPolicy: unknown
+  sensitiveAccessPolicyVersion: string
 }>
 
 export type RequestSensitiveExportCommand = Readonly<{
@@ -23,7 +27,7 @@ export type RequestSensitiveExportCommand = Readonly<{
   reasonCode: string
   requestedRecordCount: number
   occurredAt: Date
-  sensitiveAccessPolicy: unknown
+  sensitiveAccessPolicyVersion: string
 }>
 
 export type SensitiveExportUnavailable = Readonly<{
@@ -38,6 +42,8 @@ export class SensitiveAccessAdminService {
   constructor(
     private readonly shipping: ShippingService,
     private readonly audit: AuditLogService,
+    @Inject(SENSITIVE_ACCESS_POLICY_PROVIDER)
+    private readonly sensitiveAccessPolicyProvider: SensitiveAccessPolicyProvider,
   ) {}
 
   async revealShippingAddress(
@@ -48,8 +54,12 @@ export class SensitiveAccessAdminService {
     let decision
     try {
       decision = authorizeAdminInvocation(invocation, 'sensitive_values.reveal', null)
+      const policy = await this.sensitiveAccessPolicyProvider.resolveCurrentPolicy({
+        environment: invocation.context.environment,
+        policyVersion: command.sensitiveAccessPolicyVersion,
+      })
       policyVersion = assertSensitiveAccessAllowed({
-        policy: command.sensitiveAccessPolicy,
+        policy,
         environment: invocation.context.environment,
         operation: 'shipping_address.reveal',
         reasonCode: command.reasonCode,
@@ -101,15 +111,20 @@ export class SensitiveAccessAdminService {
     invocation: AdminInvocation,
     command: RequestSensitiveExportCommand,
   ): Promise<SensitiveExportUnavailable> {
+    let policyVersion: string
     try {
       authorizeAdminInvocation(invocation, 'sensitive_data.export', null)
-      assertSensitiveAccessAllowed({
-        policy: command.sensitiveAccessPolicy,
+      const policy = await this.sensitiveAccessPolicyProvider.resolveCurrentPolicy({
+        environment: invocation.context.environment,
+        policyVersion: command.sensitiveAccessPolicyVersion,
+      })
+      policyVersion = assertSensitiveAccessAllowed({
+        policy,
         environment: invocation.context.environment,
         operation: 'participant_data.export',
         reasonCode: command.reasonCode,
         requestedRecords: command.requestedRecordCount,
-      })
+      }).policyVersion
     } catch (error) {
       await this.recordRejectedAttempt(
         invocation,
@@ -133,6 +148,7 @@ export class SensitiveAccessAdminService {
         detail: {
           requestedRecordCount: command.requestedRecordCount,
           authorizationPolicyVersion: invocation.policy.policyVersion,
+          sensitiveAccessPolicyVersion: policyVersion,
         },
         occurredAt: command.occurredAt,
       }),

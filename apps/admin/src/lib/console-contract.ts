@@ -146,6 +146,7 @@ export type TimelineCategorySupport = Readonly<{
 export type ConsolePage<T> = Readonly<{
   items: readonly T[]
   nextCursor: string | null
+  reasonCode: 'ADMIN_CURSOR_INVALID' | null
 }>
 
 export type ScopedParticipantSearch = Readonly<{

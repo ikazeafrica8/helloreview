@@ -1,4 +1,3 @@
-import 'server-only'
 import type { AdminAction } from '@helloreview/contracts'
 import { PRD_TIMELINE_CATEGORIES } from './console-contract'
 import type {
@@ -15,10 +14,33 @@ import type {
   ScopedParticipantTimelineRequest,
   TimelineEvent,
 } from './console-contract'
-import { readAdminConsoleEnvironment } from './env-source'
 import { FIXTURE_CAMPAIGN_ID, FIXTURE_PARTICIPANT_ID } from './fixture-identifiers'
+import { isOperatorConsoleAuthorized, type OperatorConsoleSession } from './operator-session-contract'
 
 export { FIXTURE_CAMPAIGN_ID, FIXTURE_PARTICIPANT_ID }
+
+type ConsoleScreenRoute = Exclude<ConsoleRoute, '/overview' | '/participants'>
+
+export const CONSOLE_SCREEN_READ_ACTIONS = {
+  '/human-review': 'human_tasks.queue.read',
+  '/campaigns': 'campaigns.read',
+  '/selection-rules': 'campaigns.read',
+  '/reservation-rules': 'campaigns.read',
+  '/business-approvals': 'business_approvals.queue.read',
+  '/message-templates': 'message_templates.read',
+  '/guidelines': 'guidelines.read',
+  '/notifications': 'notifications.history.read',
+  '/deduplication': 'deduplication.history.read',
+  '/failed-jobs': 'failed_jobs.read',
+  '/integrations': 'integrations.health.read',
+  '/audit': 'audit_logs.read',
+  '/privacy': 'privacy_requests.read',
+  '/users-roles': 'users_roles.read',
+  '/automation-pauses': 'automation_pauses.read',
+  '/ai-cost': 'ai_cost.read',
+  '/sensitive-access': 'audit_logs.read',
+  '/system': 'integrations.health.read',
+} as const satisfies Readonly<Record<ConsoleScreenRoute, AdminAction>>
 
 type AllowedActionOptions = Readonly<{
   scenarioId?: string
@@ -896,22 +918,23 @@ const fixtureTimelineCategorySupport = PRD_TIMELINE_CATEGORIES.map((category) =>
   reasonCode: null,
 }))
 
-const lockedTimelineCategorySupport = PRD_TIMELINE_CATEGORIES.map((category) => ({
-  category,
-  status: 'unsupported' as const,
-  reasonCode: 'PRODUCTION_ADAPTER_LOCKED',
-}))
-
 export interface OperatorConsoleGateway {
-  overview(): Promise<readonly ConsoleMetric[]>
-  screen(route: Exclude<ConsoleRoute, '/overview' | '/participants'>): Promise<ConsoleScreen>
-  campaignEditor(campaignId: string): Promise<ConsoleScreen | null>
-  searchParticipants(request: ScopedParticipantSearch): Promise<ConsolePage<MaskedParticipant>>
-  participantTimeline(request: ScopedParticipantTimelineRequest): Promise<ScopedParticipantTimelinePage>
+  overview(session: OperatorConsoleSession, campaignId: string): Promise<readonly ConsoleMetric[] | null>
+  screen(session: OperatorConsoleSession, route: ConsoleScreenRoute, campaignId: string): Promise<ConsoleScreen | null>
+  campaignEditor(session: OperatorConsoleSession, campaignId: string): Promise<ConsoleScreen | null>
+  searchParticipants(
+    session: OperatorConsoleSession,
+    request: ScopedParticipantSearch,
+  ): Promise<ConsolePage<MaskedParticipant> | null>
+  participantTimeline(
+    session: OperatorConsoleSession,
+    request: ScopedParticipantTimelineRequest,
+  ): Promise<ScopedParticipantTimelinePage | null>
 }
 
 export class DeterministicOperatorConsoleGateway implements OperatorConsoleGateway {
-  overview(): Promise<readonly ConsoleMetric[]> {
+  overview(session: OperatorConsoleSession, campaignId: string): Promise<readonly ConsoleMetric[] | null> {
+    if (!isOperatorConsoleAuthorized(session, 'operations.overview.read', campaignId)) return Promise.resolve(null)
     return Promise.resolve([
       { label: '사람 검토 대기', value: '2', detail: '미할당 1 · 처리 중 1', tone: 'warning' },
       { label: '사업 승인 대기', value: '1', detail: '승인 전 발송 차단', tone: 'warning' },
@@ -920,12 +943,19 @@ export class DeterministicOperatorConsoleGateway implements OperatorConsoleGatew
     ])
   }
 
-  screen(route: Exclude<ConsoleRoute, '/overview' | '/participants'>): Promise<ConsoleScreen> {
+  screen(
+    session: OperatorConsoleSession,
+    route: ConsoleScreenRoute,
+    campaignId: string,
+  ): Promise<ConsoleScreen | null> {
+    if (!isOperatorConsoleAuthorized(session, CONSOLE_SCREEN_READ_ACTIONS[route], campaignId))
+      return Promise.resolve(null)
     return Promise.resolve(consoleScreen(route))
   }
 
-  campaignEditor(campaignId: string): Promise<ConsoleScreen | null> {
-    if (campaignId !== FIXTURE_CAMPAIGN_ID) return Promise.resolve(null)
+  campaignEditor(session: OperatorConsoleSession, campaignId: string): Promise<ConsoleScreen | null> {
+    if (campaignId !== FIXTURE_CAMPAIGN_ID || !isOperatorConsoleAuthorized(session, 'campaigns.read', campaignId))
+      return Promise.resolve(null)
     return Promise.resolve({
       ...consoleScreen('/campaigns'),
       eyebrow: 'T114 · CAMPAIGN DETAIL',
@@ -934,10 +964,17 @@ export class DeterministicOperatorConsoleGateway implements OperatorConsoleGatew
     })
   }
 
-  searchParticipants({ campaignId, query, cursor }: ScopedParticipantSearch): Promise<ConsolePage<MaskedParticipant>> {
-    if (campaignId !== FIXTURE_CAMPAIGN_ID) return Promise.resolve({ items: [], nextCursor: null })
+  searchParticipants(
+    session: OperatorConsoleSession,
+    { campaignId, query, cursor }: ScopedParticipantSearch,
+  ): Promise<ConsolePage<MaskedParticipant> | null> {
+    if (!isOperatorConsoleAuthorized(session, 'participants.search', campaignId)) return Promise.resolve(null)
+    if (campaignId !== FIXTURE_CAMPAIGN_ID) return Promise.resolve({ items: [], nextCursor: null, reasonCode: null })
     const normalized = query.trim().toLocaleLowerCase('ko-KR')
-    if (normalized.length < 2 || normalized.length > 200) return Promise.resolve({ items: [], nextCursor: null })
+    if (normalized.length < 2 || normalized.length > 200)
+      return Promise.resolve({ items: [], nextCursor: null, reasonCode: null })
+    if (cursor !== undefined && cursor !== 'fixture-participants-page-2')
+      return Promise.resolve({ items: [], nextCursor: null, reasonCode: 'ADMIN_CURSOR_INVALID' })
     const filtered = participants.filter(
       (participant) =>
         participant.campaignId === campaignId &&
@@ -951,14 +988,16 @@ export class DeterministicOperatorConsoleGateway implements OperatorConsoleGatew
     return Promise.resolve({
       items,
       nextCursor: filtered.length > offset + 1 ? 'fixture-participants-page-2' : null,
+      reasonCode: null,
     })
   }
 
-  participantTimeline({
-    campaignId,
-    participantId,
-    cursor,
-  }: ScopedParticipantTimelineRequest): Promise<ScopedParticipantTimelinePage> {
+  participantTimeline(
+    session: OperatorConsoleSession,
+    request: ScopedParticipantTimelineRequest,
+  ): Promise<ScopedParticipantTimelinePage | null> {
+    const { campaignId, participantId, cursor } = request
+    if (!isOperatorConsoleAuthorized(session, 'participants.timeline.read', campaignId)) return Promise.resolve(null)
     const participant =
       participants.find(
         (candidate) => candidate.participantId === participantId && candidate.campaignId === campaignId,
@@ -966,13 +1005,23 @@ export class DeterministicOperatorConsoleGateway implements OperatorConsoleGatew
     if (participant === null)
       return Promise.resolve({
         participant: null,
-        events: { items: [], nextCursor: null },
+        events: { items: [], nextCursor: null, reasonCode: null },
         categorySupport: [],
       })
     const participantTimeline = timelinesByParticipantId[participantId] ?? []
-    const pageNumberText = /^fixture-timeline-page-(\d+)$/.exec(cursor ?? '')?.[1]
-    const parsedPageNumber = Number(pageNumberText)
-    const pageNumber = Number.isSafeInteger(parsedPageNumber) && parsedPageNumber >= 2 ? parsedPageNumber : 1
+    const pageNumberText = cursor === undefined ? undefined : /^fixture-timeline-page-(\d+)$/.exec(cursor)?.[1]
+    const parsedPageNumber = pageNumberText === undefined ? 1 : Number(pageNumberText)
+    const maximumPage = Math.max(1, Math.ceil(participantTimeline.length / 6))
+    if (
+      cursor !== undefined &&
+      (!Number.isSafeInteger(parsedPageNumber) || parsedPageNumber < 2 || parsedPageNumber > maximumPage)
+    )
+      return Promise.resolve({
+        participant,
+        events: { items: [], nextCursor: null, reasonCode: 'ADMIN_CURSOR_INVALID' },
+        categorySupport: fixtureTimelineCategorySupport,
+      })
+    const pageNumber = parsedPageNumber
     const offset = (pageNumber - 1) * 6
     const nextPage = Math.floor(offset / 6) + 2
     return Promise.resolve({
@@ -980,6 +1029,7 @@ export class DeterministicOperatorConsoleGateway implements OperatorConsoleGatew
       events: {
         items: participantTimeline.slice(offset, offset + 6),
         nextCursor: participantTimeline.length > offset + 6 ? `fixture-timeline-page-${String(nextPage)}` : null,
+        reasonCode: null,
       },
       categorySupport: fixtureTimelineCategorySupport,
     })
@@ -988,41 +1038,36 @@ export class DeterministicOperatorConsoleGateway implements OperatorConsoleGatew
 
 export const CONSOLE_FIXTURE_GATEWAY = new DeterministicOperatorConsoleGateway()
 
-class ProductionLockedConsoleGateway implements OperatorConsoleGateway {
-  overview(): Promise<readonly ConsoleMetric[]> {
-    return Promise.resolve([])
-  }
-
-  screen(route: Exclude<ConsoleRoute, '/overview' | '/participants'>): Promise<ConsoleScreen> {
-    const screen = consoleScreen(route)
-    return Promise.resolve({
-      ...screen,
-      badge: { label: '프로덕션 잠금', tone: 'blocked' },
-      rows: [],
-      editor: null,
-      actions: [],
-    })
-  }
-
-  campaignEditor(_campaignId: string): Promise<ConsoleScreen | null> {
+export class ProductionLockedConsoleGateway implements OperatorConsoleGateway {
+  overview(_session: OperatorConsoleSession, _campaignId: string): Promise<readonly ConsoleMetric[] | null> {
     return Promise.resolve(null)
   }
 
-  searchParticipants(_request: ScopedParticipantSearch): Promise<ConsolePage<MaskedParticipant>> {
-    return Promise.resolve({ items: [], nextCursor: null })
+  screen(
+    _session: OperatorConsoleSession,
+    _route: ConsoleScreenRoute,
+    _campaignId: string,
+  ): Promise<ConsoleScreen | null> {
+    return Promise.resolve(null)
   }
 
-  participantTimeline(_request: ScopedParticipantTimelineRequest): Promise<ScopedParticipantTimelinePage> {
-    return Promise.resolve({
-      participant: null,
-      events: { items: [], nextCursor: null },
-      categorySupport: lockedTimelineCategorySupport,
-    })
+  campaignEditor(_session: OperatorConsoleSession, _campaignId: string): Promise<ConsoleScreen | null> {
+    return Promise.resolve(null)
+  }
+
+  searchParticipants(
+    _session: OperatorConsoleSession,
+    _request: ScopedParticipantSearch,
+  ): Promise<ConsolePage<MaskedParticipant> | null> {
+    return Promise.resolve(null)
+  }
+
+  participantTimeline(
+    _session: OperatorConsoleSession,
+    _request: ScopedParticipantTimelineRequest,
+  ): Promise<ScopedParticipantTimelinePage | null> {
+    return Promise.resolve(null)
   }
 }
 
-const PRODUCTION_LOCKED_GATEWAY = new ProductionLockedConsoleGateway()
-
-/** Server-only adapter boundary. A future authenticated transport replaces this factory branch. */
-export const getOperatorConsoleGateway = (): OperatorConsoleGateway =>
-  readAdminConsoleEnvironment().sessionMode === 'test_fixture' ? CONSOLE_FIXTURE_GATEWAY : PRODUCTION_LOCKED_GATEWAY
+export const PRODUCTION_LOCKED_CONSOLE_GATEWAY = new ProductionLockedConsoleGateway()

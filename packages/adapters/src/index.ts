@@ -80,3 +80,15 @@ export { AI_PROVIDER_CASCADE } from './ports/ai-text-provider.js'
 export type { AiTextProvider } from './ports/ai-text-provider.js'
 export { createFakeAiTextProvider, createUnavailableAiTextProvider } from './fakes/ai-text-provider-fake.js'
 export type { FakeAiProvider, FakeAiProviderStep } from './fakes/ai-text-provider-fake.js'
+
+export { OCR_PROVIDER, OcrProviderAbortedError } from './ports/ocr-provider.js'
+export type { OcrProvider, OcrProviderExecutionOptions, OcrProviderRequest } from './ports/ocr-provider.js'
+export { createFakeOcrProvider, createUnavailableOcrProvider } from './fakes/ocr-provider-fake.js'
+export type {
+  FakeOcrProvider,
+  FakeOcrProviderOptions,
+  FakeOcrProviderStep,
+  OcrProviderObservation,
+} from './fakes/ocr-provider-fake.js'
+export { ocrProviderConformanceChecks } from './conformance/ocr-provider.suite.js'
+export type { OcrProviderConformanceCheck, OcrProviderConformanceFixtures } from './conformance/ocr-provider.suite.js'

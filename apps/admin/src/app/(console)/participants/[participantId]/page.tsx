@@ -1,8 +1,11 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
+import { ConsoleAccessDenied } from '@/components/console-access-denied'
 import { ProductionBoundaryBanner } from '@/components/production-boundary-banner'
+import { SessionRequired } from '@/components/session-required'
 import { StatusBadge } from '@/components/status-badge'
-import { getOperatorConsoleGateway } from '@/lib/console-gateway'
+import { getOperatorConsoleGateway } from '@/lib/console-gateway-provider'
+import { getOperatorConsoleSession, isOperatorConsoleAuthorized } from '@/lib/operator-session'
 
 type Props = Readonly<{
   params: Promise<{ participantId: string }>
@@ -30,12 +33,18 @@ const formatTimestamp = (value: string): string =>
 export default async function ParticipantTimelinePage({ params, searchParams }: Props) {
   const [{ participantId }, rawSearchParams] = await Promise.all([params, searchParams])
   const campaignId = singleSearchParam(rawSearchParams.campaignId) ?? ''
-  const cursor = singleSearchParam(rawSearchParams.cursor)
-  const page = await getOperatorConsoleGateway().participantTimeline({
+  const cursor = Array.isArray(rawSearchParams.cursor)
+    ? '__invalid-repeated-cursor__'
+    : singleSearchParam(rawSearchParams.cursor)
+  const session = getOperatorConsoleSession()
+  if (session === null) return <SessionRequired />
+  if (!isOperatorConsoleAuthorized(session, 'participants.timeline.read', campaignId)) return <ConsoleAccessDenied />
+  const page = await getOperatorConsoleGateway().participantTimeline(session, {
     campaignId,
     participantId,
     ...(cursor === undefined ? {} : { cursor }),
   })
+  if (page === null) return <ConsoleAccessDenied />
   const hasScope = page.participant !== null
 
   return (
@@ -98,43 +107,54 @@ export default async function ParticipantTimelinePage({ params, searchParams }: 
               ))}
             </ul>
           </section>
-          <ol className="timeline-list">
-            {page.events.items.map((event) => (
-              <li key={event.eventId}>
-                <div className="timeline-marker" aria-hidden="true" />
-                <article>
-                  <div className="timeline-heading">
-                    <div>
-                      <p className="eyebrow">{event.category}</p>
-                      <h2>{event.eventCode}</h2>
-                    </div>
-                    <time dateTime={event.occurredAt}>{formatTimestamp(event.occurredAt)}</time>
-                  </div>
-                  <dl>
-                    <div>
-                      <dt>상태 코드</dt>
-                      <dd>{event.stateCode ?? '—'}</dd>
-                    </div>
-                    <div>
-                      <dt>사유 코드</dt>
-                      <dd>{event.reasonCode ?? '—'}</dd>
-                    </div>
-                    <div>
-                      <dt>버전</dt>
-                      <dd>{event.version === null ? '—' : `v${event.version}`}</dd>
-                    </div>
-                  </dl>
-                </article>
-              </li>
-            ))}
-          </ol>
-          {page.events.nextCursor === null ? null : (
-            <Link
-              className="button-link pagination-link"
-              href={`/participants/${participantId}?campaignId=${encodeURIComponent(campaignId)}&cursor=${encodeURIComponent(page.events.nextCursor)}`}
-            >
-              이전 이벤트 더 보기
-            </Link>
+          {page.events.reasonCode === 'ADMIN_CURSOR_INVALID' ? (
+            <section className="scope-boundary" role="alert">
+              <p className="eyebrow">FAIL CLOSED</p>
+              <h2>유효하지 않은 타임라인 커서입니다.</h2>
+              <p>검색 결과에서 제공된 페이지 링크를 다시 사용해 주세요.</p>
+              <code>ADMIN_CURSOR_INVALID</code>
+            </section>
+          ) : (
+            <>
+              <ol className="timeline-list">
+                {page.events.items.map((event) => (
+                  <li key={event.eventId}>
+                    <div className="timeline-marker" aria-hidden="true" />
+                    <article>
+                      <div className="timeline-heading">
+                        <div>
+                          <p className="eyebrow">{event.category}</p>
+                          <h2>{event.eventCode}</h2>
+                        </div>
+                        <time dateTime={event.occurredAt}>{formatTimestamp(event.occurredAt)}</time>
+                      </div>
+                      <dl>
+                        <div>
+                          <dt>상태 코드</dt>
+                          <dd>{event.stateCode ?? '—'}</dd>
+                        </div>
+                        <div>
+                          <dt>사유 코드</dt>
+                          <dd>{event.reasonCode ?? '—'}</dd>
+                        </div>
+                        <div>
+                          <dt>버전</dt>
+                          <dd>{event.version === null ? '—' : `v${event.version}`}</dd>
+                        </div>
+                      </dl>
+                    </article>
+                  </li>
+                ))}
+              </ol>
+              {page.events.nextCursor === null ? null : (
+                <Link
+                  className="button-link pagination-link"
+                  href={`/participants/${participantId}?campaignId=${encodeURIComponent(campaignId)}&cursor=${encodeURIComponent(page.events.nextCursor)}`}
+                >
+                  이전 이벤트 더 보기
+                </Link>
+              )}
+            </>
           )}
         </>
       )}

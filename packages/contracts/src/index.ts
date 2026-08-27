@@ -72,3 +72,31 @@ export type {
   AiResult,
   AiProtectedStateBoundary,
 } from './ai.js'
+
+export {
+  OCR_TASK,
+  OCR_SCHEMA_VERSION,
+  OCR_EVIDENCE_FIELDS,
+  OCR_EXTRACTION_EVIDENCE_KEYS,
+  OCR_RESERVATION_STATUSES,
+  OCR_VISIBLE_BOOKING_METHODS,
+  OCR_IMAGE_QUALITY_STATUSES,
+  OCR_MEDIA_TYPES,
+  OCR_RESULT_REASON_CODES,
+  OCR_PROTECTED_STATE_BOUNDARY,
+  ocrRequestSchema,
+  ocrExtractionEvidenceSchema,
+  ocrResultSchema,
+} from './ocr.js'
+export type {
+  OcrEvidenceFieldName,
+  OcrReservationStatus,
+  OcrVisibleBookingMethod,
+  OcrImageQualityStatus,
+  OcrMediaType,
+  OcrResultReasonCode,
+  OcrRequest,
+  OcrExtractionEvidence,
+  OcrResult,
+  OcrProtectedStateBoundary,
+} from './ocr.js'
