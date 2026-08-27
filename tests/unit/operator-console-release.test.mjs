@@ -6,6 +6,10 @@ import {
   PRD_TIMELINE_CATEGORIES,
 } from '../../apps/admin/src/lib/console-contract.ts'
 
+const { CONSOLE_FIXTURE_GATEWAY, CONSOLE_SCREEN_READ_ACTIONS, FIXTURE_CAMPAIGN_ID, FIXTURE_PARTICIPANT_ID } =
+  await import('../../apps/admin/src/lib/console-gateway.ts')
+const { OPERATOR_CONSOLE_TEST_FIXTURE_SESSION } = await import('../../apps/admin/src/lib/operator-session-contract.ts')
+
 const action = (overrides = {}) => ({
   scenarioId: 'fixture.command',
   authorizationAction: 'failed_jobs.retry',
@@ -34,6 +38,58 @@ describe('T112-T116 operator console safety contracts', () => {
     expect(new Set(PRD_TIMELINE_CATEGORIES).size).toBe(16)
     expect(PRD_TIMELINE_CATEGORIES).toContain('ocr_ai')
     expect(PRD_TIMELINE_CATEGORIES).toContain('privacy_request')
+  })
+
+  test('maps every console screen to a canonical read action authorized by the fixture session', () => {
+    expect(Object.keys(CONSOLE_SCREEN_READ_ACTIONS)).toHaveLength(18)
+    expect(new Set(Object.keys(CONSOLE_SCREEN_READ_ACTIONS)).size).toBe(18)
+    for (const actionId of Object.values(CONSOLE_SCREEN_READ_ACTIONS))
+      expect(OPERATOR_CONSOLE_TEST_FIXTURE_SESSION.authorizedActions).toContain(actionId)
+  })
+
+  test('rechecks canonical action and campaign scope inside every fixture gateway read', async () => {
+    const searchOnlySession = {
+      ...OPERATOR_CONSOLE_TEST_FIXTURE_SESSION,
+      authorizedActions: ['participants.search'],
+    }
+    await expect(CONSOLE_FIXTURE_GATEWAY.overview(searchOnlySession, FIXTURE_CAMPAIGN_ID)).resolves.toBeNull()
+    await expect(
+      CONSOLE_FIXTURE_GATEWAY.screen(searchOnlySession, '/human-review', FIXTURE_CAMPAIGN_ID),
+    ).resolves.toBeNull()
+    await expect(CONSOLE_FIXTURE_GATEWAY.campaignEditor(searchOnlySession, FIXTURE_CAMPAIGN_ID)).resolves.toBeNull()
+    await expect(
+      CONSOLE_FIXTURE_GATEWAY.participantTimeline(searchOnlySession, {
+        campaignId: FIXTURE_CAMPAIGN_ID,
+        participantId: FIXTURE_PARTICIPANT_ID,
+      }),
+    ).resolves.toBeNull()
+    await expect(
+      CONSOLE_FIXTURE_GATEWAY.searchParticipants(searchOnlySession, {
+        campaignId: '10000000-0000-4000-8000-000000000099',
+        query: '블로거',
+      }),
+    ).resolves.toBeNull()
+  })
+
+  test('fails closed on participant and timeline cursors that the fixture did not issue', async () => {
+    await expect(
+      CONSOLE_FIXTURE_GATEWAY.searchParticipants(OPERATOR_CONSOLE_TEST_FIXTURE_SESSION, {
+        campaignId: FIXTURE_CAMPAIGN_ID,
+        query: '블로거',
+        cursor: 'not-issued',
+      }),
+    ).resolves.toEqual(expect.objectContaining({ items: [], reasonCode: 'ADMIN_CURSOR_INVALID' }))
+    await expect(
+      CONSOLE_FIXTURE_GATEWAY.participantTimeline(OPERATOR_CONSOLE_TEST_FIXTURE_SESSION, {
+        campaignId: FIXTURE_CAMPAIGN_ID,
+        participantId: FIXTURE_PARTICIPANT_ID,
+        cursor: 'fixture-timeline-page-999',
+      }),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        events: expect.objectContaining({ items: [], reasonCode: 'ADMIN_CURSOR_INVALID' }),
+      }),
+    )
   })
 
   test('requires a reason and an exact confirmation phrase for destructive actions', () => {
@@ -166,6 +222,31 @@ describe('T112-T116 operator console safety contracts', () => {
     )
     expect(evaluateConsoleEditorDraft(editor, { startsOn: '2026-02-30', endsOn: '2026-09-30' })).toEqual(
       expect.objectContaining({ valid: false, issueCodes: ['startsOn:DATE_INVALID'] }),
+    )
+  })
+
+  test('attaches the real campaign command states and date-order constraint to the shipped editor', async () => {
+    const screen = await CONSOLE_FIXTURE_GATEWAY.campaignEditor(
+      OPERATOR_CONSOLE_TEST_FIXTURE_SESSION,
+      FIXTURE_CAMPAIGN_ID,
+    )
+    expect(screen).not.toBeNull()
+    const editor = screen.editor
+    expect(editor).not.toBeNull()
+    expect(
+      editor.fields.find((field) => field.name === 'campaignStatus')?.options.map((option) => option.value),
+    ).toEqual(['draft', 'active', 'paused', 'closed'])
+    expect(editor.constraints).toEqual([
+      {
+        kind: 'date_order',
+        startField: 'startsOn',
+        endField: 'endsOn',
+        issueCode: 'campaignPeriod:END_NOT_AFTER_START',
+      },
+    ])
+    const values = Object.fromEntries(editor.fields.map((field) => [field.name, field.defaultValue]))
+    expect(evaluateConsoleEditorDraft(editor, { ...values, startsOn: '2026-09-30', endsOn: '2026-09-30' })).toEqual(
+      expect.objectContaining({ valid: false, issueCodes: ['campaignPeriod:END_NOT_AFTER_START'] }),
     )
   })
 })

@@ -43,6 +43,7 @@
     "test:operator-e2e": "pnpm --filter @helloreview/admin build && node tools/operator-console-e2e.mjs",
     "test:coverage": "pnpm run build:fresh && vitest run --coverage",
     "eval:ai": "pnpm run build:fresh && node tools/evaluate-ai.mjs",
+    "eval:ocr": "pnpm run build:fresh && node tools/evaluate-ocr.mjs",
     "test:watch": "vitest",
     "verify": "pnpm run typecheck && pnpm run lint && pnpm run test:unit && pnpm run test:transitions"
   },

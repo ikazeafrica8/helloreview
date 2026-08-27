@@ -187,7 +187,8 @@ pnpm test:unit                    Vitest, no I/O, no containers
 pnpm test:transitions             Legal and illegal state transitions (§14.5, §14.6)
 pnpm test:integration             Testcontainers: real Postgres + Redis, fake providers
 pnpm test:security                Authorization, webhook spoofing, replay, PII-leak checks (§26.1)
-pnpm test:e2e                     Playwright against the operator console
+pnpm test:e2e                     Vitest backend acceptance journeys with real test services
+pnpm test:operator-e2e            Playwright against built fixture and production-locked consoles
 pnpm test:coverage                Coverage report with thresholds enforced
 pnpm test:watch                   Vitest watch mode
 
@@ -420,15 +421,16 @@ security, and e2e suites live under `tests/`. Evaluation datasets live under `ev
 
 ### Levels
 
-| Level       | Runs against                                    | Covers                                                                                                             | Command                 |
-| ----------- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ | ----------------------- |
-| Unit        | Nothing — pure functions                        | Rule evaluation, normalization, dedupe-key construction, transition guards, date/time parsing (`§26.1`)            | `pnpm test:unit`        |
-| Transition  | In-memory workflow store                        | Every `§14.5` legal transition; every `§14.6` illegal transition rejected; stale events; corrections; cancellation | `pnpm test:transitions` |
-| Integration | Testcontainers Postgres + Redis, fake providers | Repositories, unique constraints, outbox, inbox idempotency, queue retry and dead-letter                           | `pnpm test:integration` |
-| Contract    | Fake providers                                  | `§18` event envelopes in both directions; adapter conformance — real and fake adapters run the identical suite     | `pnpm test:integration` |
-| Security    | Full app, fake providers                        | Authorization, cross-participant access, webhook spoofing and replay, file attacks, PII in logs                    | `pnpm test:security`    |
-| E2E         | Full stack, fake providers                      | Operator workflows from `§20.1`                                                                                    | `pnpm test:e2e`         |
-| Evaluation  | Real or recorded model responses                | Korean intents, entities, consent, dates, prompt injection, OCR field accuracy                                     | `pnpm eval:ai`          |
+| Level        | Runs against                                    | Covers                                                                                                             | Command                  |
+| ------------ | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ | ------------------------ |
+| Unit         | Nothing — pure functions                        | Rule evaluation, normalization, dedupe-key construction, transition guards, date/time parsing (`§26.1`)            | `pnpm test:unit`         |
+| Transition   | In-memory workflow store                        | Every `§14.5` legal transition; every `§14.6` illegal transition rejected; stale events; corrections; cancellation | `pnpm test:transitions`  |
+| Integration  | Testcontainers Postgres + Redis, fake providers | Repositories, unique constraints, outbox, inbox idempotency, queue retry and dead-letter                           | `pnpm test:integration`  |
+| Contract     | Fake providers                                  | `§18` event envelopes in both directions; adapter conformance — real and fake adapters run the identical suite     | `pnpm test:integration`  |
+| Security     | Full app, fake providers                        | Authorization, cross-participant access, webhook spoofing and replay, file attacks, PII in logs                    | `pnpm test:security`     |
+| Backend E2E  | Full backend stack, fake providers              | Acceptance journeys and protected-state invariants                                                                 | `pnpm test:e2e`          |
+| Operator E2E | Built Next.js console, fixture and locked lanes | Operator workflows and accessibility from `§20.1`                                                                  | `pnpm test:operator-e2e` |
+| Evaluation   | Real or recorded model responses                | Korean intents, entities, consent, dates, prompt injection, OCR field accuracy                                     | `pnpm eval:ai`           |
 
 ### Non-negotiable test requirements
 

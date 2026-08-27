@@ -14,6 +14,13 @@ A shipping-address reveal requires both of these versioned decisions:
 2. `sensitive-access-policy-v1` must allow exactly one `shipping_address.reveal` record for the
    supplied reason code in the current environment.
 
+Commands submit only a policy-version reference. `SensitiveAccessAdminService` resolves the current
+document through the injected trusted `SensitiveAccessPolicyProvider` and then validates it; a
+caller cannot submit or replace the policy object. The default module provider is production-locked
+and returns `SENSITIVE_ACCESS_POLICY_PROVIDER_LOCKED` until an approved durable policy store is
+implemented. The deterministic provider accepts test fixtures only and rejects stale versions or
+environment mismatches.
+
 The sensitive-access parser rejects unknown fields, missing/duplicate operations, unapproved
 production fixtures, missing dual approval references, unknown reason codes, and record counts
 above the operation limit. The included policy is deterministic test data only and cannot parse as
@@ -52,6 +59,7 @@ PostgreSQL instance and proves:
 - rejection of a stale authorization version;
 - masked participant search against real SQL;
 - rejected and successful reveal audit evidence;
+- rejection of caller-supplied or stale sensitive-policy state;
 - stale failed-job status rejection; and
 - one immutable retry receipt across an identical replay.
 

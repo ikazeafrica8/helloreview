@@ -15,9 +15,10 @@ import these Nest services or connect to the database. An authenticated HTTP ada
 the locked implementation only after the identity, RBAC, campaign-scope, and transport decisions
 are approved.
 
-Server Actions re-check the provider-neutral session, canonical action authorization, and target
-campaign scope before invoking the gateway. Layout rendering is presentation gating only and is not
-an authorization boundary.
+Every Server Component read and Server Action re-checks the provider-neutral session, canonical
+action authorization, and target campaign scope before invoking the gateway. The gateway repeats
+that check using the explicitly supplied verified session. Layout rendering is presentation gating
+only and is not an authorization boundary.
 
 Canonical administrative action IDs now live in `@helloreview/contracts`. Console scenario IDs
 remain separate, so stale and preview fixtures cannot silently become authorization actions.
@@ -75,3 +76,8 @@ with Supabase's current API security model.
 The repository RBAC matrix is a deterministic test fixture. Production use remains fail-closed
 until the company approves the RBAC/campaign-scope matrix and the selected authentication adapter
 can issue current, verified principals. No sensitive reveal or export is added by T105-T108.
+
+T109 sensitive operations accept only a policy-version reference. A trusted injected provider must
+resolve the current policy; request data cannot supply a policy document. The shipped provider is
+locked, while the deterministic test provider is test-only, environment-bound, and rejects stale
+versions. No real reveal/export policy is configured by the repository.

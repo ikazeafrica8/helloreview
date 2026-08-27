@@ -31,10 +31,13 @@ pnpm db:check
 pnpm test:unit
 pnpm test:transitions
 pnpm services:up
+pnpm db:verify-audit-protection
 pnpm test:integration
 pnpm test:security
 pnpm test:e2e
+pnpm test:coverage
 pnpm eval:ai
+pnpm test:operator-e2e
 pnpm services:down
 ```
 

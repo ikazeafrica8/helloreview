@@ -49,8 +49,17 @@ test('masked search keeps lifecycle status and blogger evidence separate, then s
   expect(await page.locator('body').innerText()).not.toMatch(/01[016789]-?\d{3,4}-?\d{4}/)
 
   await page.goto(`/participants/${PARTICIPANT_ID}?campaignId=10000000-0000-4000-8000-000000000099`)
-  await expect(page.getByRole('heading', { level: 2, name: '캠페인 범위가 없거나 일치하지 않습니다.' })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1, name: '요청한 운영 범위에 대한 권한이 없습니다' })).toBeVisible()
+  await expect(page.getByText('OPERATOR_CONSOLE_READ_DENIED')).toBeVisible()
   await expect(page.getByText('***-****-0042')).toHaveCount(0)
+
+  await page.goto(`/participants/${PARTICIPANT_ID}?campaignId=${CAMPAIGN_ID}&cursor=not-issued`)
+  await expect(page.getByRole('heading', { level: 2, name: '유효하지 않은 타임라인 커서입니다.' })).toBeVisible()
+  await expect(page.getByText('ADMIN_CURSOR_INVALID')).toBeVisible()
+
+  await page.goto(`/participants/${PARTICIPANT_ID}?campaignId=${CAMPAIGN_ID}&cursor=first&cursor=second`)
+  await expect(page.getByRole('heading', { level: 2, name: '유효하지 않은 타임라인 커서입니다.' })).toBeVisible()
+  await expect(page.getByText('ADMIN_CURSOR_INVALID')).toBeVisible()
 
   await page.goto('/participants')
   await page.getByLabel('검색어').fill('블로거')
@@ -59,6 +68,25 @@ test('masked search keeps lifecycle status and blogger evidence separate, then s
   await expect(page.getByText('블로거 B**')).toBeVisible()
   await page.getByRole('link', { name: '전체 타임라인 보기' }).click()
   await expect(page.getByRole('heading', { level: 2, name: '블로거 B** · ***-****-1188' })).toBeVisible()
+
+  await page.goto('/participants')
+  await page.getByLabel('검색어').fill('블로거')
+  await page.getByRole('button', { name: '마스킹 검색' }).click()
+  await expect(page.getByRole('button', { name: '다음 결과' })).toBeVisible()
+  await page.evaluate(`(() => {
+    const form = document.querySelector('form[role="search"]')
+    const button = document.querySelector('button[name="cursor"]')
+    if (!(form instanceof HTMLFormElement) || !(button instanceof HTMLButtonElement))
+      throw new Error('search pagination controls missing')
+    const duplicate = document.createElement('input')
+    duplicate.type = 'hidden'
+    duplicate.name = 'cursor'
+    duplicate.value = 'duplicate-cursor'
+    form.append(duplicate)
+    button.click()
+  })()`)
+  await expect(page.getByText('ADMIN_CURSOR_INVALID')).toBeVisible()
+  await expect(page.getByText('블로거 B**')).toHaveCount(0)
 
   const repeatedQueryResponse = await page.goto('/participants?query=a&query=b')
   expect(repeatedQueryResponse?.status()).toBe(200)
@@ -94,6 +122,13 @@ test('T114 editors accept fixture payloads and return deterministic no-write pre
   )
   await page.getByLabel('일반 전일 방문자 최소값').fill('1300')
   await expect(page.getByRole('status').filter({ hasText: 'FIXTURE_EDITOR_PREVIEW_VALID' })).toHaveCount(0)
+
+  await page.goto(`/campaigns/${CAMPAIGN_ID}`)
+  await expect(page.getByLabel('요청 상태').locator('option')).toHaveText(['초안', '활성', '일시 중지', '종료'])
+  await page.getByLabel('시작일').fill('2026-09-30')
+  await page.getByLabel('종료일').fill('2026-09-30')
+  await page.getByRole('button', { name: 'fixture 초안 검증' }).click()
+  await expect(page.getByText('campaignPeriod:END_NOT_AFTER_START')).toBeVisible()
 })
 
 test('keyboard skip navigation and responsive navigation remain operable', async ({ page }) => {

@@ -6,6 +6,7 @@ import { withPostgres } from '../../packages/testing/dist/index.js'
 import {
   ADMIN_RBAC_TEST_FIXTURE_POLICY,
   AdminAuthorizationDeniedError,
+  DeterministicSensitiveAccessPolicyProvider,
   OperationsAdminService,
   ParticipantAdminQueryService,
   SENSITIVE_ACCESS_TEST_FIXTURE_POLICY,
@@ -181,14 +182,18 @@ describe('T110 administrative authorization end to end', () => {
         const logger = { debug() {}, info() {}, warn() {}, error() {}, fatal() {} }
         const audit = new AuditLogService(pool, logger)
         const shipping = new ShippingService(pool, encryptionKey, {})
-        const sensitive = new SensitiveAccessAdminService(shipping, audit)
+        const sensitive = new SensitiveAccessAdminService(
+          shipping,
+          audit,
+          new DeterministicSensitiveAccessPolicyProvider(SENSITIVE_ACCESS_TEST_FIXTURE_POLICY),
+        )
         await expect(
           sensitive.revealShippingAddress(scopedCs, {
             workflowId: ids.workflowId,
             participantId: ids.participantId,
             reasonCode: 'FULFILLMENT',
             occurredAt,
-            sensitiveAccessPolicy: SENSITIVE_ACCESS_TEST_FIXTURE_POLICY,
+            sensitiveAccessPolicyVersion: SENSITIVE_ACCESS_TEST_FIXTURE_POLICY.policyVersion,
           }),
         ).rejects.toBeInstanceOf(AdminAuthorizationDeniedError)
         const revealed = await sensitive.revealShippingAddress(
@@ -202,7 +207,7 @@ describe('T110 administrative authorization end to end', () => {
             participantId: ids.participantId,
             reasonCode: 'FULFILLMENT',
             occurredAt,
-            sensitiveAccessPolicy: SENSITIVE_ACCESS_TEST_FIXTURE_POLICY,
+            sensitiveAccessPolicyVersion: SENSITIVE_ACCESS_TEST_FIXTURE_POLICY.policyVersion,
           },
         )
         expect(revealed).toEqual(address)

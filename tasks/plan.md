@@ -1,14 +1,14 @@
 # Implementation Plan: HelloReview Reviewer Campaign Automation Platform
 
-| Field          | Value                                                                                                                         |
-| -------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| Plan version   | 1.1                                                                                                                           |
-| Status         | Milestones 1–2 plus Milestone 3 T88–T99 and T103–T108 complete; policy approvals and remaining operations UI/API tasks remain |
-| Spec           | [SPEC.md](../SPEC.md) (capability map in §3)                                                                                  |
-| Requirements   | [PRD v1.0](../HelloReview%20Reviewer%20Campaign%20Automation%20Platform%20—%20Product%20Requirements%20Document.md)           |
-| Task lists     | [Milestone 1](todo.md) · [Milestone 2](milestone-2.md) · [Milestone 3](milestone-3.md)                                        |
-| Detailed scope | Milestone 1: 56 tasks; Milestone 2: 31 tasks; Milestone 3: 30 tasks                                                           |
-| Outlined scope | Milestone 4, broken down at its checkpoint                                                                                    |
+| Field          | Value                                                                                                                                    |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Plan version   | 1.1                                                                                                                                      |
+| Status         | Milestones 1–2 plus Milestone 3 T88–T99 and T103–T117 complete; T100–T102 blocked; Milestone 4 T118–T123 complete and T124–T132 proposed |
+| Spec           | [SPEC.md](../SPEC.md) (capability map in §3)                                                                                             |
+| Requirements   | [PRD v1.0](../HelloReview%20Reviewer%20Campaign%20Automation%20Platform%20—%20Product%20Requirements%20Document.md)                      |
+| Task lists     | [Milestone 1](todo.md) · [Milestone 2](milestone-2.md) · [Milestone 3](milestone-3.md) · [Milestone 4](milestone-4.md)                   |
+| Detailed scope | Milestone 1: 56 tasks; Milestone 2: 31 tasks; Milestone 3: 30 tasks; Milestone 4: 15 approval-gated tasks                                |
+| Outlined scope | No implementation beyond the approved PRD and capability map                                                                             |
 
 ---
 
@@ -33,10 +33,11 @@ against the real spine.
 
 ## Scope of this plan
 
-**Milestones 1–3 are broken down.** Milestone 2 was expanded at Checkpoint E after the spine's real
-shape was proven, and Milestone 3 was expanded at Checkpoint F after the participant-flow slices
-were verified. Milestone 4 remains an outline and gets its task breakdown at the preceding
-checkpoint.
+**Milestones 1–4 are broken down.** Milestone 2 was expanded at Checkpoint E after the spine's real
+shape was proven, Milestone 3 was expanded at Checkpoint F after the participant-flow slices were
+verified, and Milestone 4 was expanded at Checkpoint G. T119–T123 were explicitly approved as an
+engineering-only OCR boundary and are complete. T124–T132 remain proposals: each named readiness,
+provider, persistence, production-data, legal, and automation approval remains binding.
 
 ---
 
@@ -153,9 +154,14 @@ parsing. Maps to PRD rollout phases 2–4.
 makes the platform operable — until it lands, everything above is only reachable through tests.
 Maps to PRD rollout phases 1 and 3.
 
-**Milestone 4 — Later Phases.** `ocr-extraction` unlocking Visit B and full Visit C (**AC-07**),
-`blog-score` unlocking shadow-mode auto-selection, `analytics`. Each is separately gated on vendor,
-accuracy, or legal approval per PRD `§27` phases 5–8.
+**Milestone 4 — Later Phases.** Detailed as T118–T132 in
+[tasks/milestone-4.md](milestone-4.md): `ocr-extraction` unlocking Visit B and full Visit C
+(**AC-07**), approved `blog-score` evidence preceding any controlled auto-selection, and
+`analytics`. T118–T123 now provide the strict `reservation-image-v1` contract, provider-neutral fake,
+safe in-memory orchestration, structural evaluator, synthetic scorecard, and prompt-injection tests.
+They do not enable a real provider, persistence, production images, readiness changes, retries, or
+workflow automation. T124 onward remains separately gated per PRD `§27` phases 5–8, and the full
+AC-07 journey remains incomplete.
 
 ---
 

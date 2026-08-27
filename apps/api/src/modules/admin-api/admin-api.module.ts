@@ -10,6 +10,10 @@ import { ConfigurationAdminCommandService } from './configuration-command.servic
 import { OperationsAdminService } from './operations-admin.service.js'
 import { ParticipantAdminQueryService } from './participant-query.service.js'
 import { SensitiveAccessAdminService } from './sensitive-access-admin.service.js'
+import {
+  ProductionLockedSensitiveAccessPolicyProvider,
+  SENSITIVE_ACCESS_POLICY_PROVIDER,
+} from './sensitive-access-policy-provider.js'
 
 @Module({
   imports: [
@@ -25,6 +29,11 @@ import { SensitiveAccessAdminService } from './sensitive-access-admin.service.js
     AdminCommandService,
     ConfigurationAdminCommandService,
     OperationsAdminService,
+    ProductionLockedSensitiveAccessPolicyProvider,
+    {
+      provide: SENSITIVE_ACCESS_POLICY_PROVIDER,
+      useExisting: ProductionLockedSensitiveAccessPolicyProvider,
+    },
     SensitiveAccessAdminService,
   ],
   exports: [

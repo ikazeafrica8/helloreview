@@ -38,6 +38,9 @@ export const OPERATOR_NAVIGATION = [
 
 export const OPERATOR_ROUTES = OPERATOR_NAVIGATION.flatMap((section) => section.items.map((item) => item.href))
 
+export const operatorRouteLabel = (route: string): string | undefined =>
+  OPERATOR_NAVIGATION.flatMap((section) => section.items.map((item) => item)).find((item) => item.href === route)?.label
+
 /** The exact PRD §20.1 page inventory. Dynamic detail pages are separate from sidebar destinations. */
 export const PRD_REQUIRED_ROUTE_PATTERNS = [
   '/overview',
