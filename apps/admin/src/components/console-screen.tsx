@@ -4,8 +4,13 @@ import { GovernedActionPanel } from './governed-action-panel'
 import { ProductionBoundaryBanner } from './production-boundary-banner'
 import { StatusBadge } from './status-badge'
 import type { ConsoleScreen as ConsoleScreenModel } from '@/lib/console-contract'
+import type { OperatorConsoleSession } from '@/lib/operator-session-contract'
 
-export function ConsoleScreen({ screen }: Readonly<{ screen: ConsoleScreenModel }>) {
+export function ConsoleScreen({
+  screen,
+  session,
+  campaignId,
+}: Readonly<{ screen: ConsoleScreenModel; session: OperatorConsoleSession; campaignId: string }>) {
   return (
     <main id="main-content" className="page-content" tabIndex={-1}>
       <div className="page-heading">
@@ -43,7 +48,7 @@ export function ConsoleScreen({ screen }: Readonly<{ screen: ConsoleScreenModel 
           </div>
           <div className="action-grid">
             {screen.actions.map((action) => (
-              <GovernedActionPanel key={action.scenarioId} action={action} />
+              <GovernedActionPanel key={action.scenarioId} action={action} session={session} campaignId={campaignId} />
             ))}
           </div>
         </section>

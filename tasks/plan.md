@@ -1,14 +1,14 @@
 # Implementation Plan: HelloReview Reviewer Campaign Automation Platform
 
-| Field          | Value                                                                                                                                    |
-| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| Plan version   | 1.1                                                                                                                                      |
-| Status         | Milestones 1–2 plus Milestone 3 T88–T99 and T103–T117 complete; T100–T102 blocked; Milestone 4 T118–T123 complete and T124–T132 proposed |
-| Spec           | [SPEC.md](../SPEC.md) (capability map in §3)                                                                                             |
-| Requirements   | [PRD v1.0](../HelloReview%20Reviewer%20Campaign%20Automation%20Platform%20—%20Product%20Requirements%20Document.md)                      |
-| Task lists     | [Milestone 1](todo.md) · [Milestone 2](milestone-2.md) · [Milestone 3](milestone-3.md) · [Milestone 4](milestone-4.md)                   |
-| Detailed scope | Milestone 1: 56 tasks; Milestone 2: 31 tasks; Milestone 3: 30 tasks; Milestone 4: 15 approval-gated tasks                                |
-| Outlined scope | No implementation beyond the approved PRD and capability map                                                                             |
+| Field          | Value                                                                                                                                                                                                                                               |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Plan version   | 1.2                                                                                                                                                                                                                                                 |
+| Status         | Milestones 1–2 plus Milestone 3 T88–T99 and T103–T117 complete; T100–T102 blocked; T118–T123 complete; T124–T152 proposed or externally blocked                                                                                                     |
+| Spec           | [SPEC.md](../SPEC.md) (capability map in §3)                                                                                                                                                                                                        |
+| Requirements   | [PRD v1.0](../HelloReview%20Reviewer%20Campaign%20Automation%20Platform%20—%20Product%20Requirements%20Document.md)                                                                                                                                 |
+| Task lists     | [Milestone 1](todo.md) · [Milestone 2](milestone-2.md) · [Milestone 3](milestone-3.md) · [Milestone 4](milestone-4.md) · [Requirements gap closure](requirements-gap-todo.md) · [Supplied process crosswalk](../docs/supplied-process-crosswalk.md) |
+| Detailed scope | Milestone 1: 56 tasks; Milestone 2: 31 tasks; Milestone 3: 30 tasks; Milestone 4: 15 tasks; requirements gap closure: 20 proposed tasks                                                                                                             |
+| Outlined scope | No implementation beyond the approved PRD and capability map                                                                                                                                                                                        |
 
 ---
 
@@ -139,7 +139,7 @@ versioning) to Milestone 2, and AC-07 (screenshot prompt injection) to Milestone
 
 ---
 
-## Milestones 2–4
+## Milestones 2–5
 
 **Milestone 2 — Participant Flows.** Detailed as T57–T87 in
 [tasks/milestone-2.md](milestone-2.md): `attachments`, `ai-orchestration`, `selection`
@@ -162,6 +162,25 @@ safe in-memory orchestration, structural evaluator, synthetic scorecard, and pro
 They do not enable a real provider, persistence, production images, readiness changes, retries, or
 workflow automation. T124 onward remains separately gated per PRD `§27` phases 5–8, and the full
 AC-07 journey remains incomplete.
+
+**Milestone 5 — Supplied Requirements Gap Closure.** The 2026-08-27
+[requirements implementation audit](../docs/requirements-implementation-audit-2026-08-27.md)
+confirmed that the PRD substantially captures the supplied Korean operating process, while the
+runtime still lacks the dispatcher, composed direct/secret-comment journeys, production participant
+surfaces, official provider integrations, and production admin transport needed to operate it end to
+end. T133–T152 in [requirements-gap-todo.md](requirements-gap-todo.md) close those non-duplicative
+gaps. T133 is complete: the verified correctness and hardening defects are fixed with regression
+tests, without a migration, provider, readiness change, or automation activation. T134 is complete:
+the product owner approved the §3 capability map, SPEC.md §9's per-module-spec criterion was revised
+to require a module spec only where a module carries its own approval boundary, and the supplied
+process now has a stable crosswalk in
+[docs/supplied-process-crosswalk.md](../docs/supplied-process-crosswalk.md). T135 is complete: the
+approved conversation, inbound-message, attachment-linkage, and secret-comment evidence records
+exist with immutable history and no disclosure path for participant text. T136 is complete: journey
+configuration and per-campaign sender ownership are versioned, the approved visitor metric period is
+`website_average_daily`, and activation refuses rather than guessing when configuration is missing.
+T137–T152 remain proposed or externally blocked; this plan does not approve migrations, providers, real data,
+readiness changes, or production activation.
 
 ---
 

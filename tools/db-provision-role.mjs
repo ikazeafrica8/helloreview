@@ -132,6 +132,11 @@ try {
   )
   await client.query(
     `REVOKE UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER
+       ON conversation_events, inbound_messages, secret_comment_evidence_versions
+       FROM ${PRIVILEGE_GROUP}`,
+  )
+  await client.query(
+    `REVOKE UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER
        ON selection_recommendations, selection_manual_decisions, selection_shadow_comparisons,
           shipping_addresses, shipping_address_reveals,
           payback_consent_aggregates, payback_consent_versions, payback_consent_requests,
@@ -194,6 +199,9 @@ try {
   }
 
   const appendOnlyHistoryTables = [
+    'conversation_events',
+    'inbound_messages',
+    'secret_comment_evidence_versions',
     'attachments',
     'attachment_security_events',
     'attachment_lifecycle_events',

@@ -205,3 +205,98 @@ describe('T109 authorized reveal and fail-closed export commands', () => {
     expect(locked.shipping.reveal).not.toHaveBeenCalled()
   })
 })
+
+describe('T133 rejected sensitive-command audit evidence', () => {
+  const setup = () => {
+    const shipping = { reveal: vi.fn() }
+    const auditEntries = []
+    const audit = {
+      record: vi.fn(async (entry) => {
+        auditEntries.push(entry)
+      }),
+    }
+    return {
+      service: new SensitiveAccessAdminService(
+        shipping,
+        audit,
+        new DeterministicSensitiveAccessPolicyProvider(SENSITIVE_ACCESS_TEST_FIXTURE_POLICY),
+      ),
+      shipping,
+      auditEntries,
+    }
+  }
+
+  test.each([
+    ['a raw Korean mobile number', '01012345678'],
+    ['an email address', 'operator@example.com'],
+    ['a URL', 'https://example.com/operator/9'],
+  ])('never writes %s from an unverified principal into the rejection audit', async (_label, unsafeReference) => {
+    const { service, shipping, auditEntries } = setup()
+    await expect(
+      service.revealShippingAddress(
+        invocation({ principal: { principalReference: unsafeReference } }),
+        revealCommand(),
+      ),
+    ).rejects.toBeTruthy()
+    expect(shipping.reveal).not.toHaveBeenCalled()
+    expect(auditEntries).toHaveLength(1)
+    expect(auditEntries[0].actorId).toBe('operator:unverified-principal')
+    expect(JSON.stringify(auditEntries)).not.toContain(unsafeReference)
+  })
+
+  test('withholds an unverified authorization policy version instead of trusting the request', async () => {
+    const { service, auditEntries } = setup()
+    await expect(
+      service.revealShippingAddress(
+        invocation({
+          invocation: { policy: { ...ADMIN_RBAC_TEST_FIXTURE_POLICY, policyVersion: 'NOT A POLICY VERSION' } },
+        }),
+        revealCommand(),
+      ),
+    ).rejects.toBeTruthy()
+    expect(auditEntries[0].detail.authorizationPolicyVersion).toBeNull()
+    expect(JSON.stringify(auditEntries)).not.toContain('NOT A POLICY VERSION')
+  })
+
+  test('records the validated decision policy version when authorization was evaluated and denied', async () => {
+    const { service, auditEntries } = setup()
+    await expect(
+      service.revealShippingAddress(invocation({ principal: { roles: ['cs_operator'] } }), revealCommand()),
+    ).rejects.toBeInstanceOf(AdminAuthorizationDeniedError)
+    expect(auditEntries[0]).toMatchObject({
+      actorId: 'operator:privacy:109',
+      reason: 'ADMIN_ROLE_NOT_ALLOWED',
+      detail: {
+        operation: 'shipping_address.reveal',
+        authorizationPolicyVersion: ADMIN_RBAC_TEST_FIXTURE_POLICY.policyVersion,
+      },
+    })
+  })
+
+  test('replaces an unsafe rejection target reference with a safe placeholder', async () => {
+    const { service, auditEntries } = setup()
+    await expect(
+      service.revealShippingAddress(
+        invocation({ principal: { roles: ['cs_operator'] } }),
+        revealCommand({ workflowId: 'https://example.com/workflow/1' }),
+      ),
+    ).rejects.toBeInstanceOf(AdminAuthorizationDeniedError)
+    expect(auditEntries[0].targetId).toBe('unverified-target')
+    expect(JSON.stringify(auditEntries)).not.toContain('https://example.com/workflow/1')
+  })
+
+  test('audits the export safe fallback with the validated authorization policy version', async () => {
+    const { service, auditEntries } = setup()
+    await service.requestSensitiveExport(invocation(), {
+      operationReference: 'export:pseudo:133',
+      reasonCode: 'LEGAL_RESPONSE',
+      requestedRecordCount: 3,
+      occurredAt,
+      sensitiveAccessPolicyVersion: SENSITIVE_ACCESS_TEST_FIXTURE_POLICY.policyVersion,
+    })
+    expect(auditEntries[0].detail).toMatchObject({
+      authorizationPolicyVersion: ADMIN_RBAC_TEST_FIXTURE_POLICY.policyVersion,
+      sensitiveAccessPolicyVersion: SENSITIVE_ACCESS_TEST_FIXTURE_POLICY.policyVersion,
+    })
+  })
+})

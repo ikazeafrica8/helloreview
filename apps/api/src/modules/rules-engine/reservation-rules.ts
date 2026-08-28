@@ -58,11 +58,25 @@ export type ReservationRuleSet = Readonly<{
   configuration?: ReservationRuleConfiguration
 }>
 
+/**
+ * ONE definition, used by both the complete-configuration parser and the BUSINESS rule's own
+ * parser. They previously disagreed about `normalizedBranch`: the complete parser accepted an
+ * empty branch while the rule parser required one, so a valid single-location campaign published
+ * without a branch parsed at the top level and then failed the rule as a configuration error.
+ *
+ * An empty branch is the correct representation of a business with no branch: the evidence side
+ * produces `normalizeBusinessName('')` for a participant who named no branch, so an empty
+ * configured branch and an empty submitted branch match, and a branch the configuration does not
+ * name still fails as WRONG_BUSINESS rather than as a configuration error.
+ */
+const businessEntrySchema = z.strictObject({
+  normalizedName: z.string().trim().min(1),
+  normalizedBranch: z.string(),
+})
+
 const completeReservationConfigurationSchema = z.strictObject({
   expectedCampaignId: z.string().trim().min(1),
-  businesses: z
-    .array(z.strictObject({ normalizedName: z.string().trim().min(1), normalizedBranch: z.string() }))
-    .min(1),
+  businesses: z.array(businessEntrySchema).min(1),
   campaignStartsOn: z.iso.date(),
   campaignEndsOn: z.iso.date(),
   allowedIsoWeekdays: z.array(z.number().int().min(1).max(7)).min(1),
@@ -165,14 +179,7 @@ const weekdaysConfig = (value: unknown): readonly number[] | undefined =>
     ? value
     : undefined
 
-const businessConfigurationSchema = z
-  .array(
-    z.object({
-      normalizedName: z.string().trim().min(1),
-      normalizedBranch: z.string().trim().min(1),
-    }),
-  )
-  .min(1)
+const businessConfigurationSchema = z.array(businessEntrySchema).min(1)
 
 const businessConfig = (
   value: unknown,

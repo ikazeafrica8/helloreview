@@ -115,12 +115,12 @@ test('permitted, stale, preview, and policy-denied commands return explicit safe
 test('T114 editors accept fixture payloads and return deterministic no-write previews', async ({ page }) => {
   await page.goto('/selection-rules')
   await expect(page.getByRole('heading', { level: 2, name: '선정 근거 규칙 초안' })).toBeVisible()
-  await page.getByLabel('일반 전일 방문자 최소값').fill('1200')
+  await page.getByLabel('일반 일평균 방문자 최소값').fill('1200')
   await page.getByRole('button', { name: 'fixture 초안 검증' }).click()
   await expect(page.getByRole('status').filter({ hasText: 'FIXTURE_EDITOR_PREVIEW_VALID' })).toContainText(
     '저장되거나 게시된 변경은 없습니다.',
   )
-  await page.getByLabel('일반 전일 방문자 최소값').fill('1300')
+  await page.getByLabel('일반 일평균 방문자 최소값').fill('1300')
   await expect(page.getByRole('status').filter({ hasText: 'FIXTURE_EDITOR_PREVIEW_VALID' })).toHaveCount(0)
 
   await page.goto(`/campaigns/${CAMPAIGN_ID}`)

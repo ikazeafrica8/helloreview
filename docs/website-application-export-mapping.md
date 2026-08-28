@@ -69,7 +69,9 @@ The ranking fields above are source evidence. They are deliberately separate fro
   rule says the blogger is local.
 - The user described visitor thresholds using previous-day visitors, while the source column is
   labelled average daily blog visitors. The importer therefore stores the source-accurate
-  `blog_daily_visitors` value and does not silently relabel it as previous-day traffic.
+  `blog_daily_visitors` value and does not silently relabel it as previous-day traffic. The admin
+  query contract and the operator console name the same value `averageDailyVisitors` and
+  `블로그 일평균 방문자 수`, so no downstream surface reintroduces the previous-day label either.
 
 These preferences are not an automatic rejection or scoring rule yet. Automation needs two explicit
 decisions: which campaign location must match `blogger_region`, and whether the visitor threshold is

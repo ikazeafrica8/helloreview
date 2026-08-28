@@ -64,23 +64,41 @@ idempotency, database write, retry queue, workflow command, or readiness authori
 may be retried only by a later explicit call with the same request content; `retryable: false` means
 nothing schedules an automatic retry.
 
+In-memory idempotency is bounded by an explicit size and age policy
+(`DEFAULT_OCR_IDEMPOTENCY_POLICY`: 1,000 request identities, 15 minutes), because a retained result
+carries participant evidence. A request identity's fingerprint and its retained result share one
+entry and one fixed lifetime, so they are always released together; the lifetime is never extended
+by a replay. After release, replaying the same request identity re-runs the providers instead of
+returning stale evidence.
+
 ## Structural evaluator
 
-The evaluator considers required-field presence, image-quality status, missing/conflicting evidence,
-provider disagreement, suspicious content, and structural policy/provider/schema matching. It does
-not compare confidence against a threshold. Suspiciousness is derived internally from both
-allowlisted free-text evidence fields; callers cannot provide or suppress the signal.
+The evaluator considers required-field presence, unresolved required enum values, image-quality
+status, missing/conflicting evidence, provider disagreement, suspicious content, and structural
+policy/provider/schema matching. It does not compare confidence against a threshold. Suspiciousness
+is derived internally from both allowlisted free-text evidence fields; callers cannot provide or
+suppress the signal.
+
+`reservationStatus` and `visibleBookingMethod` are the two evidence fields whose contract enum
+carries an explicit `unknown` member. That value is schema-valid, so the field never appears in
+`missingFields` and would otherwise be recorded as resolved evidence. When the structural policy
+requires such a field, an `unknown` value is treated as unresolved
+(`OCR_EVIDENCE_REQUIRED_FIELD_UNRESOLVED`) and routed to human review rather than clean shadow
+evidence. The sentinel is only recognised for those enum fields; free text that happens to read
+`unknown` is not a sentinel.
 
 Its outcomes are deliberately non-authoritative:
 
-| Outcome           | Meaning                                                      |
-| ----------------- | ------------------------------------------------------------ |
-| `shadow_evidence` | Structurally acceptable evidence, still owned by an operator |
-| `retry_required`  | Unsafe image quality; a retry is recommended, not scheduled  |
-| `human_review`    | Missing/conflicting/suspicious/mismatched evidence           |
+| Outcome           | Meaning                                                       |
+| ----------------- | ------------------------------------------------------------- |
+| `shadow_evidence` | Structurally acceptable evidence, still owned by an operator  |
+| `retry_required`  | Unsafe image quality; a retry is recommended, not scheduled   |
+| `human_review`    | Missing/unresolved/conflicting/suspicious/mismatched evidence |
 
 Every outcome sets `requiresHumanReview` to true and both deterministic validation and workflow
-progression to false. Missing, invalid, or mismatched policy fails closed to human review.
+progression to false. Missing, invalid, or mismatched policy fails closed to human review. Every
+decision is returned deeply frozen, so a caller cannot widen its reason codes or affected fields
+after the fact.
 
 ## Synthetic evaluation
 

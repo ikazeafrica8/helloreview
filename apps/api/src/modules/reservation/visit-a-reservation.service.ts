@@ -12,6 +12,7 @@ import {
   type ReservationEvidence,
   type ReservationValidation,
 } from '../rules-engine/index.js'
+import { reservationCorrectionVariables, type ReservationCorrectionVariables } from './correction-values.js'
 import {
   ReservationService,
   ReservationServiceError,
@@ -150,11 +151,15 @@ export class VisitAReservationService {
           await this.createReview(tx, input, extraction.reasonCode, extraction.evidence.ambiguities)
           return { route: 'human_review', extraction, recorded }
         }
+        // Extraction never reached deterministic validation, so there is no failed rule and no
+        // normalized evidence. The clarification asks for the date and time again; it deliberately
+        // does not echo the participant's own message back at them.
         const notification = await this.correction(
           tx,
           input,
           RESERVATION_CORRECTION.DATE_TIME_CLARIFICATION,
           `extraction_${input.sourceEventId}`,
+          reservationCorrectionVariables({ failure: null, evidence: null, configuration: undefined }),
         )
         return { route: 'clarification', extraction, recorded, notification }
       }
@@ -221,6 +226,7 @@ export class VisitAReservationService {
         input,
         firstFailure.correction,
         `rule_v${String(firstFailure.ruleVersion)}:${input.sourceEventId}`,
+        reservationCorrectionVariables({ failure: firstFailure, evidence, configuration }),
       )
       return { route: 'correction_required', extraction, recorded, validation, notification }
     })
@@ -325,11 +331,20 @@ export class VisitAReservationService {
     if (result.rows[0] === undefined) throw new ReservationServiceError('VISIT_A_MANUAL_SELECTION_REQUIRED')
   }
 
+  /**
+   * A correction names the failed rule AND what to change.
+   *
+   * `variables` carries the participant-safe Korean submitted and expected values built by
+   * `reservationCorrectionVariables`. The rule evaluation's own `submittedValue` and
+   * `expectedCondition` are engineering evidence - campaign identifiers, state codes, English
+   * condition text - and are never passed through to a participant message.
+   */
   private async correction(
     tx: DbTransaction,
     input: VisitAReservationIntakeInput,
     correctionCode: string,
     contentVersion: string,
+    variables: ReservationCorrectionVariables,
   ): Promise<EnqueuedOutboundIntent> {
     const purpose = composePurpose(MESSAGE_PURPOSES.RESERVATION_CORRECTION, correctionCode)
     return this.intents.enqueueIntent(tx, {
@@ -341,7 +356,7 @@ export class VisitAReservationService {
       templateVersion: input.correctionTemplateVersion,
       contentVersion,
       businessEventVersion: input.sourceEventId,
-      variables: {},
+      variables: { ...variables },
       source: 'automated',
       actorId: input.automationActorId,
       occurredAt: input.occurredAt,

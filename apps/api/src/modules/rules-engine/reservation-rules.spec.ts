@@ -194,3 +194,37 @@ describe('PRD §16.7 reservation validation', () => {
     expect(result.outcome).toBe('pass')
   })
 })
+
+describe('T133 single-location businesses have no branch', () => {
+  const singleLocation: ReservationRuleConfiguration = {
+    ...configuration,
+    businesses: [{ normalizedName: 'hellocafe', normalizedBranch: '' }],
+  }
+  const atSingleLocation: ReservationEvidence = { ...evidence, normalizedBranchName: '' }
+
+  test('is accepted by the complete-configuration parser', () => {
+    expect(parseReservationRuleConfiguration(singleLocation)).toEqual(singleLocation)
+  })
+
+  test('passes the business rule instead of reporting a configuration error', () => {
+    const result = evaluate(atSingleLocation, singleLocation)
+    const business = result.results.find((item) => item.ruleCode === RESERVATION_RULE.BUSINESS)
+    expect(business?.outcome).toBe('pass')
+    expect(result.outcome).toBe('pass')
+  })
+
+  test('still refuses a branch the single-location configuration does not name', () => {
+    const result = evaluate({ ...atSingleLocation, normalizedBranchName: 'gangnam' }, singleLocation)
+    const business = result.results.find((item) => item.ruleCode === RESERVATION_RULE.BUSINESS)
+    expect(business?.outcome).toBe('fail')
+    expect(business?.outcome === 'fail' ? business.correction : null).toBe(RESERVATION_CORRECTION.WRONG_BUSINESS)
+  })
+
+  test('reports a configuration error only when the business entry itself is unusable', () => {
+    const unusable = { ...configuration, businesses: [{ normalizedName: '  ', normalizedBranch: '' }] }
+    const result = evaluate(atSingleLocation, unusable)
+    const business = result.results.find((item) => item.ruleCode === RESERVATION_RULE.BUSINESS)
+    expect(business?.outcome).toBe('configuration_error')
+    expect(parseReservationRuleConfiguration(unusable)).toBeUndefined()
+  })
+})

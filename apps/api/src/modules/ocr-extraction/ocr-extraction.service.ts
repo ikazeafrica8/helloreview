@@ -17,11 +17,32 @@ export class OcrExtractionError extends Error {
   }
 }
 
+/**
+ * How long, and for how many request identities, this service may retain a settled result and its
+ * request fingerprint. Both bounds are mandatory: a size bound alone would still retain a small
+ * number of extraction results - which carry participant evidence - for the process lifetime.
+ */
+export type OcrIdempotencyPolicy = Readonly<{
+  /** Retained request identities. The oldest entry is released first once this is reached. */
+  maximumEntries: number
+  /** Age at which a retained entry is released. Replaying afterwards re-runs the providers. */
+  retentionMs: number
+}>
+
+export const DEFAULT_OCR_IDEMPOTENCY_POLICY: OcrIdempotencyPolicy = Object.freeze({
+  maximumEntries: 1_000,
+  retentionMs: 900_000,
+})
+
 export type OcrExtractionServiceOptions = Readonly<{
   /** Per-provider time budget. A conforming provider must honour the abort signal. */
   providerTimeoutMs?: number
   /** Independent evidence sources, distinct from the ordered primary/fallback chain. */
   comparisonProviders?: readonly OcrProvider[]
+  /** Explicit retention bounds. Omitted fields fall back to DEFAULT_OCR_IDEMPOTENCY_POLICY. */
+  idempotency?: Readonly<Partial<OcrIdempotencyPolicy>>
+  /** Monotonic-enough millisecond clock. Injected so retention is deterministically testable. */
+  clock?: () => number
 }>
 
 type ProviderAttempt =
@@ -35,6 +56,19 @@ type ProviderAttempt =
   | Readonly<{ kind: 'failure'; reasonCode: OcrResultReasonCode }>
 
 type ProviderIdentity = Readonly<{ provider: string; model: string }>
+
+/**
+ * One entry per request identity holds BOTH the fingerprint and the retained result, so the two can
+ * never diverge. A failed attempt clears only `result`, which keeps the request-id/content conflict
+ * check meaningful for the rest of the entry's life while allowing an explicit caller retry.
+ * `expiresAt` is fixed at creation and never extended, so a hot request identity cannot keep its
+ * evidence alive indefinitely.
+ */
+interface IdempotencyEntry {
+  readonly fingerprint: string
+  result: Promise<OcrResult> | null
+  readonly expiresAt: number
+}
 
 const MAX_NODE_TIMER_DELAY_MS = 2_147_483_647
 
@@ -110,18 +144,30 @@ const withTimeout = async (provider: OcrProvider, request: OcrRequest, timeoutMs
  * explicitly separate evidence sources, and coalesces concurrent duplicate requests. Failed
  * attempts are evicted so an explicit caller retry can reuse the same request/job ID; no retry is
  * scheduled here. It owns no repository, workflow command, queue, or readiness decision.
+ *
+ * Retention is bounded by an explicit size and age policy, because a retained result carries
+ * participant evidence. Once an entry is released, a replay of the same request identity re-runs
+ * the providers rather than returning stale evidence, and the identity may be paired with different
+ * content again.
  */
 export class OcrExtractionService {
-  private readonly requests = new Map<string, Promise<OcrResult>>()
-  private readonly fingerprints = new Map<string, string>()
+  /** Insertion-ordered, so the oldest entry is always the first key. */
+  private readonly entries = new Map<string, IdempotencyEntry>()
   private readonly providers: readonly OcrProvider[]
   private readonly providerTimeoutMs: number
   private readonly comparisonProviders: readonly OcrProvider[]
+  private readonly idempotency: OcrIdempotencyPolicy
+  private readonly clock: () => number
 
   constructor(providers: readonly OcrProvider[], options: OcrExtractionServiceOptions = {}) {
     this.providers = Object.freeze([...providers])
     this.providerTimeoutMs = options.providerTimeoutMs ?? 2_000
     this.comparisonProviders = Object.freeze([...(options.comparisonProviders ?? [])])
+    this.clock = options.clock ?? Date.now
+    this.idempotency = Object.freeze({
+      maximumEntries: options.idempotency?.maximumEntries ?? DEFAULT_OCR_IDEMPOTENCY_POLICY.maximumEntries,
+      retentionMs: options.idempotency?.retentionMs ?? DEFAULT_OCR_IDEMPOTENCY_POLICY.retentionMs,
+    })
     if (
       !Number.isSafeInteger(this.providerTimeoutMs) ||
       this.providerTimeoutMs <= 0 ||
@@ -129,26 +175,65 @@ export class OcrExtractionService {
     ) {
       throw new RangeError('providerTimeoutMs must be within the supported positive Node.js timer range')
     }
+    if (!Number.isSafeInteger(this.idempotency.maximumEntries) || this.idempotency.maximumEntries < 1) {
+      throw new RangeError('idempotency.maximumEntries must be a positive safe integer')
+    }
+    if (!Number.isSafeInteger(this.idempotency.retentionMs) || this.idempotency.retentionMs < 1) {
+      throw new RangeError('idempotency.retentionMs must be a positive safe integer of milliseconds')
+    }
   }
 
   execute(rawRequest: OcrRequest): Promise<OcrResult> {
     const request = deepFreeze(ocrRequestSchema.parse(rawRequest))
     const requestFingerprint = fingerprint(request)
-    const knownFingerprint = this.fingerprints.get(request.requestId)
-    if (knownFingerprint !== undefined && knownFingerprint !== requestFingerprint) {
-      throw new OcrExtractionError(OCR_ORCHESTRATION_REASON.REQUEST_CONFLICT)
+    const now = this.clock()
+    this.releaseExpired(now)
+
+    const known = this.entries.get(request.requestId)
+    if (known !== undefined) {
+      if (known.fingerprint !== requestFingerprint) {
+        throw new OcrExtractionError(OCR_ORCHESTRATION_REASON.REQUEST_CONFLICT)
+      }
+      if (known.result !== null) return known.result
     }
 
-    const existing = this.requests.get(request.requestId)
-    if (existing !== undefined) return existing
-
-    this.fingerprints.set(request.requestId, requestFingerprint)
+    const entry: IdempotencyEntry = known ?? {
+      fingerprint: requestFingerprint,
+      result: null,
+      expiresAt: now + this.idempotency.retentionMs,
+    }
     const result = this.runProviders(request).then((outcome) => {
-      if (outcome.outcome === 'failure') this.requests.delete(request.requestId)
+      // A failed attempt is not retained, so an explicit same-request retry may run again. The
+      // fingerprint stays until the entry expires, so the identity still cannot be reused for
+      // different content in the meantime.
+      if (outcome.outcome === 'failure' && this.entries.get(request.requestId) === entry) entry.result = null
       return deepFreeze(ocrResultSchema.parse(outcome))
     })
-    this.requests.set(request.requestId, result)
+    entry.result = result
+    if (known === undefined) {
+      this.entries.set(request.requestId, entry)
+      this.releaseOldest()
+    }
     return result
+  }
+
+  /** Releases every entry whose fixed lifetime has passed, dropping evidence and fingerprint together. */
+  private releaseExpired(now: number): void {
+    for (const [requestId, entry] of this.entries) {
+      // Insertion order is creation order and every entry shares one retention window, so the
+      // first unexpired entry ends the scan.
+      if (entry.expiresAt > now) break
+      this.entries.delete(requestId)
+    }
+  }
+
+  /** Keeps the retained set within its configured size by releasing the oldest entries first. */
+  private releaseOldest(): void {
+    while (this.entries.size > this.idempotency.maximumEntries) {
+      const oldest = this.entries.keys().next()
+      if (oldest.done === true) return
+      this.entries.delete(oldest.value)
+    }
   }
 
   private async attemptProvider(

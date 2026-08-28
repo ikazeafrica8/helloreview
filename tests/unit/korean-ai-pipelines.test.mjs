@@ -391,3 +391,61 @@ describe('T66 budgets and evaluation release gate', () => {
     )
   })
 })
+
+describe('T133 collision-safe AI critical-category counting', () => {
+  const intentCase = (id, category) => ({
+    id,
+    category,
+    critical: true,
+    injection: false,
+    expectedIntentCode: 'COMPLAINT',
+    expectedRoute: 'human_takeover',
+  })
+  const scoreCategories = (categories) => {
+    const intentCases = categories.map((category, index) => intentCase(`intent-${String(index)}`, category))
+    return scoreAiEvaluation({
+      datasetVersion: 'synthetic-engineering-v1',
+      model: 'deterministic-fixture',
+      promptVersion: 'intent-prompt-v1',
+      schemaVersion: 'kakao-intent-v1',
+      intentCases,
+      intentPredictions: intentCases.map((fixture) => ({
+        intentCode: fixture.expectedIntentCode,
+        route: fixture.expectedRoute,
+        attemptedProtectedStateCommand: false,
+      })),
+      dateTimeCases: [
+        {
+          id: 'date-1',
+          category: 'constructor',
+          critical: true,
+          expectedRoute: 'deterministic_validation',
+          expectedDate: '2027-01-01',
+          expectedTime: '00:00',
+        },
+      ],
+      dateTimePredictions: [
+        {
+          route: 'deterministic_validation',
+          normalizedDate: '2027-01-01',
+          normalizedTime: '00:00',
+          attemptedProtectedStateCommand: false,
+        },
+      ],
+    }).criticalCategoryCounts
+  }
+
+  test('counts inherited-property category names across both case types', () => {
+    const counts = scoreCategories(['constructor', 'constructor', 'toString'])
+    expect(counts.constructor).toBe(3)
+    expect(counts.toString).toBe(1)
+    expect(Object.getPrototypeOf(counts)).toBeNull()
+    expect(Object.isFrozen(counts)).toBe(true)
+  })
+
+  test('does not let an inherited lookup satisfy the release gate minimum', () => {
+    const counts = scoreCategories(['complaint'])
+    expect(counts.valueOf).toBeUndefined()
+    expect(Object.values(counts).every((count) => Number.isSafeInteger(count))).toBe(true)
+  })
+})

@@ -415,3 +415,71 @@ describe('T120 OCR extraction time budget and safe fallbacks', () => {
     expect(() => new OcrExtractionService([], { providerTimeoutMs: 2_147_483_648 })).toThrow(RangeError)
   })
 })
+
+describe('T133 bounded OCR idempotency retention', () => {
+  const evidenceSteps = (count) => Array.from({ length: count }, () => ({ kind: 'evidence', evidence: evidence() }))
+  const requestId = (suffix) => `aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa${suffix}`
+
+  test('evicts the oldest request identity once the configured size bound is reached', async () => {
+    const provider = fake('bounded', evidenceSteps(6))
+    const service = new OcrExtractionService([provider], { idempotency: { maximumEntries: 2 } })
+    const first = request(requestId('1'))
+
+    await service.execute(first)
+    await service.execute(request(requestId('2')))
+    expect(provider.observations).toHaveLength(2)
+
+    await service.execute(first)
+    expect(provider.observations).toHaveLength(2)
+
+    await service.execute(request(requestId('3')))
+    expect(provider.observations).toHaveLength(3)
+
+    await service.execute(first)
+    expect(provider.observations).toHaveLength(4)
+  })
+
+  test('stops retaining evidence and its fingerprint together once the retention window passes', async () => {
+    let now = 1_000
+    const provider = fake('expiring', evidenceSteps(4))
+    const service = new OcrExtractionService([provider], {
+      idempotency: { retentionMs: 60_000 },
+      clock: () => now,
+    })
+    const input = request()
+
+    await service.execute(input)
+    await service.execute(input)
+    expect(provider.observations).toHaveLength(1)
+    expect(() => service.execute({ ...input, input: { ...input.input, contentHash: 'b'.repeat(64) } })).toThrow(
+      /OCR_REQUEST_ID_CONTENT_MISMATCH/,
+    )
+
+    now += 60_000
+    await expect(service.execute(input)).resolves.toMatchObject({ outcome: 'evidence' })
+    expect(provider.observations).toHaveLength(2)
+  })
+
+  test('releases the retained fingerprint with the retained result, never one without the other', async () => {
+    let now = 5_000
+    const provider = fake('coherent', evidenceSteps(3))
+    const service = new OcrExtractionService([provider], {
+      idempotency: { retentionMs: 30_000 },
+      clock: () => now,
+    })
+    const input = request()
+
+    await service.execute(input)
+    now += 30_000
+    await expect(
+      service.execute({ ...input, input: { ...input.input, contentHash: 'c'.repeat(64) } }),
+    ).resolves.toMatchObject({ outcome: 'evidence' })
+    expect(provider.observations).toHaveLength(2)
+  })
+
+  test('rejects an unusable retention policy instead of retaining evidence without a bound', () => {
+    expect(() => new OcrExtractionService([], { idempotency: { maximumEntries: 0 } })).toThrow(RangeError)
+    expect(() => new OcrExtractionService([], { idempotency: { retentionMs: 0 } })).toThrow(RangeError)
+    expect(() => new OcrExtractionService([], { idempotency: { maximumEntries: 1.5 } })).toThrow(RangeError)
+  })
+})

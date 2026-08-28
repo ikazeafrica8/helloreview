@@ -273,6 +273,9 @@ test-versus-production, unknown action/role, and enforcement-helper tests. See
 
 ## T105 — Participant search and complete timeline API
 
+Status: **Complete as a transport-neutral query service (2026-08-26). No production HTTP
+transport exists; T151 owns that and the console still reads fixtures.**
+
 Return masked search results and the PRD §20.3 timeline with stable pagination and no raw payloads.
 
 **Acceptance:** campaign-scoped search masks names and phones while keeping application status and
@@ -280,6 +283,9 @@ blogger evidence separate; the stable timeline returns coded, versioned events a
 participant workflow without raw payloads or sensitive content.
 
 ## T106 — Human-task and approval command API
+
+Status: **Complete as a transport-neutral command service (2026-08-26). No production HTTP
+transport exists; T151 owns that. Operator selection is not exposed here — that is T140.**
 
 Expose assign, resolve, resume, override, and business-approval commands with expected versions and
 audited reasons.
@@ -290,6 +296,9 @@ business approval and its protected audit evidence commit atomically.
 
 ## T107 — Versioned campaign-content command API
 
+Status: **Complete as a transport-neutral command service (2026-08-26). No production HTTP
+transport exists; T151 owns that.**
+
 Expose validated preview/publish flows for campaign rules, templates, terms, and guidelines.
 
 **Acceptance:** campaign commands use optimistic versions; rule previews are non-mutating;
@@ -297,6 +306,10 @@ publication rechecks the locked draft; rules, payback terms, templates, and guid
 immutable version transitions.
 
 ## T108 — Operational diagnostics and retry API
+
+Status: **Complete as a transport-neutral diagnostics service (2026-08-26). No production HTTP
+transport exists; T151 owns that. Reported integration state remains the no-real-provider safe
+fallback.**
 
 Expose health, failed jobs, notification/suppression history, idempotency-preserving retry, pauses,
 cost, and AI-evaluation state.

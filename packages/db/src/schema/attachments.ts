@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm'
 import { check, index, integer, pgEnum, pgTable, text, unique, uuid, varchar } from 'drizzle-orm/pg-core'
 import { tstz } from '../columns.js'
+import { inboundMessages } from './conversations.js'
 import { participants } from './participants.js'
 import { workflowInstances } from './workflow-instances.js'
 
@@ -50,12 +51,21 @@ export const attachments = pgTable(
     contentHash: varchar('content_hash', { length: 64 }).notNull(),
     /** Provider-neutral opaque reference. Never a URL, access key, or signed grant. */
     storageReference: text('storage_reference').notNull(),
+    /**
+     * The inbound message this file arrived on (T135).
+     *
+     * Nullable, and additive on purpose: `source_message_reference` above has carried this link as
+     * free text since T88, and this table has UPDATE revoked, so rows written before
+     * `inbound_messages` existed keep only the text form. New rows set both.
+     */
+    inboundMessageId: uuid('inbound_message_id').references(() => inboundMessages.id, { onDelete: 'restrict' }),
     createdAt: tstz('created_at').notNull(),
   },
   (table) => [
     unique('attachments_workflow_provider_reference_key').on(table.workflowId, table.providerReference),
     index('attachments_content_hash_idx').on(table.contentHash),
     index('attachments_owner_idx').on(table.workflowId, table.participantId, table.createdAt),
+    index('attachments_inbound_message_idx').on(table.inboundMessageId),
     check('attachments_positive_size', sql`${table.sizeBytes} > 0`),
     check('attachments_sha256', sql`${table.contentHash} ~ '^[a-f0-9]{64}$'`),
     check('attachments_source_reference_length', sql`char_length(${table.sourceMessageReference}) between 1 and 500`),

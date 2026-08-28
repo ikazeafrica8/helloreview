@@ -94,11 +94,11 @@ export function ParticipantSearchPanel({ campaignId }: Readonly<{ campaignId: st
                       <dd>{participant.bloggerLevel === null ? '미제공' : `등급 ${participant.bloggerLevel}`}</dd>
                     </div>
                     <div>
-                      <dt>전일 방문자 수</dt>
+                      <dt>블로그 일평균 방문자 수</dt>
                       <dd>
-                        {participant.previousDayVisitors === null
+                        {participant.averageDailyVisitors === null
                           ? '미제공'
-                          : participant.previousDayVisitors.toLocaleString('ko-KR')}
+                          : participant.averageDailyVisitors.toLocaleString('ko-KR')}
                       </dd>
                     </div>
                     <div>

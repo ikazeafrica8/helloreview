@@ -1,5 +1,6 @@
 import type { AdminAction } from '@helloreview/contracts'
 import { OPERATOR_ROUTES } from './navigation'
+import { isOperatorConsoleAuthorized, type OperatorConsoleSession } from './operator-session-contract'
 
 export type ConsoleRoute = (typeof OPERATOR_ROUTES)[number]
 export type ConsoleTone = 'safe' | 'warning' | 'blocked'
@@ -100,7 +101,7 @@ export type MaskedParticipant = Readonly<{
   maskedPhone: string
   applicationStatus: string
   bloggerLevel: number | null
-  previousDayVisitors: number | null
+  averageDailyVisitors: number | null
   bloggerRegion: string | null
   automationState: string
   ownershipState: string
@@ -176,6 +177,10 @@ export type ConsoleEditorPreviewResult = Readonly<{
 
 export type GovernedActionSubmission = Readonly<{
   action: ConsoleAction
+  /** Server-derived operator session. A submission never carries its own roles, scope, or policy. */
+  session: OperatorConsoleSession
+  /** The campaign the target belongs to, resolved from the screen rather than from the submission. */
+  campaignId: string
   reason: string
   confirmation: string
 }>
@@ -247,8 +252,22 @@ export const evaluateConsoleEditorDraft = (
 
 export const isConsoleRoute = (value: string): value is ConsoleRoute => OPERATOR_ROUTES.some((route) => route === value)
 
+/**
+ * Deterministic pre-submission check for one governed command.
+ *
+ * The command-specific authorization action and the target's campaign scope are rechecked here, so
+ * an action object can never authorize itself by carrying `permission: 'fixture_allowed'`. An action
+ * with no canonical authorization action is unmapped and is refused rather than accepted.
+ *
+ * This runs over a SERVER-DERIVED session and campaign; the fixture console renders both from
+ * `getOperatorConsoleSession()`. It is a pre-submission check, not the authorization of record:
+ * T151 replaces the fixture transport with an authenticated, server-owned principal that
+ * reauthorizes the exact action and target scope again before any real command executes.
+ */
 export const evaluateGovernedAction = ({
   action,
+  session,
+  campaignId,
   reason,
   confirmation,
 }: GovernedActionSubmission): GovernedActionResult => {
@@ -257,6 +276,18 @@ export const evaluateGovernedAction = ({
       accepted: false,
       reasonCode: action.blockedReasonCode,
       message: '승인된 프로덕션 정책이 없어 요청이 차단되었습니다. 실제 변경은 발생하지 않았습니다.',
+    }
+  if (action.authorizationAction === null)
+    return {
+      accepted: false,
+      reasonCode: 'OPERATOR_ACTION_UNMAPPED',
+      message: '이 작업에는 표준 권한 행위가 지정되어 있지 않아 실행할 수 없습니다.',
+    }
+  if (!isOperatorConsoleAuthorized(session, action.authorizationAction, campaignId))
+    return {
+      accepted: false,
+      reasonCode: 'OPERATOR_ACTION_NOT_AUTHORIZED',
+      message: '현재 세션의 권한 행위 또는 캠페인 범위에 없는 작업입니다. 실제 변경은 발생하지 않았습니다.',
     }
   if (action.requiresReason && (reason.trim().length < 3 || reason.trim().length > 500))
     return {

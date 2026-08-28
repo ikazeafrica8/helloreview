@@ -71,12 +71,12 @@ export const seedVisitAWorkflow = async (pool, suffix, overrides = {}) => {
     `INSERT INTO message_templates (
        purpose_code, version, status, legal_classification, body, approved_by, approved_at, activated_at
      ) VALUES
-       ('RESERVATION_CORRECTION:DATE_TIME_CLARIFICATION',1,'active','operational_transactional','예약 날짜와 시간을 정확히 알려 주세요.','visit-a-legal',$1,$1),
-       ('RESERVATION_CORRECTION:INVALID_TIME',1,'active','operational_transactional','예약 가능 시간을 다시 선택해 주세요.','visit-a-legal',$1,$1),
-       ('RESERVATION_CORRECTION:WRONG_BUSINESS',1,'active','operational_transactional','지정된 매장 예약인지 확인해 주세요.','visit-a-legal',$1,$1),
-       ('RESERVATION_CORRECTION:BLACKOUT_DATE',1,'active','operational_transactional','예약 불가 날짜이므로 다른 날짜를 선택해 주세요.','visit-a-legal',$1,$1),
-       ('RESERVATION_CORRECTION:INVALID_BOUNDARY',1,'active','operational_transactional','마감 시간 전 예약으로 변경해 주세요.','visit-a-legal',$1,$1),
-       ('RESERVATION_CORRECTION:INSUFFICIENT_LEAD_TIME',1,'active','operational_transactional','예약 준비 시간을 확보해 다시 선택해 주세요.','visit-a-legal',$1,$1),
+       ('RESERVATION_CORRECTION:DATE_TIME_CLARIFICATION',1,'active','operational_transactional','예약 날짜와 시간을 정확히 알려 주세요. 보내주신 내용: {{submitted_value}} / 필요한 조건: {{expected_condition}}','visit-a-legal',$1,$1),
+       ('RESERVATION_CORRECTION:INVALID_TIME',1,'active','operational_transactional','예약 가능 시간을 다시 선택해 주세요. 보내주신 내용: {{submitted_value}} / 필요한 조건: {{expected_condition}}','visit-a-legal',$1,$1),
+       ('RESERVATION_CORRECTION:WRONG_BUSINESS',1,'active','operational_transactional','지정된 매장 예약인지 확인해 주세요. 보내주신 내용: {{submitted_value}} / 필요한 조건: {{expected_condition}}','visit-a-legal',$1,$1),
+       ('RESERVATION_CORRECTION:BLACKOUT_DATE',1,'active','operational_transactional','예약 불가 날짜이므로 다른 날짜를 선택해 주세요. 보내주신 내용: {{submitted_value}} / 필요한 조건: {{expected_condition}}','visit-a-legal',$1,$1),
+       ('RESERVATION_CORRECTION:INVALID_BOUNDARY',1,'active','operational_transactional','마감 시간 전 예약으로 변경해 주세요. 보내주신 내용: {{submitted_value}} / 필요한 조건: {{expected_condition}}','visit-a-legal',$1,$1),
+       ('RESERVATION_CORRECTION:INSUFFICIENT_LEAD_TIME',1,'active','operational_transactional','예약 준비 시간을 확보해 다시 선택해 주세요. 보내주신 내용: {{submitted_value}} / 필요한 조건: {{expected_condition}}','visit-a-legal',$1,$1),
        ('RESERVATION_CANCELLATION_ACK',1,'active','operational_transactional','예약 취소를 확인했습니다.','visit-a-legal',$1,$1),
        ('RESERVATION_RESCHEDULE_ACK',1,'active','operational_transactional','변경할 예약 날짜와 시간을 알려 주세요.','visit-a-legal',$1,$1)
       ,('GUIDELINE_DELIVERY',1,'active','operational_transactional','가이드: {{guideline}}','visit-a-legal',$1,$1)

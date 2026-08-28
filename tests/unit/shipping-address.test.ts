@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import {
   ShippingAddressConfigurationError,
+  parseShippingRulePolicy,
   validateShippingAddress,
   type ShippingAddressInput,
   type ShippingAddressPolicy,
@@ -85,6 +86,50 @@ describe('protected shipping address cryptography', () => {
     expect(() => decryptShippingAddress(key, 'broken')).toThrow(/malformed/)
     expect(() => addressFingerprint(Buffer.alloc(16), validateShippingAddress(address(), policy()).normalized)).toThrow(
       /32 bytes/,
+    )
+  })
+})
+
+describe('T133 server-side shipping policy resolution', () => {
+  const configuration = (overrides: Record<string, unknown> = {}) => ({
+    requiredFields: ['recipientName', 'phone', 'postalCode', 'addressLine1', 'addressLine2'],
+    allowedPostalPrefixes: ['06'],
+    changeCutoffAt: '2026-09-01T00:00:00.000Z',
+    lockAt: '2026-09-02T00:00:00.000Z',
+    ...overrides,
+  })
+
+  test('derives an immutable policy from the published campaign rule version', () => {
+    const resolved = parseShippingRulePolicy({ ruleVersion: 3, configuration: configuration() })
+    expect(resolved).toMatchObject({
+      version: 'shipping-rule-v3',
+      requiredFields: ['recipientName', 'phone', 'postalCode', 'addressLine1', 'addressLine2'],
+      allowedPostalPrefixes: ['06'],
+    })
+    expect(resolved.changeCutoffAt.toISOString()).toBe('2026-09-01T00:00:00.000Z')
+    expect(resolved.lockAt.toISOString()).toBe('2026-09-02T00:00:00.000Z')
+    expect(Object.isFrozen(resolved)).toBe(true)
+    expect(Object.isFrozen(resolved.requiredFields)).toBe(true)
+  })
+
+  test('fails closed when the campaign has no effective shipping rule', () => {
+    expect(() => parseShippingRulePolicy(null)).toThrow(/SHIPPING_POLICY_MISSING/)
+  })
+
+  test.each([
+    ['an unknown configuration field', configuration({ skipValidation: true })],
+    ['an empty required-field list', configuration({ requiredFields: [] })],
+    ['a field name outside the address contract', configuration({ requiredFields: ['recipientName', 'ssn'] })],
+    ['a non-numeric postal prefix', configuration({ allowedPostalPrefixes: ['0A'] })],
+    ['a lock instant before the change cutoff', configuration({ lockAt: '2026-08-31T00:00:00.000Z' })],
+    ['a malformed instant', configuration({ lockAt: 'soon' })],
+  ])('rejects %s rather than validating against it', (_label, invalid) => {
+    expect(() => parseShippingRulePolicy({ ruleVersion: 3, configuration: invalid })).toThrow(/SHIPPING_POLICY_INVALID/)
+  })
+
+  test('rejects a rule version that cannot identify an immutable policy', () => {
+    expect(() => parseShippingRulePolicy({ ruleVersion: 0, configuration: configuration() })).toThrow(
+      /SHIPPING_POLICY_INVALID/,
     )
   })
 })

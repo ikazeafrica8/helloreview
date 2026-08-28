@@ -69,7 +69,7 @@ export const seedPhase7Workflow = async (
        ('VISIT_C_APPROVAL_STATUS',1,'active','operational_transactional','승인 대기 중입니다.','legal_phase7',$1,$1),
        ('VISIT_C_BOOKING_INSTRUCTIONS',1,'active','operational_transactional','예약 링크입니다.','legal_phase7',$1,$1),
        ('GUIDELINE_DELIVERY',1,'active','operational_transactional','가이드: {{guideline}}','legal_phase7',$1,$1),
-       ('RESERVATION_CORRECTION:INVALID_TIME',1,'active','operational_transactional','예약 가능 시간을 다시 선택해 주세요.','legal_phase7',$1,$1)`,
+       ('RESERVATION_CORRECTION:INVALID_TIME',1,'active','operational_transactional','예약 가능 시간을 다시 선택해 주세요. 보내주신 내용: {{submitted_value}} / 필요한 조건: {{expected_condition}}','legal_phase7',$1,$1)`,
     [now],
   )
   return {

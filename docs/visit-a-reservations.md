@@ -23,6 +23,18 @@ cannot authorize reservation validity or guideline delivery.
   create only pending or human-review state.
 - Participant corrections use an approved parameterized template named by the failed rule. Source
   event and outbox dedupe keys ensure replays do not create another message.
+- Every correction template receives `submitted_value` and `expected_condition`, so the message says
+  what the participant sent and what it has to match rather than only naming a reason code. Both are
+  built by `reservationCorrectionVariables` from the normalized evidence and the rule configuration,
+  never from the rule's own `submittedValue`/`expectedCondition`, which are English engineering
+  evidence and can hold campaign identifiers or workflow state codes.
+- Where the failing fact is an internal identifier or a state the participant cannot act on
+  (campaign, approval, campaign lifecycle, capacity, or an unusable rule configuration) the values
+  are withheld and the message defers to an operator. A vaguer message is the accepted trade against
+  exposing internal state.
+- Guideline readiness composes the same correction without the judged evidence, so it renders the
+  one strictly-shaped value it can read from the failed rule and defers the expected condition. That
+  caller-authoritative composition is what T146 replaces.
 - Invalid rule configuration is an operator review, never a participant instruction.
 
 ## Lifecycle and delivery

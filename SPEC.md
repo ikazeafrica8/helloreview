@@ -3,9 +3,9 @@
 | Field                  | Value                                                                                                                              |
 | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
 | Spec version           | 1.0 (root spec — platform level)                                                                                                   |
-| Status                 | Draft — awaiting capability-map approval                                                                                           |
+| Status                 | Approved (capability map approved by the product owner, 2026-08-27)                                                                |
 | Source of requirements | [PRD v1.0](HelloReview%20Reviewer%20Campaign%20Automation%20Platform%20—%20Product%20Requirements%20Document.md), dated 2026-08-22 |
-| Scope of this document | Platform-wide contract + capability map. Per-module specs are separate files.                                                      |
+| Scope of this document | Platform-wide contract + capability map. A module spec is separate, and required only where §9 says                                |
 | Timezone               | Asia/Seoul (all business rules, all participant-facing rendering)                                                                  |
 | Language               | Korean for participant-facing copy; English for all code, identifiers, logs, and docs                                              |
 
@@ -51,7 +51,7 @@ from the audit log. Full criteria in §8 below.
 | ORM / migrations | Drizzle ORM + drizzle-kit                               | SQL-first, so the `§17.3` constraints and partial indexes stay explicit and reviewable                           |
 | Queue            | BullMQ on Redis 7                                       | Durable jobs, retries, dead-letter, delayed jobs for reconciliation (`§22.2`, `§22.4`)                           |
 | Validation       | Zod                                                     | One schema serves runtime validation, TS types, and the AI structured-output allowlist (`§19.6`)                 |
-| Dashboard        | Next.js 15 (App Router) + React 19                      | Consumes `admin-api`; shares contract types with the backend                                                     |
+| Dashboard        | Next.js 16 (App Router) + React 19                      | Consumes `admin-api`; shares contract types with the backend                                                     |
 | Object storage   | S3-compatible, private buckets, short-lived signed URLs | `§21.3`, `§21.5`                                                                                                 |
 | Testing          | Vitest, Testcontainers, Playwright, Supertest           | See §7                                                                                                           |
 | Monorepo         | pnpm workspaces + Turborepo                             | Enforced package boundaries; incremental CI                                                                      |
@@ -130,10 +130,20 @@ These are the judgement calls in the map. If any is wrong, it is cheap to fix he
 
 - **`business-approval` is separate from `reservation`.** Required, not stylistic: `FR-VC-001`
   mandates that Visit C approval state be independent from reservation state and separately auditable.
-- **`guideline-delivery` does not depend on `shipping` / `payback-consent` / `reservation`.** The
-  readiness predicate reads the workflow snapshot from `workflow-core`, where every `§14.2` state
-  dimension already lives. This keeps the highest-stakes gate testable as a pure function over one
-  input, and stops the flow modules from becoming a dependency hub.
+- **The guideline readiness PREDICATE depends on nothing but a snapshot.** `evaluateGuidelineReadiness`
+  reads a `GuidelineReadinessSnapshot` built from `workflow-core`, where every `§14.2` state dimension
+  already lives. That is what keeps the highest-stakes gate testable as a pure function over one
+  input, and it still holds: the gate imports no flow module.
+
+  The MODULE is narrower than that statement once was. This bullet originally read
+  "`guideline-delivery` does not depend on `shipping` / `payback-consent` / `reservation`", and T87
+  made that false for `reservation`: composing a participant correction for a failed reservation rule
+  needs the reservation module's Korean correction values. `module-graph.json` — the enforced copy of
+  this map — has listed that edge since T87, so the two disagreed until T134 reconciled them. It stays
+  one-directional and acyclic, `shipping` and `payback-consent` remain absent, and the predicate
+  itself is unchanged. Reintroducing a flow-module read INTO the predicate would be the boundary
+  violation this bullet exists to prevent; T146 removes the caller-authoritative inputs that remain.
+
 - **`rules-engine` is separate from `campaign-config`.** Config owns storage and versioning; the
   engine is a pure evaluator. It is the single highest-value unit-test target in the codebase, and
   purity is what makes that cheap.
@@ -549,17 +559,33 @@ once (`AC-08`). 13. Cancellation and rescheduling preserve prior versions as sup
 
 **Operations** 16. The participant timeline shows every item in `§20.3`. 17. Emergency pause works at global, campaign, workflow-type, and participant scope (`test:e2e`). 18. Sensitive fields are masked by default and every reveal is audited (`test:security`). 19. Uploaded files pass every `§21.5` control before reaching OCR (`test:security`). 20. `pnpm verify` is green and coverage thresholds in §7 are met.
 
-**Spec completeness** (for this document specifically) 21. The capability map in §3 is approved by the product owner. 22. Every MVP module has a `SPEC-<module-id>.md` before its implementation begins. 23. Every module spec traces each requirement to a PRD requirement id.
+**Spec completeness** (for this document specifically) 21. The capability map in §3 is approved by the product owner — done, 2026-08-27. 22. Every module that carries its own APPROVAL BOUNDARY has a `SPEC-<module-id>.md` stating what the
+approval authorizes, what it does not, and the stop gates that need a new approval. 23. Every such module spec traces each requirement it claims to a PRD requirement id, and does not
+claim a requirement whose subject matter it does not implement.
+
+Criterion 22 replaces "every MVP module has a `SPEC-<module-id>.md` before its implementation
+begins", which described a governance model this project did not use. Twenty-two modules were built
+under §3's capability map plus per-task acceptance criteria and verification evidence in the
+milestone ledgers, and one module spec exists — `SPEC-ocr-extraction.md` — written precisely because
+`ocr-extraction` has an approval boundary of its own (a provider, real images, a confidence policy,
+and a readiness change all sit behind separate approvals).
+
+Writing twenty-one more specs after the fact would document what already shipped rather than govern
+it, and would put the weight of a spec behind text no decision ever depended on. The criterion now
+asks for a module spec where one does real work: an explicit boundary a reader must not cross
+without a new approval. Requirement-to-test traceability for every other module lives in the task
+ledgers, where each task names its acceptance criteria and the verification that proves them.
 
 ---
 
 ## 10. Open Questions
 
-**Blocking the next phase (module specs)**
+**Settled**
 
-1. **Capability-map approval.** §3 is the Phase 0 gate. Module specs are not written until the module
-   list, dependency direction, and build order in §3.1–§3.2 are approved. The judgement calls in §3.3
-   are where I would most expect disagreement.
+1. ~~**Capability-map approval.**~~ Approved by the product owner on 2026-08-27, after twenty-two
+   modules had been built under it. §3.3's `guideline-delivery` bullet was corrected at the same time
+   to match the enforced `module-graph.json`. Module specs are now required only where §9 criterion 22
+   says, so this no longer blocks anything.
 
 **Blocking implementation, owned by discovery** (these are `§35` Open Decisions — restated here because
 each one changes code, not just plans)

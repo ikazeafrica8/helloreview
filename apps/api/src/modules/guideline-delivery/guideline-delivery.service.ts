@@ -3,7 +3,14 @@ import { MESSAGE_PURPOSES, composePurpose } from '@helloreview/contracts'
 import { POSTGRES_POOL, runInTransaction } from '@helloreview/db'
 import type { Pool } from 'pg'
 import { OutboundIntentService, type EnqueuedOutboundIntent } from '../messaging/index.js'
-import { RESERVATION_RULE, type ReservationValidation, type RuleEvaluationResult } from '../rules-engine/index.js'
+import { reservationCorrectionVariables } from '../reservation/index.js'
+import {
+  RESERVATION_RULE,
+  type ReservationCorrectionCode,
+  type ReservationRuleCode,
+  type ReservationValidation,
+  type RuleEvaluationResult,
+} from '../rules-engine/index.js'
 import { evaluateGuidelineReadiness, type GuidelineGateResult } from './guideline-gate.js'
 import { GuidelineDeliveryRepository } from './guideline-delivery.repository.js'
 import { GUIDELINE_BLOCK } from './reason-codes.js'
@@ -39,7 +46,9 @@ const rowText = (row: Record<string, unknown>, column: string): string => {
   throw new Error(`guideline delivery query returned invalid ${column}`)
 }
 
-const invalidTimeFailure = (validation: ReservationValidation | undefined): RuleEvaluationResult | undefined =>
+const invalidTimeFailure = (
+  validation: ReservationValidation | undefined,
+): RuleEvaluationResult<ReservationRuleCode, ReservationCorrectionCode> | undefined =>
   validation?.failures.find((result) => result.ruleCode === RESERVATION_RULE.TIME)
 
 @Injectable()
@@ -97,7 +106,16 @@ export class GuidelineDeliveryService {
             templatePurposeCode: correctionPurpose,
             templateVersion: input.templateVersion,
             contentVersion: `rule_v${String(timeFailure.ruleVersion)}`,
-            variables: {},
+            // Readiness holds the failed rule but not the evidence it was judged from, so the
+            // correction says what it can safely say and defers the rest to an operator. A message
+            // carrying only a reason code would leave the participant guessing.
+            variables: {
+              ...reservationCorrectionVariables({
+                failure: timeFailure,
+                evidence: null,
+                configuration: undefined,
+              }),
+            },
             source: 'automated',
             actorId: input.actorId,
             occurredAt: input.occurredAt,

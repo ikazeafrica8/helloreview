@@ -28,8 +28,10 @@ Pure gateway/session contracts are isolated from the server-only environment pro
 be tested deterministically without weakening the React Server Component boundary. Every read page
 re-checks its canonical action and campaign scope, then passes the verified session into the
 gateway, which repeats the same check at the data boundary. A layout session check is presentation
-gating only. The deterministic fixture grants the complete read-only action set; it grants no
-sensitive reveal/export permission.
+gating only. The deterministic fixture grants the complete read-only action set plus an explicit,
+individually listed set of command actions it may simulate
+(`OPERATOR_CONSOLE_FIXTURE_COMMAND_ACTIONS`). It grants no sensitive reveal/export, override,
+role-management, retention, or legal-hold permission, and those commands are refused.
 
 The environment parser rejects `test_fixture` when `NODE_ENV=production`. The fixture is not an
 operator identity, RBAC matrix, SSO session, cookie, token, or MFA result. Authentication is
@@ -94,6 +96,18 @@ and the expected version. The discriminated action contract makes version fields
 impossible on policy-blocked actions; the UI withholds them and evaluates policy before input or
 stale-state checks. Allowed actions report stale versions explicitly, distinguish previews from
 commands, and never perform an external write.
+
+Before any accepted receipt, the evaluator rechecks the command's own canonical authorization
+action and the target's campaign scope against the server-derived session. An action object cannot
+authorize itself by carrying `permission: 'fixture_allowed'`, a command the session does not hold
+is refused with `OPERATOR_ACTION_NOT_AUTHORIZED`, a target outside the session's campaign scope is
+refused the same way, and a scenario with no canonical action is refused with
+`OPERATOR_ACTION_UNMAPPED` rather than accepted.
+
+This is a pre-submission check over a server-rendered session, not the authorization of record.
+T151 replaces the fixture transport with an authenticated, server-owned principal that reauthorizes
+the exact action and target scope again before any real command executes; no fixture receipt may
+reach production.
 
 Sensitive data stays masked. Reveal actions remain policy-denied, ordinary bulk export is absent,
 production changes are visibly blocked, and the emergency automation-pause banner is present on

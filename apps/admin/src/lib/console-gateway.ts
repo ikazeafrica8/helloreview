@@ -324,7 +324,7 @@ const screenDefinitions: Readonly<
     title: '선정 규칙',
     description: '블로거 증거를 검토하되 최종 선정은 운영자의 수동 승인으로 남깁니다.',
     badge: { label: '자동 선정 금지', tone: 'warning' },
-    guidance: '회원 등급, 전일 방문자 수, 지역은 각각 근거로만 표시되며 신청 상태와 혼합하지 않습니다.',
+    guidance: '회원 등급, 블로그 일평균 방문자 수, 지역은 각각 근거로만 표시되며 신청 상태와 혼합하지 않습니다.',
     columns: [
       { key: 'rule', label: '규칙' },
       { key: 'mode', label: '모드' },
@@ -347,11 +347,11 @@ const screenDefinitions: Readonly<
       lifecycleState: 'draft',
       makerCheckerState: 'maker_draft_checker_pending',
       fields: [
-        editorField('generalMinimumVisitors', '일반 전일 방문자 최소값', 'number', '1000', {
+        editorField('generalMinimumVisitors', '일반 일평균 방문자 최소값', 'number', '1000', {
           minimum: 0,
           maximum: 10000000,
         }),
-        editorField('regionalMinimumVisitors', '지역 전일 방문자 최소값', 'number', '300', {
+        editorField('regionalMinimumVisitors', '지역 일평균 방문자 최소값', 'number', '300', {
           minimum: 0,
           maximum: 10000000,
         }),
@@ -363,7 +363,7 @@ const screenDefinitions: Readonly<
       constraints: [],
     },
     actions: [
-      allowedAction(null, '검증 미리보기', '저장 없이 스키마와 정책 문제 코드를 확인합니다.', {
+      allowedAction('campaigns.read', '검증 미리보기', '저장 없이 스키마와 정책 문제 코드를 확인합니다.', {
         scenarioId: 'selection_rules.preview',
         effect: 'preview',
         requiresReason: false,
@@ -789,7 +789,7 @@ const participants: readonly MaskedParticipant[] = [
     maskedPhone: '***-****-0042',
     applicationStatus: 'received',
     bloggerLevel: 2,
-    previousDayVisitors: 1460,
+    averageDailyVisitors: 1460,
     bloggerRegion: '서울',
     automationState: 'HUMAN_REVIEW',
     ownershipState: 'OPERATOR',
@@ -802,7 +802,7 @@ const participants: readonly MaskedParticipant[] = [
     maskedPhone: '***-****-1188',
     applicationStatus: 'received',
     bloggerLevel: 5,
-    previousDayVisitors: 290,
+    averageDailyVisitors: 290,
     bloggerRegion: '부산',
     automationState: 'WAITING_SELECTION',
     ownershipState: 'AUTOMATION',

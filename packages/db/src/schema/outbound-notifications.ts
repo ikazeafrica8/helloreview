@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm'
 import { check, index, integer, pgEnum, pgTable, text, unique, uniqueIndex, uuid } from 'drizzle-orm/pg-core'
 import { tstz } from '../columns.js'
+import { conversations } from './conversations.js'
 import { messageTemplates } from './message-templates.js'
 import { workflowInstances } from './workflow-instances.js'
 
@@ -37,6 +38,8 @@ export const outboundNotifications = pgTable(
     workflowId: uuid('workflow_id')
       .notNull()
       .references(() => workflowInstances.id, { onDelete: 'restrict' }),
+    /** The conversation this message belongs to (T135). Nullable: not every purpose has a thread. */
+    conversationId: uuid('conversation_id').references(() => conversations.id, { onDelete: 'restrict' }),
     channel: text('channel').notNull(),
     recipientReference: text('recipient_reference').notNull(),
     purposeCode: text('purpose_code').notNull(),
@@ -71,6 +74,7 @@ export const outboundNotifications = pgTable(
     unique('outbound_notifications_deduplication_key_key').on(table.deduplicationKey),
     index('outbound_notifications_dispatch_idx').on(table.status, table.nextAttemptAt, table.createdAt),
     index('outbound_notifications_workflow_idx').on(table.workflowId, table.createdAt),
+    index('outbound_notifications_conversation_idx').on(table.conversationId, table.createdAt),
     index('outbound_notifications_provider_message_idx').on(table.providerName, table.providerMessageId),
     check('outbound_notifications_positive_template_version', sql`${table.templateVersion} > 0`),
     check('outbound_notifications_nonnegative_retry_count', sql`${table.retryCount} >= 0`),

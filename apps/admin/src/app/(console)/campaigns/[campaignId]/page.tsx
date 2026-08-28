@@ -19,5 +19,5 @@ export default async function CampaignDetailPage({ params }: Props) {
   if (!isOperatorConsoleAuthorized(session, 'campaigns.read', campaignId)) return <ConsoleAccessDenied />
   const screen = await getOperatorConsoleGateway().campaignEditor(session, campaignId)
   if (screen === null) return <ConsoleAccessDenied />
-  return <ConsoleScreen screen={screen} />
+  return <ConsoleScreen screen={screen} session={session} campaignId={campaignId} />
 }

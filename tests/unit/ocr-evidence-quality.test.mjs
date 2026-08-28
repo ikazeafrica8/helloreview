@@ -390,3 +390,134 @@ describe('T122 synthetic OCR scorecard', () => {
     )
   })
 })
+
+describe('T133 collision-safe OCR critical-category counting', () => {
+  const inheritedCase = (id, category) => ({
+    id,
+    category,
+    critical: true,
+    injection: false,
+    expectedOutcome: 'human_review',
+    expectedReasonCode: OCR_EVIDENCE_REASON.PROVIDER_REVIEW_REQUIRED,
+  })
+  const injectionCase = {
+    id: 'injection-guard',
+    category: 'prompt_injection',
+    critical: true,
+    injection: true,
+    expectedOutcome: 'human_review',
+    expectedReasonCode: OCR_EVIDENCE_REASON.SUSPICIOUS_CONTENT,
+  }
+  const predictionFor = (fixture) => ({
+    outcome: fixture.expectedOutcome,
+    reasonCode: fixture.expectedReasonCode,
+    attemptedProtectedStateCommand: false,
+    attemptedToolInvocation: false,
+    attemptedSchemaWidening: false,
+    attemptedInternalIdentifierSelection: false,
+  })
+  const scoreCategories = (cases) =>
+    scoreOcrEvaluation({
+      datasetVersion: 'reservation-ocr-synthetic-v1',
+      provider: policy.provider,
+      model: policy.model,
+      schemaVersion: policy.schemaVersion,
+      policyVersion: policy.version,
+      cases,
+      predictions: cases.map(predictionFor),
+    })
+
+  test('counts categories named after inherited Object properties without corruption', () => {
+    const cases = [
+      inheritedCase('inherited-1', 'constructor'),
+      inheritedCase('inherited-2', 'constructor'),
+      inheritedCase('inherited-3', 'toString'),
+      inheritedCase('inherited-4', 'hasOwnProperty'),
+      inheritedCase('inherited-5', 'valueOf'),
+      injectionCase,
+    ]
+    const counts = scoreCategories(cases).criticalCategoryCounts
+    expect(counts.constructor).toBe(2)
+    expect(counts.toString).toBe(1)
+    expect(counts.hasOwnProperty).toBe(1)
+    expect(counts.valueOf).toBe(1)
+    expect(counts.prompt_injection).toBe(1)
+    expect(Object.values(counts).every((count) => Number.isSafeInteger(count) && count > 0)).toBe(true)
+  })
+
+  test('exposes no inherited category lookups and stays frozen', () => {
+    const counts = scoreCategories([
+      inheritedCase('inherited-1', 'supported_layout'),
+      injectionCase,
+    ]).criticalCategoryCounts
+    expect(Object.getPrototypeOf(counts)).toBeNull()
+    expect(counts.toString).toBeUndefined()
+    expect(counts.constructor).toBeUndefined()
+    expect(Object.isFrozen(counts)).toBe(true)
+  })
+})
+
+describe('T133 unresolved enum evidence and immutable decisions', () => {
+  const withField = (field, value) => ({
+    ...evidence,
+    [field]: { value, confidence: 0.93 },
+  })
+
+  test.each([['reservationStatus'], ['visibleBookingMethod']])(
+    'routes a required %s of "unknown" to human review instead of clean shadow evidence',
+    (field) => {
+      const decision = evaluateOcrEvidenceQuality(input({ evidence: withField(field, 'unknown') }), policy)
+      expect(decision).toMatchObject({
+        outcome: 'human_review',
+        reasonCode: OCR_EVIDENCE_REASON.REQUIRED_FIELD_UNRESOLVED,
+        affectedFields: [field],
+        policyVersion: policy.version,
+      })
+      expect(decision.reasonCodes).toContain(OCR_EVIDENCE_REASON.REQUIRED_FIELD_UNRESOLVED)
+      expectManualBoundary(decision)
+    },
+  )
+
+  test('leaves an unknown sentinel that the policy does not require as shadow evidence', () => {
+    const optionalPolicy = { ...policy, requiredFields: ['businessName', 'reservationDate', 'reservationTime'] }
+    expect(
+      evaluateOcrEvidenceQuality(input({ evidence: withField('reservationStatus', 'unknown') }), optionalPolicy),
+    ).toMatchObject({ outcome: 'shadow_evidence', reasonCode: OCR_EVIDENCE_REASON.SHADOW_EVIDENCE_RECORDED })
+  })
+
+  test('never treats free-text evidence reading "unknown" as an enum sentinel', () => {
+    expect(evaluateOcrEvidenceQuality(input({ evidence: withField('businessName', 'unknown') }), policy)).toMatchObject(
+      {
+        outcome: 'shadow_evidence',
+        reasonCode: OCR_EVIDENCE_REASON.SHADOW_EVIDENCE_RECORDED,
+      },
+    )
+  })
+
+  test.each([
+    ['clean shadow evidence', () => evaluateOcrEvidenceQuality(input(), policy)],
+    ['a missing structural policy', () => evaluateOcrEvidenceQuality(input(), null)],
+    [
+      'an unusable image',
+      () => evaluateOcrEvidenceQuality(input({ evidence: { ...evidence, imageQualityStatus: 'blurred' } }), policy),
+    ],
+    [
+      'a required unresolved field',
+      () =>
+        evaluateOcrEvidenceQuality(
+          input({ evidence: { ...evidence, reservationStatus: { value: 'unknown', confidence: 0.9 } } }),
+          policy,
+        ),
+    ],
+  ])('returns a deeply immutable decision for %s', (_label, evaluate) => {
+    const decision = evaluate()
+    expect(Object.isFrozen(decision)).toBe(true)
+    expect(Object.isFrozen(decision.reasonCodes)).toBe(true)
+    expect(Object.isFrozen(decision.affectedFields)).toBe(true)
+    expect(() => {
+      decision.outcome = 'shadow_evidence'
+    }).toThrow(TypeError)
+    expect(() => decision.reasonCodes.push('INJECTED')).toThrow(TypeError)
+    expect(() => decision.affectedFields.push('businessName')).toThrow(TypeError)
+  })
+})

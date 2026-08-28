@@ -15,6 +15,7 @@ export type {
   CampaignRoute,
   CampaignRuleType,
   CampaignActivationSnapshot,
+  CampaignPurposeOwnership,
   CampaignActivationRequirement,
   CampaignActivationIssue,
   CampaignActivationResult,

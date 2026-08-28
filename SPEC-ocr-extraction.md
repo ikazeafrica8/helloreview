@@ -1,13 +1,13 @@
 # OCR Extraction Boundary Specification
 
-| Field        | Value                                                                                    |
-| ------------ | ---------------------------------------------------------------------------------------- |
-| Status       | T118–T123 complete as an engineering-only, shadow/manual boundary                        |
-| Plan tasks   | T118–T123                                                                                |
-| Parent spec  | [SPEC.md](SPEC.md)                                                                       |
-| Requirements | PRD FR-SC-005–FR-SC-007, §§16.8–16.9, §§19.4–19.9, AC-07                                 |
-| Dependencies | `attachments`, `ai-orchestration`                                                        |
-| Not enabled  | Real provider, persistence, production images, readiness changes, retries, or automation |
+| Field        | Value                                                                                      |
+| ------------ | ------------------------------------------------------------------------------------------ |
+| Status       | T118–T123 complete as an engineering-only, shadow/manual boundary                          |
+| Plan tasks   | T118–T123                                                                                  |
+| Parent spec  | [SPEC.md](SPEC.md)                                                                         |
+| Requirements | PRD FR-SC-006–FR-SC-007, §§16.8–16.9, §§19.4–19.9, AC-07. NOT FR-SC-005 — see Traceability |
+| Dependencies | `attachments`, `ai-orchestration`                                                          |
+| Not enabled  | Real provider, persistence, production images, readiness changes, retries, or automation   |
 
 ## Purpose
 
@@ -146,7 +146,7 @@ Suspicious content routes to human review without accusing a participant.
 
 | Requirement         | Boundary consequence                                                                                       |
 | ------------------- | ---------------------------------------------------------------------------------------------------------- |
-| FR-SC-005           | Extraction must use an approved schema and explicit confidence/missing evidence.                           |
+| FR-SC-005           | **Not covered by this module.** See the note below.                                                        |
 | FR-SC-006           | Unclear, conflicting, cropped, or suspicious evidence cannot create a verified state.                      |
 | FR-SC-007 and AC-07 | Image instructions remain inert content and cannot alter schema, authorization, or deterministic approval. |
 | PRD §16.8           | Confidence treatment is field/provider calibrated; disagreement and unsafe quality stop progression.       |
@@ -154,6 +154,18 @@ Suspicious content routes to human review without accusing a participant.
 | PRD §§19.6–19.8     | Output is allowlisted and validated; failures preserve state and fall back safely.                         |
 | PRD §19.9           | Evaluation uses a synthetic manifest, including prompt injection and poor-quality cases.                   |
 | SPEC.md §§3 and 7–8 | Module dependencies, evaluation tiers, approval gates, and protected-state prohibitions remain binding.    |
+
+**FR-SC-005 is deliberately not claimed here.** It reads "OCR or AI may extract campaign, blog, and
+visible comment evidence", and the only authorized task is `reservation_image_extraction` against
+`reservation-image-v1`, whose allowlist is business name, reservation date, reservation time,
+reservation status, reservation holder, and visible booking method. That schema carries no campaign,
+blog, or comment field, so this module implements none of FR-SC-005's subject matter. What it does
+supply is the schema/confidence/missing-field DISCIPLINE that FR-SC-005 also demands — but the
+requirement is not satisfied by discipline alone.
+
+Secret-comment screenshot evidence needs its own minimal, separately approved contract; that is
+T145 in [requirements-gap-todo.md](tasks/requirements-gap-todo.md), and it is not implemented.
+Forcing comment evidence through `reservation-image-v1` is explicitly out of bounds.
 
 ## Stop gates
 

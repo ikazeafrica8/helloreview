@@ -6,6 +6,8 @@ import {
   type OcrEvidenceFieldName,
   type OcrExtractionEvidence,
   type OcrImageQualityStatus,
+  type OcrReservationStatus,
+  type OcrVisibleBookingMethod,
 } from '@helloreview/contracts'
 
 export const OCR_EVIDENCE_REASON = {
@@ -18,12 +20,28 @@ export const OCR_EVIDENCE_REASON = {
   PROVIDER_REVIEW_REQUIRED: 'OCR_EVIDENCE_PROVIDER_REVIEW_REQUIRED',
   UNSAFE_IMAGE_QUALITY: 'OCR_EVIDENCE_UNSAFE_IMAGE_QUALITY',
   REQUIRED_FIELD_MISSING: 'OCR_EVIDENCE_REQUIRED_FIELD_MISSING',
+  REQUIRED_FIELD_UNRESOLVED: 'OCR_EVIDENCE_REQUIRED_FIELD_UNRESOLVED',
   FIELD_CONFLICT: 'OCR_EVIDENCE_FIELD_CONFLICT',
   PROVIDER_DISAGREEMENT: 'OCR_EVIDENCE_PROVIDER_DISAGREEMENT',
   SHADOW_EVIDENCE_RECORDED: 'OCR_SHADOW_EVIDENCE_RECORDED',
 } as const
 
 export type OcrEvidenceReasonCode = (typeof OCR_EVIDENCE_REASON)[keyof typeof OCR_EVIDENCE_REASON]
+
+/**
+ * The two evidence fields whose contract enum carries an explicit `unknown` member. A provider that
+ * returns the sentinel HAS produced a syntactically valid value, so the schema's
+ * value/missingFields consistency rule is satisfied and the field never reaches `missingFields`.
+ * Treating that as resolved evidence would let "the provider could not read the reservation status"
+ * be recorded as clean shadow evidence, so it is routed to review instead.
+ */
+const UNRESOLVED_SENTINEL_FIELDS: readonly OcrEvidenceFieldName[] = ['reservationStatus', 'visibleBookingMethod']
+
+/**
+ * The intersection collapses to `never` if either contract enum ever drops its `unknown` member,
+ * which fails this file's compilation rather than silently disabling the rule above.
+ */
+const UNRESOLVED_SENTINEL: OcrReservationStatus & OcrVisibleBookingMethod = 'unknown'
 
 const MAX_SUSPICIOUS_TEXT_CHARACTERS = 4_000
 const SUSPICIOUS_TEXT_PATTERNS: readonly RegExp[] = [
@@ -201,20 +219,34 @@ export const detectSuspiciousOcrEvidence = (value: unknown): boolean => {
 const fieldOrder = (fields: ReadonlySet<OcrEvidenceFieldName>): readonly OcrEvidenceFieldName[] =>
   OCR_EVIDENCE_FIELDS.filter((field) => fields.has(field))
 
+/**
+ * Every decision leaves this module deeply frozen. A quality decision is evidence that a later
+ * reviewer reads, so a caller must not be able to widen `reasonCodes`, add an affected field, or
+ * flip an outcome after the fact.
+ */
+const frozenDecision = (
+  outcome: OcrEvidenceQualityDecision['outcome'],
+  reasonCode: OcrEvidenceReasonCode,
+  reasonCodes: readonly OcrEvidenceReasonCode[],
+  affectedFields: readonly OcrEvidenceFieldName[],
+  policyVersion: string | null,
+): OcrEvidenceQualityDecision =>
+  Object.freeze({
+    outcome,
+    reasonCode,
+    reasonCodes: Object.freeze([...reasonCodes]),
+    affectedFields: Object.freeze([...affectedFields]),
+    policyVersion,
+    requiresHumanReview: true,
+    deterministicValidationAllowed: false,
+    workflowProgressionAllowed: false,
+  })
+
 const stopped = (
   reasonCode: OcrEvidenceReasonCode,
   policyVersion: string | null,
   affectedFields: readonly OcrEvidenceFieldName[] = [],
-): OcrEvidenceQualityDecision => ({
-  outcome: 'human_review',
-  reasonCode,
-  reasonCodes: [reasonCode],
-  affectedFields,
-  policyVersion,
-  requiresHumanReview: true,
-  deterministicValidationAllowed: false,
-  workflowProgressionAllowed: false,
-})
+): OcrEvidenceQualityDecision => frozenDecision('human_review', reasonCode, [reasonCode], affectedFields, policyVersion)
 
 /** Pure structural assessment. It cannot approve a reservation or any other protected state. */
 export const evaluateOcrEvidenceQuality = (
@@ -251,6 +283,13 @@ export const evaluateOcrEvidenceQuality = (
         reasonCodes.push(OCR_EVIDENCE_REASON.REQUIRED_FIELD_MISSING)
       }
       affectedFields.add(field)
+      continue
+    }
+    if (UNRESOLVED_SENTINEL_FIELDS.includes(field) && extracted.value === UNRESOLVED_SENTINEL) {
+      if (!reasonCodes.includes(OCR_EVIDENCE_REASON.REQUIRED_FIELD_UNRESOLVED)) {
+        reasonCodes.push(OCR_EVIDENCE_REASON.REQUIRED_FIELD_UNRESOLVED)
+      }
+      affectedFields.add(field)
     }
   }
   for (const field of parsedInput.evidence.conflictingFields) affectedFields.add(field)
@@ -265,37 +304,28 @@ export const evaluateOcrEvidenceQuality = (
 
   const primaryReviewReason = reasonCodes.find((reason) => reason !== OCR_EVIDENCE_REASON.UNSAFE_IMAGE_QUALITY)
   if (primaryReviewReason !== undefined) {
-    return {
-      outcome: 'human_review',
-      reasonCode: primaryReviewReason,
+    return frozenDecision(
+      'human_review',
+      primaryReviewReason,
       reasonCodes,
-      affectedFields: fieldOrder(affectedFields),
-      policyVersion: parsedPolicy.version,
-      requiresHumanReview: true,
-      deterministicValidationAllowed: false,
-      workflowProgressionAllowed: false,
-    }
+      fieldOrder(affectedFields),
+      parsedPolicy.version,
+    )
   }
   if (imageUnsafe) {
-    return {
-      outcome: 'retry_required',
-      reasonCode: OCR_EVIDENCE_REASON.UNSAFE_IMAGE_QUALITY,
+    return frozenDecision(
+      'retry_required',
+      OCR_EVIDENCE_REASON.UNSAFE_IMAGE_QUALITY,
       reasonCodes,
-      affectedFields: [],
-      policyVersion: parsedPolicy.version,
-      requiresHumanReview: true,
-      deterministicValidationAllowed: false,
-      workflowProgressionAllowed: false,
-    }
+      [],
+      parsedPolicy.version,
+    )
   }
-  return {
-    outcome: 'shadow_evidence',
-    reasonCode: OCR_EVIDENCE_REASON.SHADOW_EVIDENCE_RECORDED,
-    reasonCodes: [OCR_EVIDENCE_REASON.SHADOW_EVIDENCE_RECORDED],
-    affectedFields: [],
-    policyVersion: parsedPolicy.version,
-    requiresHumanReview: true,
-    deterministicValidationAllowed: false,
-    workflowProgressionAllowed: false,
-  }
+  return frozenDecision(
+    'shadow_evidence',
+    OCR_EVIDENCE_REASON.SHADOW_EVIDENCE_RECORDED,
+    [OCR_EVIDENCE_REASON.SHADOW_EVIDENCE_RECORDED],
+    [],
+    parsedPolicy.version,
+  )
 }
