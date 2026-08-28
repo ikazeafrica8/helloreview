@@ -23,6 +23,10 @@
     "identity-resolution": { "dependsOn": ["application-sync", "campaign-config"] },
     "workflow-core": { "dependsOn": ["identity-resolution", "campaign-config", "audit-log"] },
     "messaging": { "dependsOn": ["workflow-core", "campaign-config", "provider-gateway"] },
+    "conversations": {
+      "$comment": "T135 owns durable inbound conversation, message, and secret-comment evidence history. Identity resolution decides attribution and hands it here with the evidence category that justified it.",
+      "dependsOn": ["workflow-core", "identity-resolution"]
+    },
     "attachments": { "dependsOn": ["workflow-core"] },
     "ai-orchestration": { "dependsOn": ["platform-core", "campaign-config"] },
     "human-tasks": { "dependsOn": ["workflow-core", "messaging"] },
@@ -59,6 +63,7 @@
         "workflow-core",
         "messaging",
         "attachments",
+        "conversations",
         "human-tasks",
         "selection",
         "shipping",

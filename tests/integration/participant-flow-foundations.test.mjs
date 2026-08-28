@@ -137,7 +137,6 @@ describe('selection shadow mode foundations', () => {
           participantId: ids.participantId,
           now: at(),
           maximumAgeMs: 15 * 60_000,
-          measurementPeriod: 'previous_calendar_day',
           regionMapping: { 서울: 'capital' },
         })
         expect(facts).toMatchObject({
@@ -146,6 +145,8 @@ describe('selection shadow mode foundations', () => {
           bloggerRegion: '서울',
           mappedRegion: 'capital',
           fresh: true,
+          // The adapter reports the period of the column it read; a caller cannot relabel it.
+          measurementPeriod: 'website_average_daily',
         })
         const service = new SelectionService(pool)
         const before = await pool.query(`SELECT selection_state, version FROM workflow_instances WHERE id = $1`, [
@@ -162,7 +163,7 @@ describe('selection shadow mode foundations', () => {
             minimumDailyVisitors: 1000,
             reviewBand: { lowerInclusive: 900, upperInclusive: 1099 },
             eligibleMappedRegions: ['capital'],
-            measurementPeriod: 'previous_calendar_day',
+            measurementPeriod: 'website_average_daily',
           },
           actorReference: 'shadow-evaluator',
           occurredAt: at(1),
@@ -278,7 +279,6 @@ describe('selection shadow mode foundations', () => {
             participantId: randomUUID(),
             now: at(),
             maximumAgeMs: 1,
-            measurementPeriod: null,
             regionMapping: {},
           }),
         ).rejects.toMatchObject({
@@ -331,20 +331,30 @@ describe('shipping, payback consent, and reservation foundations', () => {
           addressLine2: '4층',
           deliveryNote: '문 앞',
         }
-        const policy = {
-          version: 'shipping-v1',
-          requiredFields: ['recipientName', 'phone', 'postalCode', 'addressLine1', 'addressLine2'],
-          allowedPostalPrefixes: ['06'],
-          changeCutoffAt: at(120),
-          lockAt: at(180),
-        }
+        // The validation policy is a published campaign rule, not a submission field. The seed below
+        // is the only place it can come from, which is what stops a caller from weakening it.
+        await pool.query(
+          `INSERT INTO campaign_rules (
+             campaign_id, rule_type, version, status, configuration,
+             effective_from, published_by, published_at
+           ) VALUES ($1,'shipping',1,'published',$2::jsonb,$3,'operator-shipping',$3)`,
+          [
+            ids.campaignId,
+            JSON.stringify({
+              requiredFields: ['recipientName', 'phone', 'postalCode', 'addressLine1', 'addressLine2'],
+              allowedPostalPrefixes: ['06'],
+              changeCutoffAt: at(120).toISOString(),
+              lockAt: at(180).toISOString(),
+            }),
+            at(-10),
+          ],
+        )
         await expect(
           service.submit({
             token: issued.token,
             workflowId: other.workflowId,
             participantId: other.participantId,
             address,
-            policy,
             actorReference: 'participant',
             occurredAt: at(1),
           }),
@@ -355,7 +365,6 @@ describe('shipping, payback consent, and reservation foundations', () => {
             workflowId: ids.workflowId,
             participantId: ids.participantId,
             address: { ...address, postalCode: 'bad' },
-            policy,
             actorReference: 'participant',
             occurredAt: at(2),
           }),
@@ -365,11 +374,33 @@ describe('shipping, payback consent, and reservation foundations', () => {
           workflowId: ids.workflowId,
           participantId: ids.participantId,
           address,
-          policy,
           actorReference: 'participant',
           occurredAt: at(3),
         })
         expect(stored).toMatchObject({ outcome: 'stored', version: 1, maskedSummary: '06236 서울특별…' })
+        expect(
+          (await pool.query(`SELECT policy_version FROM shipping_addresses WHERE workflow_id = $1`, [ids.workflowId]))
+            .rows[0].policy_version,
+        ).toBe('shipping-rule-v1')
+        // A campaign with no published shipping rule cannot be validated against a caller's own
+        // policy; it fails closed instead.
+        const unruled = await seedWorkflow(pool, { suffix: 'shipping-unruled', type: 'shipping' })
+        const unruledGrant = await service.issueForm({
+          ...issueInput,
+          workflowId: unruled.workflowId,
+          participantId: unruled.participantId,
+          occurredAt: at(3),
+        })
+        await expect(
+          service.submit({
+            token: unruledGrant.token,
+            workflowId: unruled.workflowId,
+            participantId: unruled.participantId,
+            address,
+            actorReference: 'participant',
+            occurredAt: at(4),
+          }),
+        ).rejects.toMatchObject({ reasonCode: 'SHIPPING_POLICY_MISSING' })
         await pool.query(
           `INSERT INTO guideline_versions (
              campaign_id, version, status, body_text, effective_from, published_by, published_at
@@ -416,7 +447,6 @@ describe('shipping, payback consent, and reservation foundations', () => {
             workflowId: ids.workflowId,
             participantId: ids.participantId,
             address,
-            policy,
             actorReference: 'participant',
             occurredAt: at(4),
           }),
@@ -517,7 +547,6 @@ describe('shipping, payback consent, and reservation foundations', () => {
             workflowId: ids.workflowId,
             participantId: ids.participantId,
             address: { ...address, addressLine2: '5층' },
-            policy,
             actorReference: 'participant',
             occurredAt: at(11),
           }),
@@ -529,7 +558,6 @@ describe('shipping, payback consent, and reservation foundations', () => {
             workflowId: ids.workflowId,
             participantId: ids.participantId,
             address: { ...address, addressLine2: '6층' },
-            policy,
             actorReference: 'participant',
             occurredAt: at(121),
           }),

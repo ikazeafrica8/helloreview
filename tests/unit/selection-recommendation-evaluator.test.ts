@@ -10,7 +10,7 @@ const evidence = (overrides: Partial<RankingEvidence> = {}): RankingEvidence => 
   blogDailyVisitors: 1_500,
   bloggerRegion: '서울',
   mappedRegion: 'capital',
-  measurementPeriod: 'previous_calendar_day',
+  measurementPeriod: 'website_average_daily',
   sourceFreshnessAt: new Date('2026-08-25T00:00:00Z'),
   sourceEventId: 'manual-csv-event-1',
   fresh: true,
@@ -23,7 +23,7 @@ const policy = (overrides: Partial<SelectionPolicy> = {}): SelectionPolicy => ({
   minimumDailyVisitors: 1_000,
   reviewBand: { lowerInclusive: 900, upperInclusive: 1_099 },
   eligibleMappedRegions: ['capital'],
-  measurementPeriod: 'previous_calendar_day',
+  measurementPeriod: 'website_average_daily',
   ...overrides,
 })
 

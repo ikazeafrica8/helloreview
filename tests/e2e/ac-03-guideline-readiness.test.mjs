@@ -73,6 +73,11 @@ describe('AC-03 guideline readiness — release gate', () => {
         expect((await pool.query(`SELECT purpose_code FROM outbound_notifications`)).rows).toEqual([
           { purpose_code: 'RESERVATION_CORRECTION:INVALID_TIME' },
         ])
+        // Readiness composes this correction without the judged evidence, so it says the one thing
+        // it can safely read from the failed rule and defers the expected condition to an operator.
+        expect((await pool.query(`SELECT rendered_content FROM outbound_notifications`)).rows[0].rendered_content).toBe(
+          '예약 가능 시간을 다시 선택해 주세요. 보내주신 내용: 19:00 / 필요한 조건: 담당자 확인 후 안내드리겠습니다',
+        )
         expect(
           (await pool.query(`SELECT guideline_state FROM workflow_instances WHERE id = $1`, [ids.workflowId])).rows[0]
             .guideline_state,

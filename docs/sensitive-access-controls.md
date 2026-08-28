@@ -38,6 +38,18 @@ The protected audit detail contains only pseudonymous object references and auth
 the workflow, participant, campaign, request, and session references plus the admin and sensitive
 policy versions. It never contains the decrypted address, name, phone, or provider credential.
 
+A rejection is audited before the principal, policy, or target has been proven, so the rejection
+path re-checks every value it retains rather than trusting the invocation:
+
+- the actor reference and the target reference are re-validated against the pseudonymity rule at
+  runtime, and an unusable value is replaced with `operator:unverified-principal` or
+  `unverified-target` so the attempt is still on the record without copying raw contact data into
+  immutable evidence; and
+- the authorization policy version comes from the validated authorization decision when one was
+  produced. When authorization never got far enough to produce a decision, the request's own claimed
+  version is re-validated and recorded as `null` if it does not hold, rather than being echoed back
+  as though it had been verified.
+
 ## Export safe fallback
 
 `sensitive_data.export` has the same RBAC and separate-policy gates. Even after both test gates pass,

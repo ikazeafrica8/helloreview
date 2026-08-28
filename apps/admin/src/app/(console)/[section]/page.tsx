@@ -32,5 +32,5 @@ export default async function ConsoleSectionPage({ params }: Props) {
     return <ConsoleAccessDenied />
   const screen = await getOperatorConsoleGateway().screen(session, route, FIXTURE_CAMPAIGN_ID)
   if (screen === null) return <ConsoleAccessDenied />
-  return <ConsoleScreen screen={screen} />
+  return <ConsoleScreen screen={screen} session={session} campaignId={FIXTURE_CAMPAIGN_ID} />
 }

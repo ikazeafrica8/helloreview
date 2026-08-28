@@ -12,6 +12,7 @@ import { RulesEngineModule } from './modules/rules-engine/index.js'
 import { BusinessApprovalModule } from './modules/business-approval/index.js'
 import { GuidelineDeliveryModule } from './modules/guideline-delivery/index.js'
 import { AttachmentsModule } from './modules/attachments/index.js'
+import { ConversationsModule } from './modules/conversations/index.js'
 import { AiOrchestrationModule } from './modules/ai-orchestration/index.js'
 import { SelectionModule } from './modules/selection/index.js'
 import { ShippingModule } from './modules/shipping/index.js'
@@ -39,6 +40,7 @@ import { AdminApiModule } from './modules/admin-api/index.js'
     BusinessApprovalModule,
     GuidelineDeliveryModule,
     AttachmentsModule,
+    ConversationsModule,
     AiOrchestrationModule,
     SelectionModule,
     ShippingModule,

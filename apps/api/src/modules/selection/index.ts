@@ -1,5 +1,6 @@
 export * from './ranking-evidence.js'
 export * from './recommendation-evaluator.js'
 export * from './reason-codes.js'
+export * from './selection-policy.js'
 export * from './selection.module.js'
 export * from './selection.service.js'

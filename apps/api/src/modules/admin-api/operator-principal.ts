@@ -76,6 +76,22 @@ const reference = (value: unknown, reasonCode: string): string => {
   return value
 }
 
+/**
+ * The same pseudonymity rule as `reference`, in a form that a rejection path can use.
+ *
+ * A rejection is recorded BEFORE the principal has been validated - that is the whole point of the
+ * path - so the reference in hand may be anything the caller constructed, including a raw phone
+ * number or email. Returning null lets the caller substitute a safe placeholder instead of copying
+ * unvalidated contact data into immutable audit evidence.
+ */
+export const pseudonymousReferenceOrNull = (value: unknown): string | null => {
+  try {
+    return reference(value, 'ADMIN_REFERENCE_INVALID')
+  } catch {
+    return null
+  }
+}
+
 const date = (value: unknown, reasonCode: string): Date => {
   if (!(value instanceof Date) || Number.isNaN(value.getTime())) throw new OperatorPrincipalContractError(reasonCode)
   return new Date(value)

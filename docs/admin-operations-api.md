@@ -31,7 +31,7 @@ honestly until their query services exist and must never synthesize operational 
 
 `ParticipantAdminQueryService.search` requires a campaign scope, uses bound database parameters,
 and returns masked name and phone fields. Website application lifecycle status and blogger ranking
-evidence are separate response fields. The API does not turn blogger level, previous-day visitors,
+evidence are separate response fields. The API does not turn blogger level, average daily visitors,
 or region into an automated selection decision.
 
 `timeline` verifies that the participant belongs to the authorized campaign and merges application,

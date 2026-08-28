@@ -21,7 +21,7 @@ export type MaskedParticipantSearchResult = Readonly<{
   maskedPhone: string
   applicationStatus: string
   bloggerLevel: number | null
-  previousDayVisitors: number | null
+  averageDailyVisitors: number | null
   bloggerRegion: string | null
   createdAt: Date
 }>
@@ -158,7 +158,7 @@ export class ParticipantAdminQueryService {
       maskedPhone: maskParticipantPhone(typeof row.phone_normalized === 'string' ? row.phone_normalized : null),
       applicationStatus: asString(row.application_status, 'application_status'),
       bloggerLevel: row.blogger_level === null ? null : Number(row.blogger_level),
-      previousDayVisitors: row.blog_daily_visitors === null ? null : Number(row.blog_daily_visitors),
+      averageDailyVisitors: row.blog_daily_visitors === null ? null : Number(row.blog_daily_visitors),
       bloggerRegion: typeof row.blogger_region === 'string' ? row.blogger_region : null,
       createdAt: asDate(row.created_at, 'created_at'),
     }))
@@ -246,6 +246,21 @@ export class ParticipantAdminQueryService {
                 i.campaign_id, NULL, i.reason_code, i.match_category::text
            FROM identity_resolution_cases i
           WHERE i.participant_id = $1 AND i.campaign_id = $2
+         UNION ALL
+         -- T135 inbound history. Coded metadata only: body_text is deliberately absent, exactly as
+         -- outbound_notifications.rendered_content is absent from the notification rows above.
+         SELECT m.id, 'messages', 'INBOUND_MESSAGE_RECEIVED', m.provider_sent_at, m.workflow_id,
+                w.campaign_id, NULL, m.classified_purpose_code, m.message_kind::text
+           FROM inbound_messages m JOIN participant_workflows w ON w.id = m.workflow_id
+         UNION ALL
+         SELECT e.id, 'messages', 'CONVERSATION_' || upper(e.event_type::text), e.occurred_at, c.workflow_id,
+                w.campaign_id, NULL, e.reason_code, e.evidence_category
+           FROM conversation_events e JOIN conversations c ON c.id = e.conversation_id
+           JOIN participant_workflows w ON w.id = c.workflow_id
+         UNION ALL
+         SELECT v.id, 'secret_comment_evidence', 'SECRET_COMMENT_EVIDENCE_' || upper(v.status::text),
+                v.occurred_at, v.workflow_id, w.campaign_id, v.version, v.reason_code, v.status::text
+           FROM secret_comment_evidence_versions v JOIN participant_workflows w ON w.id = v.workflow_id
        )
        SELECT event_id, category, event_code, occurred_at, workflow_id, campaign_id, version, reason_code, state_code
          FROM timeline

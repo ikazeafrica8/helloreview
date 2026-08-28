@@ -141,6 +141,17 @@ describe('T84-T86 Visit A reservation flow', () => {
             )
           ).rows,
         ).toEqual([{ purpose_code: 'RESERVATION_CORRECTION:INVALID_TIME', count: 1 }])
+        // A reason code alone leaves the participant guessing. The rendered Korean message must
+        // name what they sent and the condition it has to meet.
+        expect(
+          (
+            await pool.query(`SELECT rendered_content FROM outbound_notifications WHERE workflow_id = $1`, [
+              ids.workflowId,
+            ])
+          ).rows[0].rendered_content,
+        ).toBe(
+          '예약 가능 시간을 다시 선택해 주세요. 보내주신 내용: 2026-08-26 20:00 / 필요한 조건: 2026-08-26 09:00~18:00',
+        )
       } finally {
         await pool.end()
       }
@@ -159,6 +170,8 @@ describe('T84-T86 Visit A reservation flow', () => {
             input: { businessName: '다른 카페', sourceEventId: 'visit-a-wrong-business' },
             rule: 'RESERVATION_BUSINESS',
             correction: 'WRONG_BUSINESS',
+            rendered:
+              '지정된 매장 예약인지 확인해 주세요. 보내주신 내용: 다른카페 강남점 / 필요한 조건: 테스트카페 강남점',
           },
           {
             suffix: 'blackout',
@@ -166,6 +179,8 @@ describe('T84-T86 Visit A reservation flow', () => {
             input: { sourceEventId: 'visit-a-blackout' },
             rule: 'RESERVATION_BLACKOUT',
             correction: 'BLACKOUT_DATE',
+            rendered:
+              '예약 불가 날짜이므로 다른 날짜를 선택해 주세요. 보내주신 내용: 2026-08-26 / 필요한 조건: 예약이 불가능한 날짜를 제외한 날짜',
           },
           {
             suffix: 'lead-time',
@@ -176,6 +191,8 @@ describe('T84-T86 Visit A reservation flow', () => {
             },
             rule: 'RESERVATION_LEAD_TIME',
             correction: 'INSUFFICIENT_LEAD_TIME',
+            rendered:
+              '예약 준비 시간을 확보해 다시 선택해 주세요. 보내주신 내용: 2026-08-25 10:30 / 필요한 조건: 예약 시각 기준 최소 60분 전',
           },
           {
             suffix: 'boundary',
@@ -183,6 +200,8 @@ describe('T84-T86 Visit A reservation flow', () => {
             input: { sourceEventId: 'visit-a-boundary', text: '2026년 8월 26일 오후 6시에 예약했어요' },
             rule: 'RESERVATION_BOUNDARY',
             correction: 'INVALID_BOUNDARY',
+            rendered:
+              '마감 시간 전 예약으로 변경해 주세요. 보내주신 내용: 2026-08-26 18:00 / 필요한 조건: 2026-08-26 09:00~18:00',
           },
         ]
         for (const item of cases) {
@@ -199,6 +218,14 @@ describe('T84-T86 Visit A reservation flow', () => {
           expect(result.recorded.reservation.validationEvidence.validation.failures).toEqual(
             expect.arrayContaining([expect.objectContaining({ ruleCode: item.rule, correction: item.correction })]),
           )
+          const rendered = (
+            await pool.query(`SELECT rendered_content FROM outbound_notifications WHERE workflow_id = $1`, [
+              ids.workflowId,
+            ])
+          ).rows[0].rendered_content
+          expect(rendered).toBe(item.rendered)
+          // Engineering evidence stays in the audit trail, never in a participant message.
+          expect(rendered).not.toMatch(/RESERVATION_|visit_[abc]|[0-9a-f]{8}-[0-9a-f]{4}-/)
         }
       } finally {
         await pool.end()

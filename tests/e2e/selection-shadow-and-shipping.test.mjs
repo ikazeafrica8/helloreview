@@ -63,7 +63,6 @@ describe('T72/T77 selection-shadow and shipping release gates', () => {
             participantId: participant.rows[0].id,
             now,
             maximumAgeMs: 60 * 60_000,
-            measurementPeriod: 'previous_calendar_day',
             regionMapping: { 서울: 'capital' },
           }),
           policy: {
@@ -72,7 +71,7 @@ describe('T72/T77 selection-shadow and shipping release gates', () => {
             minimumDailyVisitors: 1000,
             reviewBand: { lowerInclusive: 900, upperInclusive: 1099 },
             eligibleMappedRegions: ['capital'],
-            measurementPeriod: 'previous_calendar_day',
+            measurementPeriod: 'website_average_daily',
           },
           actorReference: 'shadow-evaluator',
           occurredAt: now,
@@ -122,6 +121,24 @@ describe('T72/T77 selection-shadow and shipping release gates', () => {
                      '주소 입력: {{form_link}}','legal-e2e',$1,$1)`,
           [shippingIds.now],
         )
+        // The submission has no policy field. The published campaign shipping rule below is the
+        // only source of required fields, allowed postal regions, cutoff, and lock instants.
+        await pool.query(
+          `INSERT INTO campaign_rules (
+             campaign_id, rule_type, version, status, configuration,
+             effective_from, published_by, published_at
+           ) VALUES ($1,'shipping',1,'published',$2::jsonb,$3,'shipping-e2e-operator',$3)`,
+          [
+            shippingIds.campaignId,
+            JSON.stringify({
+              requiredFields: ['recipientName', 'phone', 'postalCode', 'addressLine1', 'addressLine2'],
+              allowedPostalPrefixes: ['06'],
+              changeCutoffAt: new Date(shippingIds.now.getTime() + 3_600_000).toISOString(),
+              lockAt: new Date(shippingIds.now.getTime() + 7_200_000).toISOString(),
+            }),
+            new Date(shippingIds.now.getTime() - 3_600_000),
+          ],
+        )
         const outbound = new OutboundIntentService(new MessageTemplateRepository())
         const shipping = new ShippingService(pool, Buffer.alloc(32, 11), outbound)
         const issued = await shipping.issueForm({
@@ -145,13 +162,6 @@ describe('T72/T77 selection-shadow and shipping release gates', () => {
             postalCode: '06236',
             addressLine1: '서울특별시 강남구 테헤란로 123',
             addressLine2: '4층',
-          },
-          policy: {
-            version: 'shipping-e2e-v1',
-            requiredFields: ['recipientName', 'phone', 'postalCode', 'addressLine1', 'addressLine2'],
-            allowedPostalPrefixes: ['06'],
-            changeCutoffAt: new Date(shippingIds.now.getTime() + 3_600_000),
-            lockAt: new Date(shippingIds.now.getTime() + 7_200_000),
           },
           actorReference: 'participant-e2e',
           occurredAt: new Date(shippingIds.now.getTime() + 2_000),

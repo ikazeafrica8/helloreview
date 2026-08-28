@@ -2,8 +2,9 @@ import { Inject, Injectable } from '@nestjs/common'
 import { runWithCorrelation } from '@helloreview/observability'
 import { AUDIT_ACTION, AuditLogService } from '../audit-log/index.js'
 import { ShippingService, type NormalizedShippingAddress } from '../shipping/index.js'
-import { AdminAuthorizationDeniedError } from './admin-authorization.js'
+import { AdminAuthorizationDeniedError, type AdminAuthorizationDecision } from './admin-authorization.js'
 import { authorizeAdminInvocation, type AdminInvocation } from './admin-invocation.js'
+import { pseudonymousReferenceOrNull } from './operator-principal.js'
 import {
   assertSensitiveAccessAllowed,
   SensitiveAccessPolicyError,
@@ -29,6 +30,18 @@ export type RequestSensitiveExportCommand = Readonly<{
   occurredAt: Date
   sensitiveAccessPolicyVersion: string
 }>
+
+/**
+ * A rejected attempt is audited before the principal, policy, or target has been proven, so every
+ * value written must be re-checked here rather than trusted from the invocation. These placeholders
+ * keep the attempt itself on the record when a value cannot be safely retained.
+ */
+const UNVERIFIED_ACTOR_REFERENCE = 'operator:unverified-principal'
+const UNVERIFIED_TARGET_REFERENCE = 'unverified-target'
+const AUTHORIZATION_POLICY_VERSION = /^[a-z][a-z0-9-]*-v[0-9]+$/
+
+const validatedAuthorizationPolicyVersion = (value: unknown): string | null =>
+  typeof value === 'string' && AUTHORIZATION_POLICY_VERSION.test(value) ? value : null
 
 export type SensitiveExportUnavailable = Readonly<{
   operationReference: string
@@ -112,8 +125,9 @@ export class SensitiveAccessAdminService {
     command: RequestSensitiveExportCommand,
   ): Promise<SensitiveExportUnavailable> {
     let policyVersion: string
+    let decision: AdminAuthorizationDecision
     try {
-      authorizeAdminInvocation(invocation, 'sensitive_data.export', null)
+      decision = authorizeAdminInvocation(invocation, 'sensitive_data.export', null)
       const policy = await this.sensitiveAccessPolicyProvider.resolveCurrentPolicy({
         environment: invocation.context.environment,
         policyVersion: command.sensitiveAccessPolicyVersion,
@@ -147,7 +161,7 @@ export class SensitiveAccessAdminService {
         reason: 'SENSITIVE_EXPORT_UNAVAILABLE_SAFE_FALLBACK',
         detail: {
           requestedRecordCount: command.requestedRecordCount,
-          authorizationPolicyVersion: invocation.policy.policyVersion,
+          authorizationPolicyVersion: decision.policyVersion,
           sensitiveAccessPolicyVersion: policyVersion,
         },
         occurredAt: command.occurredAt,
@@ -168,27 +182,36 @@ export class SensitiveAccessAdminService {
     occurredAt: Date,
     error: unknown,
   ): Promise<void> {
+    const denial = error instanceof AdminAuthorizationDeniedError ? error.decision : null
     const reason =
-      error instanceof AdminAuthorizationDeniedError
-        ? error.decision.reasonCode
+      denial !== null
+        ? denial.reasonCode
         : error instanceof SensitiveAccessPolicyError
           ? error.reasonCode
           : error instanceof Error && 'reasonCode' in error && typeof error.reasonCode === 'string'
             ? error.reasonCode
             : 'SENSITIVE_ACCESS_OPERATION_FAILED'
+    // A denial decision has already been through the principal and policy parsers, so its
+    // references and policy version are validated. Without one, nothing about this invocation has
+    // been proven and every retained value is re-checked here or replaced.
+    const actorId =
+      pseudonymousReferenceOrNull(denial?.principalReference ?? invocation.principal.principalReference) ??
+      UNVERIFIED_ACTOR_REFERENCE
+    const authorizationPolicyVersion =
+      denial?.policyVersion ?? validatedAuthorizationPolicyVersion(invocation.policy.policyVersion)
     await runWithCorrelation(invocation.correlationId, () =>
       this.audit.record({
         actorType: 'operator',
-        actorId: invocation.principal.principalReference,
+        actorId,
         action:
           operation === 'shipping_address.reveal'
             ? AUDIT_ACTION.SENSITIVE_FIELD_REVEALED
             : AUDIT_ACTION.SENSITIVE_DATA_EXPORT_REQUESTED,
         targetType: operation === 'shipping_address.reveal' ? 'shipping_workflow' : 'sensitive_export',
-        targetId,
+        targetId: pseudonymousReferenceOrNull(targetId) ?? UNVERIFIED_TARGET_REFERENCE,
         result: 'rejected',
         reason,
-        detail: { operation, authorizationPolicyVersion: invocation.policy.policyVersion },
+        detail: { operation, authorizationPolicyVersion },
         occurredAt,
       }),
     )

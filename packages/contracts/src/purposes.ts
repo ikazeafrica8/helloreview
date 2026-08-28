@@ -15,6 +15,16 @@
 // and mixing the two is how `GUIDELINE_DELIVERY:v4` ends up compared against `GUIDELINE_DELIVERY`.
 
 export const MESSAGE_PURPOSES = {
+  /**
+   * 0. Website application request — the campaign's application URL (PRD §32.1, FR-SC-002).
+   *
+   * Added in T136. §14.5 has always made "Campaign application URL exists" a mandatory guard on
+   * Not Applied -> Application Requested, and §32.1 defines the Korean template that interpolates
+   * `{{application_url}}` — but no purpose code existed for it, so the one message that starts the
+   * secret-comment route could not pass through the outbox at all. Numbered 0 because it precedes
+   * the match outcome that §14.1 numbers 1.
+   */
+  APPLICATION_REQUEST: 'APPLICATION_REQUEST',
   /** 1. Direct website applicant — match outcome. */
   APPLICATION_MATCH_STATUS: 'APPLICATION_MATCH_STATUS',
   /** 2. Secret-comment applicant — screenshot request. */

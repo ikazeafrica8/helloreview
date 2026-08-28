@@ -2,8 +2,13 @@
 
 import { useId, useState } from 'react'
 import { evaluateGovernedAction, type ConsoleAction, type GovernedActionResult } from '@/lib/console-contract'
+import type { OperatorConsoleSession } from '@/lib/operator-session-contract'
 
-export function GovernedActionPanel({ action }: Readonly<{ action: ConsoleAction }>) {
+export function GovernedActionPanel({
+  action,
+  session,
+  campaignId,
+}: Readonly<{ action: ConsoleAction; session: OperatorConsoleSession; campaignId: string }>) {
   const [expanded, setExpanded] = useState(false)
   const [result, setResult] = useState<GovernedActionResult | null>(null)
   const reasonId = useId()
@@ -61,6 +66,8 @@ export function GovernedActionPanel({ action }: Readonly<{ action: ConsoleAction
           setResult(
             evaluateGovernedAction({
               action,
+              session,
+              campaignId,
               reason: String(data.get('reason') ?? ''),
               confirmation: String(data.get('confirmation') ?? ''),
             }),

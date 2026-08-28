@@ -15,6 +15,18 @@ export { campaignTimeWindows, weekdayEnum } from './campaign-time-windows.js'
 export type { CampaignTimeWindowRow, NewCampaignTimeWindowRow } from './campaign-time-windows.js'
 export { campaignBlackouts } from './campaign-blackouts.js'
 export { campaignBusinesses, campaignBusinessAliases } from './campaign-businesses.js'
+export {
+  campaignJourneyConfigurations,
+  messagePurposeOwnership,
+  messageAuthoritativeSenderEnum,
+  messageTriggerAuditStatusEnum,
+} from './campaign-journey-config.js'
+export type {
+  CampaignJourneyConfigurationRow,
+  NewCampaignJourneyConfigurationRow,
+  MessagePurposeOwnershipRow,
+  NewMessagePurposeOwnershipRow,
+} from './campaign-journey-config.js'
 export type {
   CampaignBusinessRow,
   NewCampaignBusinessRow,
@@ -162,6 +174,24 @@ export type {
   AttachmentAccessGrantRow,
   AttachmentGrantEventRow,
 } from './attachments.js'
+export {
+  conversations,
+  conversationEvents,
+  inboundMessages,
+  conversationStateEnum,
+  conversationEventTypeEnum,
+  inboundMessageKindEnum,
+} from './conversations.js'
+export type {
+  ConversationRow,
+  NewConversationRow,
+  ConversationEventRow,
+  NewConversationEventRow,
+  InboundMessageRow,
+  NewInboundMessageRow,
+} from './conversations.js'
+export { secretCommentEvidenceVersions, secretCommentEvidenceStatusEnum } from './secret-comment-evidence.js'
+export type { SecretCommentEvidenceVersionRow, NewSecretCommentEvidenceVersionRow } from './secret-comment-evidence.js'
 export {
   selectionRecommendations,
   selectionManualDecisions,

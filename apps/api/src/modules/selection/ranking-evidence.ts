@@ -2,13 +2,21 @@ import { Inject, Injectable } from '@nestjs/common'
 import { POSTGRES_POOL } from '@helloreview/db'
 import type { Pool } from 'pg'
 import type { RankingEvidence } from './recommendation-evaluator.js'
+import { SOURCE_VISITOR_MEASUREMENT_PERIOD } from './selection-policy.js'
 
+/**
+ * `measurementPeriod` is deliberately ABSENT.
+ *
+ * It used to be a caller input, and that made the evaluator's period-agreement check meaningless: a
+ * caller could label this evidence `previous_calendar_day` and declare the same on the policy, and
+ * the check would pass while scoring a metric that is actually the website's average daily visitors.
+ * The period is a property of the COLUMN this adapter reads, so it is reported, not accepted.
+ */
 export type ReadRankingEvidenceInput = Readonly<{
   workflowId: string
   participantId: string
   now: Date
   maximumAgeMs: number
-  measurementPeriod: string | null
   regionMapping: Readonly<Record<string, string>>
 }>
 
@@ -48,7 +56,9 @@ export class RankingEvidenceAdapter {
       blogDailyVisitors: nullableInteger(row.blog_daily_visitors),
       bloggerRegion,
       mappedRegion: bloggerRegion === null ? null : (input.regionMapping[bloggerRegion] ?? null),
-      measurementPeriod: input.measurementPeriod,
+      // The period this evidence actually has, from the column it was read out of. A policy that
+      // claims a different period now mismatches and routes to human review, which is the point.
+      measurementPeriod: SOURCE_VISITOR_MEASUREMENT_PERIOD,
       sourceFreshnessAt: sourceFreshnessValue,
       sourceEventId: String(row.last_source_event_id),
       fresh: input.maximumAgeMs >= 0 && input.now.getTime() - sourceFreshnessValue.getTime() <= input.maximumAgeMs,

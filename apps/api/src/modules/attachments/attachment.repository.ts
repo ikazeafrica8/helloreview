@@ -23,6 +23,8 @@ export type AttachmentEvidence = Readonly<{
   sizeBytes: number
   contentHash: string
   storageReference: string
+  /** The T135 inbound message this file arrived on, when the caller knows it. */
+  inboundMessageId: string | null
   createdAt: Date
 }>
 
@@ -49,11 +51,13 @@ const evidenceFromRow = (row: Record<string, unknown>): AttachmentEvidence => ({
   sizeBytes: Number(row.size_bytes),
   contentHash: text(row, 'content_hash'),
   storageReference: text(row, 'storage_reference'),
+  inboundMessageId: typeof row.inbound_message_id === 'string' ? row.inbound_message_id : null,
   createdAt: date(row, 'created_at'),
 })
 
 const EVIDENCE_COLUMNS = `id, workflow_id, participant_id, source_message_reference, provider_reference,
-                          declared_type, detected_type, size_bytes, content_hash, storage_reference, created_at`
+                          declared_type, detected_type, size_bytes, content_hash, storage_reference,
+                          inbound_message_id, created_at`
 
 @Injectable()
 export class AttachmentRepository {
@@ -99,8 +103,9 @@ export class AttachmentRepository {
     const result = await tx.query(
       `INSERT INTO attachments (
          workflow_id, participant_id, source_message_reference, provider_reference,
-         declared_type, detected_type, size_bytes, content_hash, storage_reference, created_at
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+         declared_type, detected_type, size_bytes, content_hash, storage_reference,
+         inbound_message_id, created_at
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
        RETURNING ${EVIDENCE_COLUMNS}`,
       [
         input.workflowId,
@@ -112,6 +117,7 @@ export class AttachmentRepository {
         input.sizeBytes,
         input.contentHash,
         input.storageReference,
+        input.inboundMessageId,
         input.createdAt,
       ],
     )

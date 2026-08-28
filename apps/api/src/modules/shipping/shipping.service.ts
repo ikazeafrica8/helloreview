@@ -12,7 +12,9 @@ import {
   maskShippingAddress,
 } from './address-crypto.js'
 import {
+  parseShippingRulePolicy,
   validateShippingAddress,
+  ShippingAddressConfigurationError,
   type NormalizedShippingAddress,
   type ShippingAddressInput,
   type ShippingAddressPolicy,
@@ -46,12 +48,16 @@ export type IssuedShippingForm = Readonly<{
   notification: EnqueuedOutboundIntent | null
 }>
 
+/**
+ * A submission names the grant, the workflow, and the address. It deliberately CANNOT carry a
+ * validation policy: the required fields, allowed postal regions, change cutoff, and lock instant
+ * are read from the campaign's published shipping rule inside the same transaction.
+ */
 export type SubmitShippingAddressInput = Readonly<{
   token: string
   workflowId: string
   participantId: string
   address: ShippingAddressInput
-  policy: ShippingAddressPolicy | null
   actorReference: string
   occurredAt: Date
 }>
@@ -180,7 +186,6 @@ export class ShippingService {
   }
 
   async submit(input: SubmitShippingAddressInput): Promise<SubmittedShippingAddress> {
-    const validation = validateShippingAddress(input.address, input.policy)
     return runInTransaction(this.pool, async (tx) => {
       const grantResult = await tx.query(
         `SELECT id, workflow_id, participant_id, expires_at, consumed_at, revoked_at
@@ -196,8 +201,8 @@ export class ShippingService {
         throw new ShippingServiceError('SHIPPING_FORM_EXPIRED')
       const workflow = await this.lockWorkflow(tx, input.workflowId, input.participantId)
       if (workflow.campaign_type !== 'shipping') throw new ShippingServiceError('SHIPPING_CAMPAIGN_REQUIRED')
-      const policy = input.policy
-      if (policy === null) throw new ShippingServiceError('SHIPPING_POLICY_MISSING')
+      const policy = await this.currentPolicy(tx, rowText(workflow, 'campaign_id'), input.occurredAt)
+      const validation = validateShippingAddress(input.address, policy)
       if (!validation.valid) {
         await tx.query(
           `UPDATE workflow_instances
@@ -280,6 +285,26 @@ export class ShippingService {
       )
       return { outcome: 'stored', addressId, version, maskedSummary, validation }
     })
+  }
+
+  /**
+   * The campaign shipping rule in force at `at`, resolved inside the submission transaction.
+   *
+   * Half-open `[effective_from, effective_to)` and `published`/`superseded` only, matching
+   * `CampaignRulesRepository.resolveEffectiveVersion`: a replayed submission must be judged by the
+   * rule that applied when it happened, and a draft must never govern a live participant.
+   */
+  private async currentPolicy(tx: DbTransaction, campaignId: string, at: Date): Promise<ShippingAddressPolicy> {
+    const result = await tx.query(
+      `SELECT version, configuration FROM campaign_rules
+        WHERE campaign_id = $1 AND rule_type = 'shipping' AND status IN ('published','superseded')
+          AND effective_from <= $2 AND (effective_to IS NULL OR effective_to > $2)
+        ORDER BY effective_from DESC, version DESC LIMIT 1`,
+      [campaignId, at],
+    )
+    const row = result.rows[0]
+    if (row === undefined) throw new ShippingAddressConfigurationError('SHIPPING_POLICY_MISSING')
+    return parseShippingRulePolicy({ ruleVersion: Number(row.version), configuration: row.configuration })
   }
 
   async currentMasked(

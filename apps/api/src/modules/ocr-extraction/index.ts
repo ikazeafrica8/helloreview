@@ -1,5 +1,6 @@
 export { OcrExtractionError, OcrExtractionService } from './ocr-extraction.service.js'
-export type { OcrExtractionServiceOptions } from './ocr-extraction.service.js'
+export { DEFAULT_OCR_IDEMPOTENCY_POLICY } from './ocr-extraction.service.js'
+export type { OcrExtractionServiceOptions, OcrIdempotencyPolicy } from './ocr-extraction.service.js'
 export { OCR_ORCHESTRATION_REASON } from './reason-codes.js'
 export {
   OCR_EVIDENCE_REASON,

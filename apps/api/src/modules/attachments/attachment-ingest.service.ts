@@ -22,6 +22,14 @@ const ingestRequestSchema = z
     workflowId: z.uuid(),
     participantId: z.uuid(),
     sourceMessageReference: z.string().min(1).max(500),
+    /**
+     * The T135 inbound message this file arrived on.
+     *
+     * Optional and additive: `sourceMessageReference` above has carried the link as free text since
+     * T88, and rows written before `inbound_messages` existed cannot be backfilled because this
+     * table has UPDATE revoked. A caller that knows the message id supplies both.
+     */
+    inboundMessageId: z.uuid().nullish(),
     providerReference: z.string().min(1).max(500),
     filename: z.string().min(1).max(255),
     declaredType: z.string().min(1).max(200),
@@ -121,6 +129,7 @@ export class AttachmentIngestService {
         sizeBytes: input.bytes.byteLength,
         contentHash,
         storageReference: stored.storageReference,
+        inboundMessageId: input.inboundMessageId ?? null,
         createdAt: input.receivedAt,
       })
       await this.attachments.appendSecurityEvent(tx, {
