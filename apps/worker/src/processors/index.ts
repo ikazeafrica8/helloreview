@@ -1,7 +1,8 @@
-// The processor registry: one handler per queue.
+// The processor registry exports one dependency-bound handler factory per enabled queue.
 //
-// EMPTY ON PURPOSE. T5 delivers the worker's boot and connection, not provider bindings. A
-// capability adds an entry only when every production dependency can be constructed here:
+// T5 delivered the worker's boot and connection without provider bindings. T138 now enables only
+// the approved internal application-import event. External provider events remain durably received
+// until their complete participant journeys and adapters are approved:
 //
 //   QUEUE_NAMES.RECONCILE_APPLICATIONS      T27  factory delivered; website read API still open
 //   QUEUE_NAMES.SEND_OUTBOUND               T45  transactional outbox delivery
@@ -9,12 +10,9 @@
 //   QUEUE_NAMES.AUDIT_GUIDELINE_DELIVERIES  T55  premature-delivery detection
 //
 // The runtime refuses to bind a queue with no handler rather than binding one that quietly discards
-// jobs, so an entry added here is the single step that brings a queue to life.
+// jobs, so adding a dependency-bound entry remains the single step that brings a queue to life.
 
-import type { QueueName } from '@helloreview/contracts'
-import type { JobHandler } from '../runtime.js'
-
-export const HANDLERS: Readonly<Partial<Record<QueueName, JobHandler>>> = Object.freeze({})
+export { createWorkerHandlers } from './registry.js'
 
 // T27 supplies the processor factory, but the concrete handler cannot be bound here until the
 // website's real read API exists. Binding the fake in application code is prohibited; tests and a

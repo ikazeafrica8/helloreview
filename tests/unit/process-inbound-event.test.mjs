@@ -12,10 +12,15 @@ const batchId = '22222222-2222-4222-8222-222222222222'
 const applicationId = '33333333-3333-4333-8333-333333333333'
 const occurredAt = new Date('2026-08-24T01:00:00Z')
 
-const harness = ({ payload, attemptCount = 0, status = 'received' } = {}) => {
+const harness = ({
+  payload,
+  attemptCount = 0,
+  status = 'received',
+  eventType = 'application.import.completed',
+} = {}) => {
   const state = {
     id: inboxId,
-    event_type: 'application.import.completed',
+    event_type: eventType,
     payload: payload ?? {
       batchId,
       sourceSystem: 'helloreview_website',
@@ -130,6 +135,27 @@ describe('durable inbound event dispatcher', () => {
     expect(testHarness.state).toMatchObject({
       status: 'dead_lettered',
       last_error_reason: INBOUND_DISPATCH_REASON.EVENT_TYPE_MISMATCH,
+    })
+  })
+
+  test('leaves an unapproved external event received without invoking or dead-lettering it', async () => {
+    const externalEventType = 'kakao.message.received'
+    const testHarness = harness({ eventType: externalEventType })
+    const handler = vi.fn(async () => undefined)
+    const processor = createProcessInboundEventHandler({
+      db: testHarness.db,
+      handlers: { 'application.import.completed': handler },
+      maxAttempts: 1,
+    })
+
+    await processor({ data: { inboxId, eventType: externalEventType } })
+
+    expect(handler).not.toHaveBeenCalled()
+    expect(testHarness.state).toMatchObject({
+      status: 'received',
+      attempt_count: 0,
+      last_error_reason: null,
+      processed_at: null,
     })
   })
 
