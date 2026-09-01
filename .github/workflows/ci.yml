@@ -90,8 +90,15 @@ jobs:
       - name: Install locked dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Start local infrastructure
+        run: pnpm services:up
+
       - name: Run ${{ matrix.name }}
         run: ${{ matrix.command }}
+
+      - name: Stop local infrastructure
+        if: always()
+        run: pnpm services:down
 
   operator-console:
     name: Operator console
