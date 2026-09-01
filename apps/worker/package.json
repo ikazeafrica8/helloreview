@@ -15,6 +15,7 @@
     "@helloreview/contracts": "workspace:*",
     "@helloreview/db": "workspace:*",
     "@helloreview/observability": "workspace:*",
+    "@helloreview/workflow-runtime": "workspace:*",
     "bullmq": "^6.2.0",
     "ioredis": "^6.0.0"
   }

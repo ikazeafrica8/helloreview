@@ -246,6 +246,13 @@
       "when": 1787877907556,
       "tag": "0034_add_journey_configuration_and_sender_ownership",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1788226259973,
+      "tag": "0035_add_application_import_quarantine",
+      "breakpoints": true
     }
   ]
 }

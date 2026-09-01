@@ -67,7 +67,6 @@ describe('manual application CSV contract', () => {
   })
 
   test.each([
-    ['unsupported status', validRow.replace(',received,', ',approved,')],
     ['non-E.164 phone', validRow.replace('+821012345678', '010-1234-5678')],
     ['timestamp without timezone', validRow.replace('2026-08-24T01:05:00Z', '2026-08-24T01:05:00')],
     ['update before submission', validRow.replace('2026-08-24T01:05:00Z', '2026-08-23T01:05:00Z')],
@@ -77,6 +76,21 @@ describe('manual application CSV contract', () => {
     ['fractional daily visitors', validRow.replace(',1,1250,서울,', ',1,10.5,서울,')],
   ])('rejects an invalid row: %s', (_label, row) => {
     expect(reasonOf(() => parseApplicationCsv(`${header}\n${row}`))).toBe(APPLICATION_IMPORT_FAILURES.INVALID_ROW)
+  })
+
+  test('classifies an unapproved website lifecycle code for durable quarantine', () => {
+    try {
+      parseApplicationCsv(`${header}\n${validRow.replace(',received,', ',approved,')}`)
+    } catch (error) {
+      expect(error).toBeInstanceOf(ManualCsvImportError)
+      expect(error).toMatchObject({
+        reasonCode: APPLICATION_IMPORT_FAILURES.UNSUPPORTED_STATUS,
+        rowNumber: 2,
+        evidence: { rowCount: 1 },
+      })
+      return
+    }
+    throw new Error('expected ManualCsvImportError')
   })
 
   test('rejects duplicate source application ids within one snapshot', () => {

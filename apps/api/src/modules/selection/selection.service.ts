@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { Inject, Injectable } from '@nestjs/common'
 import { POSTGRES_POOL, runInTransaction, type DbTransaction } from '@helloreview/db'
+import { SelectionRecommendationError, recordSelectionRecommendation } from '@helloreview/workflow-runtime'
 import type { Pool } from 'pg'
 import { buildSensitiveOverrideEvidence, type SensitiveOverrideEvidence } from '../workflow-core/index.js'
 import {
@@ -26,6 +27,8 @@ export type RecordSelectionRecommendationInput = Readonly<{
 export type RecordManualSelectionDecisionInput = Readonly<{
   workflowId: string
   recommendationId: string | null
+  expectedWorkflowVersion?: number
+  expectedRecommendationVersion?: number | null
   decision: 'selected' | 'not_selected' | 'revoked'
   actorType: 'operator' | 'system' | 'participant'
   actorReference: string
@@ -95,77 +98,22 @@ export class SelectionService {
 
   async recordRecommendation(input: RecordSelectionRecommendationInput): Promise<SelectionRecommendationRecord> {
     const evaluation = evaluateSelectionRecommendation(input.evidence, input.policy)
-    const facts = {
-      bloggerLevel: input.evidence.bloggerLevel,
-      blogDailyVisitors: input.evidence.blogDailyVisitors,
-      bloggerRegion: input.evidence.bloggerRegion,
-      mappedRegion: input.evidence.mappedRegion,
-      measurementPeriod: input.evidence.measurementPeriod,
-      sourceEventId: input.evidence.sourceEventId,
-    }
-    const deduplicationKey = digest({
-      workflowId: input.workflowId,
-      facts,
-      sourceFreshnessAt: input.evidence.sourceFreshnessAt.toISOString(),
-      policyVersion: evaluation.policyVersion,
-      evaluation,
-    })
-    return runInTransaction(this.pool, async (tx) => {
-      const workflow = await this.lockScopedWorkflow(tx, input.workflowId)
-      if (
-        rowText(workflow, 'application_id') !== input.applicationId ||
-        rowText(workflow, 'campaign_id') !== input.campaignId
-      )
-        throw new SelectionServiceError('SELECTION_SCOPE_MISMATCH')
-      const existing = await tx.query(
-        `SELECT id, version, result, reason_code, policy_version, component_outcomes
-           FROM selection_recommendations WHERE deduplication_key = $1`,
-        [deduplicationKey],
-      )
-      if (existing.rows[0] !== undefined) {
-        return {
-          id: rowText(existing.rows[0], 'id'),
-          version: rowInteger(existing.rows[0], 'version'),
+    try {
+      return await runInTransaction(this.pool, (tx) =>
+        recordSelectionRecommendation(tx, {
+          workflowId: input.workflowId,
+          applicationId: input.applicationId,
+          campaignId: input.campaignId,
+          evidence: input.evidence,
           evaluation,
-          deduplicated: true,
-        }
-      }
-      const versionResult = await tx.query(
-        `SELECT COALESCE(MAX(version), 0) + 1 AS next_version
-           FROM selection_recommendations WHERE workflow_id = $1`,
-        [input.workflowId],
+          actorReference: input.actorReference,
+          occurredAt: input.occurredAt,
+        }),
       )
-      const version = rowInteger(versionResult.rows[0] ?? {}, 'next_version')
-      const inserted = await tx.query(
-        `INSERT INTO selection_recommendations (
-           workflow_id, application_id, campaign_id, version, result, reason_code,
-           policy_version, input_facts, component_outcomes, source_freshness_at,
-           actor_reference, deduplication_key, created_at
-         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9::jsonb,$10,$11,$12,$13)
-         RETURNING id`,
-        [
-          input.workflowId,
-          input.applicationId,
-          input.campaignId,
-          version,
-          evaluation.result,
-          evaluation.reasonCode,
-          evaluation.policyVersion,
-          JSON.stringify(facts),
-          JSON.stringify(evaluation.componentOutcomes),
-          input.evidence.sourceFreshnessAt,
-          input.actorReference,
-          deduplicationKey,
-          input.occurredAt,
-        ],
-      )
-      return {
-        id: rowText(inserted.rows[0] ?? {}, 'id'),
-        version,
-        evaluation,
-        deduplicated: false,
-      }
-    })
+    } catch (error) {
+      if (error instanceof SelectionRecommendationError) throw new SelectionServiceError(error.reasonCode)
+      throw error
+    }
   }
 
   async recordManualDecision(input: RecordManualSelectionDecisionInput): Promise<ManualSelectionDecisionRecord> {
@@ -175,6 +123,8 @@ export class SelectionService {
     const deduplicationKey = digest({
       workflowId: input.workflowId,
       recommendationId: input.recommendationId,
+      expectedWorkflowVersion: input.expectedWorkflowVersion,
+      expectedRecommendationVersion: input.expectedRecommendationVersion,
       decision: input.decision,
       actorReference: input.actorReference,
       scopeCode: input.scopeCode,
@@ -203,6 +153,9 @@ export class SelectionService {
           deduplicated: true,
         }
       }
+      const workflowVersion = rowInteger(workflow, 'version')
+      if (input.expectedWorkflowVersion !== undefined && workflowVersion !== input.expectedWorkflowVersion)
+        throw new SelectionServiceError('SELECTION_WORKFLOW_VERSION_STALE')
       const priorState = rowText(workflow, 'selection_state')
       if (input.decision === 'revoked' && priorState !== 'manually_selected' && priorState !== 'auto_selected')
         throw new SelectionServiceError('SELECTION_REVOCATION_INVALID_STATE')
@@ -230,13 +183,29 @@ export class SelectionService {
       let recommendationResult: SelectionEvaluation['result'] | null = null
       if (input.recommendationId !== null) {
         const recommendation = await tx.query(
-          `SELECT result FROM selection_recommendations WHERE id = $1 AND workflow_id = $2`,
-          [input.recommendationId, input.workflowId],
+          `SELECT id, result, version
+             FROM selection_recommendations
+            WHERE workflow_id = $1
+            ORDER BY version DESC
+            LIMIT 1
+            FOR SHARE`,
+          [input.workflowId],
         )
-        const value = recommendation.rows[0]?.result
+        const recommendationRow = recommendation.rows[0]
+        if (recommendationRow?.id !== input.recommendationId)
+          throw new SelectionServiceError('SELECTION_RECOMMENDATION_STALE')
+        const recommendationVersion = rowInteger(recommendationRow, 'version')
+        if (
+          input.expectedRecommendationVersion !== undefined &&
+          recommendationVersion !== input.expectedRecommendationVersion
+        )
+          throw new SelectionServiceError('SELECTION_RECOMMENDATION_VERSION_STALE')
+        const value = recommendationRow.result
         if (value !== 'recommend_select' && value !== 'recommend_not_select' && value !== 'human_review')
           throw new SelectionServiceError('SELECTION_RECOMMENDATION_NOT_FOUND')
         recommendationResult = value
+      } else if (input.expectedRecommendationVersion !== undefined && input.expectedRecommendationVersion !== null) {
+        throw new SelectionServiceError('SELECTION_RECOMMENDATION_NOT_FOUND')
       }
 
       const versionResult = await tx.query(
@@ -327,7 +296,7 @@ export class SelectionService {
 
   private async lockScopedWorkflow(tx: DbTransaction, workflowId: string): Promise<Record<string, unknown>> {
     const result = await tx.query(
-      `SELECT id, participant_id, application_id, campaign_id, selection_state
+      `SELECT id, participant_id, application_id, campaign_id, selection_state, version
          FROM workflow_instances WHERE id = $1 FOR UPDATE`,
       [workflowId],
     )

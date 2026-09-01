@@ -1,4 +1,4 @@
-import { createHmac } from 'node:crypto'
+import { createHash, createHmac } from 'node:crypto'
 import { parse } from 'csv-parse/sync'
 import type { Pool, PoolClient } from 'pg'
 import type { UnversionedWebsiteApplicationSnapshot, WebsiteApplicationStatus } from '@helloreview/adapters'
@@ -19,12 +19,17 @@ export const APPLICATION_IMPORT_HEADERS = [
 ] as const
 
 export const APPLICATION_IMPORT_MAX_ROWS = 10_000
+export const APPLICATION_IMPORT_INTENT = {
+  SOURCE: 'helloreview_manual_import',
+  EVENT_TYPE: 'application.import.completed',
+} as const
 
 export const APPLICATION_IMPORT_FAILURES = {
   MALFORMED_CSV: 'APPLICATION_IMPORT_MALFORMED_CSV',
   INVALID_HEADER: 'APPLICATION_IMPORT_INVALID_HEADER',
   TOO_MANY_ROWS: 'APPLICATION_IMPORT_TOO_MANY_ROWS',
   INVALID_ROW: 'APPLICATION_IMPORT_INVALID_ROW',
+  UNSUPPORTED_STATUS: 'APPLICATION_IMPORT_UNSUPPORTED_STATUS',
   DUPLICATE_APPLICATION_ID: 'APPLICATION_IMPORT_DUPLICATE_APPLICATION_ID',
   UNKNOWN_CAMPAIGN: 'APPLICATION_IMPORT_UNKNOWN_CAMPAIGN',
   INVALID_EXPORTED_AT: 'APPLICATION_IMPORT_INVALID_EXPORTED_AT',
@@ -41,6 +46,11 @@ export class ManualCsvImportError extends Error {
   constructor(
     readonly reasonCode: ApplicationImportFailure,
     readonly rowNumber?: number,
+    readonly evidence: Readonly<{
+      rowCount?: number
+      batchId?: string
+      replayed?: boolean
+    }> = {},
   ) {
     super(
       `Manual CSV import rejected: ${reasonCode}${rowNumber === undefined ? '' : ` at record ${String(rowNumber)}`}`,
@@ -67,6 +77,9 @@ export type ManualCsvImportOutcome = Readonly<{
   sourceSystem: string
   exportedAt: Date
   importedAt: Date
+  status: 'completed' | 'quarantined'
+  quarantineReasonCode: ApplicationImportFailure | null
+  quarantineRowNumber: number | null
   rowCount: number
   appliedCount: number
   duplicateCount: number
@@ -140,7 +153,8 @@ const timestamp = (value: string, rowNumber: number): Date => {
 
 const status = (value: string, rowNumber: number): WebsiteApplicationStatus => {
   const known = WEBSITE_STATUSES.find((candidate) => candidate === value)
-  return known ?? failRow(rowNumber)
+  if (known !== undefined) return known
+  throw new ManualCsvImportError(APPLICATION_IMPORT_FAILURES.UNSUPPORTED_STATUS, rowNumber)
 }
 
 const optionalBlogUrl = (value: string, rowNumber: number): string | undefined => {
@@ -219,7 +233,15 @@ export const parseApplicationCsv = (content: string): readonly ParsedApplication
     const rowNumber = index + 1
     const record = stringRecord(records[index])
     if (record === undefined) return failRow(rowNumber)
-    const row = normalizeRow(record, rowNumber)
+    let row: ParsedApplicationCsvRow
+    try {
+      row = normalizeRow(record, rowNumber)
+    } catch (error) {
+      if (error instanceof ManualCsvImportError) {
+        throw new ManualCsvImportError(error.reasonCode, error.rowNumber, { rowCount: records.length - 1 })
+      }
+      throw error
+    }
     if (applicationIds.has(row.sourceApplicationId)) {
       throw new ManualCsvImportError(APPLICATION_IMPORT_FAILURES.DUPLICATE_APPLICATION_ID, rowNumber)
     }
@@ -241,6 +263,30 @@ const integerColumn = (row: Record<string, unknown>, column: string): number => 
   throw new Error(`application import query returned an invalid ${column}`)
 }
 
+const nullableIntegerColumn = (row: Record<string, unknown>, column: string): number | null => {
+  const value = row[column]
+  if (value === null) return null
+  const parsed = Number(value)
+  if (Number.isSafeInteger(parsed) && parsed >= 0) return parsed
+  throw new Error(`application import query returned an invalid ${column}`)
+}
+
+const isApplicationImportFailure = (value: unknown): value is ApplicationImportFailure =>
+  typeof value === 'string' && Object.values(APPLICATION_IMPORT_FAILURES).some((candidate) => candidate === value)
+
+const nullableFailureColumn = (row: Record<string, unknown>, column: string): ApplicationImportFailure | null => {
+  const value = row[column]
+  if (value === null) return null
+  if (isApplicationImportFailure(value)) return value
+  throw new Error(`application import query returned an invalid ${column}`)
+}
+
+const batchStatusColumn = (row: Record<string, unknown>): ManualCsvImportOutcome['status'] => {
+  const value = row.status
+  if (value === 'completed' || value === 'quarantined') return value
+  throw new Error('application import query returned an invalid status')
+}
+
 const dateColumn = (row: Record<string, unknown>, column: string): Date => {
   const value = row[column]
   if (value instanceof Date && !Number.isNaN(value.getTime())) return value
@@ -252,6 +298,9 @@ const batchFromRow = (row: Record<string, unknown>, replayed: boolean): ManualCs
   sourceSystem: stringColumn(row, 'source_system'),
   exportedAt: dateColumn(row, 'exported_at'),
   importedAt: dateColumn(row, 'imported_at'),
+  status: batchStatusColumn(row),
+  quarantineReasonCode: nullableFailureColumn(row, 'quarantine_reason_code'),
+  quarantineRowNumber: nullableIntegerColumn(row, 'quarantine_row_number'),
   rowCount: integerColumn(row, 'row_count'),
   appliedCount: integerColumn(row, 'applied_count'),
   duplicateCount: integerColumn(row, 'duplicate_count'),
@@ -259,7 +308,8 @@ const batchFromRow = (row: Record<string, unknown>, replayed: boolean): ManualCs
   replayed,
 })
 
-const selectBatch = `SELECT id, source_system, exported_at, imported_at, row_count,
+const selectBatch = `SELECT id, source_system, exported_at, imported_at, status,
+                            quarantine_reason_code, quarantine_row_number, row_count,
                             applied_count, duplicate_count, stale_count
                        FROM application_import_batches
                       WHERE source_system = $1 AND file_digest = $2`
@@ -310,17 +360,47 @@ export class ManualCsvImportService {
     const importedAt = input.importedAt ?? new Date()
     this.validateImportEvidence(input.sourceSystem, input.exportedAt, importedAt)
     const fileDigest = this.fileDigest(input.sourceSystem, input.exportedAt, input.content)
-    const replay = await this.pool.query<Record<string, unknown>>(selectBatch, [input.sourceSystem, fileDigest])
-    const replayRow = replay.rows[0]
-    if (replayRow !== undefined) return batchFromRow(replayRow, true)
-
-    const rows = parseApplicationCsv(input.content)
+    let rows: readonly ParsedApplicationCsvRow[]
+    try {
+      rows = parseApplicationCsv(input.content)
+    } catch (error) {
+      if (
+        error instanceof ManualCsvImportError &&
+        error.reasonCode === APPLICATION_IMPORT_FAILURES.UNSUPPORTED_STATUS
+      ) {
+        const batch = await this.recordQuarantineBatch(
+          input.sourceSystem,
+          fileDigest,
+          input.exportedAt,
+          importedAt,
+          error.evidence.rowCount ?? 0,
+          error.reasonCode,
+          error.rowNumber,
+        )
+        throw new ManualCsvImportError(error.reasonCode, error.rowNumber, {
+          rowCount: batch.rowCount,
+          batchId: batch.batchId,
+          replayed: batch.replayed,
+        })
+      }
+      throw error
+    }
     for (const [index, row] of rows.entries()) {
       if (row.updatedAt.getTime() > importedAt.getTime() + MAX_CLOCK_SKEW_MS) return failRow(index + 2)
+    }
+    const replay = await this.pool.query<Record<string, unknown>>(selectBatch, [input.sourceSystem, fileDigest])
+    const replayRow = replay.rows[0]
+    if (replayRow !== undefined) {
+      const batch = batchFromRow(replayRow, true)
+      if (batch.status === 'quarantined') this.throwQuarantinedBatch(batch)
+      const applicationIds = await this.applicationIdsForRows(input.sourceSystem, rows)
+      await this.ensureReplayIntent(batch, applicationIds)
+      return batch
     }
     const campaigns = await this.campaignIds(rows)
 
     let counts: BatchCounts = { applied: 0, duplicate: 0, stale: 0 }
+    const applicationIds = new Set<string>()
     for (const row of rows) {
       const campaignId = campaigns.get(row.campaignCode)
       if (campaignId === undefined) {
@@ -343,9 +423,12 @@ export class ManualCsvImportService {
       }
       const outcome = await this.synchronization.synchronizeUnversionedSnapshot(snapshot, importedAt)
       counts = increment(counts, outcome.outcome)
+      applicationIds.add(outcome.applicationId)
     }
 
-    return this.recordBatch(input.sourceSystem, fileDigest, input.exportedAt, importedAt, rows.length, counts)
+    return this.recordBatch(input.sourceSystem, fileDigest, input.exportedAt, importedAt, rows.length, counts, [
+      ...applicationIds,
+    ])
   }
 
   private validateImportEvidence(sourceSystem: string, exportedAt: Date, importedAt: Date): void {
@@ -387,6 +470,25 @@ export class ManualCsvImportService {
     return campaigns
   }
 
+  private async applicationIdsForRows(
+    sourceSystem: string,
+    rows: readonly ParsedApplicationCsvRow[],
+  ): Promise<readonly string[]> {
+    const sourceApplicationIds = rows.map((row) => row.sourceApplicationId)
+    if (sourceApplicationIds.length === 0) return []
+    const result = await this.pool.query<Record<string, unknown>>(
+      `SELECT id
+         FROM applications
+        WHERE source_system = $1 AND source_application_id = ANY($2::text[])
+        ORDER BY id`,
+      [sourceSystem, sourceApplicationIds],
+    )
+    if (result.rows.length !== sourceApplicationIds.length) {
+      throw new Error('application import replay is missing an application projection')
+    }
+    return result.rows.map((row) => stringColumn(row, 'id'))
+  }
+
   private async recordBatch(
     sourceSystem: string,
     fileDigest: string,
@@ -394,17 +496,19 @@ export class ManualCsvImportService {
     importedAt: Date,
     rowCount: number,
     counts: BatchCounts,
+    applicationIds: readonly string[],
   ): Promise<ManualCsvImportOutcome> {
     const client = await this.pool.connect()
     try {
       await client.query('BEGIN')
       const inserted = await client.query<Record<string, unknown>>(
         `INSERT INTO application_import_batches (
-           source_system, file_digest, exported_at, imported_at, row_count,
+           source_system, file_digest, exported_at, imported_at, status, row_count,
            applied_count, duplicate_count, stale_count
-         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+         ) VALUES ($1,$2,$3,$4,'completed',$5,$6,$7,$8)
          ON CONFLICT (source_system, file_digest) DO NOTHING
-         RETURNING id, source_system, exported_at, imported_at, row_count,
+         RETURNING id, source_system, exported_at, imported_at, status,
+                   quarantine_reason_code, quarantine_row_number, row_count,
                    applied_count, duplicate_count, stale_count`,
         [sourceSystem, fileDigest, exportedAt, importedAt, rowCount, counts.applied, counts.duplicate, counts.stale],
       )
@@ -413,18 +517,128 @@ export class ManualCsvImportService {
         const concurrent = await client.query<Record<string, unknown>>(selectBatch, [sourceSystem, fileDigest])
         const concurrentRow = concurrent.rows[0]
         if (concurrentRow === undefined) throw new Error('application import replay batch was not visible')
+        const concurrentBatch = batchFromRow(concurrentRow, true)
+        if (concurrentBatch.status === 'quarantined') this.throwQuarantinedBatch(concurrentBatch)
+        await this.ensureProcessingIntent(client, concurrentBatch, applicationIds)
         await client.query('COMMIT')
-        return batchFromRow(concurrentRow, true)
+        return concurrentBatch
       }
 
+      const batch = batchFromRow(insertedRow, false)
       await this.recordFreshness(client, sourceSystem, exportedAt, importedAt)
+      await this.ensureProcessingIntent(client, batch, applicationIds)
       await client.query('COMMIT')
-      return batchFromRow(insertedRow, false)
+      return batch
     } catch (error) {
       await client.query('ROLLBACK')
       throw error
     } finally {
       client.release()
+    }
+  }
+
+  private async recordQuarantineBatch(
+    sourceSystem: string,
+    fileDigest: string,
+    exportedAt: Date,
+    importedAt: Date,
+    rowCount: number,
+    reasonCode: ApplicationImportFailure,
+    rowNumber?: number,
+  ): Promise<ManualCsvImportOutcome> {
+    const inserted = await this.pool.query<Record<string, unknown>>(
+      `INSERT INTO application_import_batches (
+         source_system, file_digest, exported_at, imported_at, status,
+         quarantine_reason_code, quarantine_row_number, row_count,
+         applied_count, duplicate_count, stale_count
+       ) VALUES ($1,$2,$3,$4,'quarantined',$5,$6,$7,0,0,0)
+       ON CONFLICT (source_system, file_digest) DO NOTHING
+       RETURNING id, source_system, exported_at, imported_at, status,
+                 quarantine_reason_code, quarantine_row_number, row_count,
+                 applied_count, duplicate_count, stale_count`,
+      [sourceSystem, fileDigest, exportedAt, importedAt, reasonCode, rowNumber ?? null, rowCount],
+    )
+    const insertedRow = inserted.rows[0]
+    if (insertedRow !== undefined) return batchFromRow(insertedRow, false)
+
+    const replay = await this.pool.query<Record<string, unknown>>(selectBatch, [sourceSystem, fileDigest])
+    const replayRow = replay.rows[0]
+    if (replayRow === undefined) throw new Error('application import quarantine replay batch was not visible')
+    const batch = batchFromRow(replayRow, true)
+    if (
+      batch.status !== 'quarantined' ||
+      batch.quarantineReasonCode !== reasonCode ||
+      batch.quarantineRowNumber !== (rowNumber ?? null)
+    ) {
+      throw new Error('application import quarantine evidence diverged on replay')
+    }
+    return batch
+  }
+
+  private throwQuarantinedBatch(batch: ManualCsvImportOutcome): never {
+    if (batch.quarantineReasonCode === null) {
+      throw new Error('application import quarantined batch is missing a reason code')
+    }
+    throw new ManualCsvImportError(batch.quarantineReasonCode, batch.quarantineRowNumber ?? undefined, {
+      rowCount: batch.rowCount,
+      batchId: batch.batchId,
+      replayed: true,
+    })
+  }
+
+  private async ensureReplayIntent(batch: ManualCsvImportOutcome, applicationIds: readonly string[]): Promise<void> {
+    const client = await this.pool.connect()
+    try {
+      await client.query('BEGIN')
+      await this.ensureProcessingIntent(client, batch, applicationIds)
+      await client.query('COMMIT')
+    } catch (error) {
+      await client.query('ROLLBACK')
+      throw error
+    } finally {
+      client.release()
+    }
+  }
+
+  private async ensureProcessingIntent(
+    client: PoolClient,
+    batch: ManualCsvImportOutcome,
+    applicationIds: readonly string[],
+  ): Promise<void> {
+    const payload = {
+      batchId: batch.batchId,
+      sourceSystem: batch.sourceSystem,
+      applicationIds: [...new Set(applicationIds)].sort(),
+    }
+    const payloadHash = createHash('sha256').update(JSON.stringify(payload)).digest('hex')
+    const inserted = await client.query<Record<string, unknown>>(
+      `INSERT INTO event_inbox (
+         source, external_event_id, event_type, payload_hash, payload,
+         occurred_at, received_at, status, correlation_id
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,'received',$8)
+       ON CONFLICT (source, external_event_id) DO NOTHING
+       RETURNING id`,
+      [
+        APPLICATION_IMPORT_INTENT.SOURCE,
+        batch.batchId,
+        APPLICATION_IMPORT_INTENT.EVENT_TYPE,
+        payloadHash,
+        payload,
+        batch.exportedAt,
+        batch.importedAt,
+        `application-import:${batch.batchId}`,
+      ],
+    )
+    if (inserted.rowCount === 1) return
+
+    const existing = await client.query<Record<string, unknown>>(
+      `SELECT payload_hash
+         FROM event_inbox
+        WHERE source = $1 AND external_event_id = $2`,
+      [APPLICATION_IMPORT_INTENT.SOURCE, batch.batchId],
+    )
+    if (existing.rows[0]?.payload_hash !== payloadHash) {
+      throw new Error('application import processing intent payload diverged on replay')
     }
   }
 

@@ -21,6 +21,7 @@ export const applicationStatusEnum = pgEnum('application_status', [
 ])
 
 export const applicationSyncMethodEnum = pgEnum('application_sync_method', ['event', 'reconciliation'])
+export const applicationImportBatchStatusEnum = pgEnum('application_import_batch_status', ['completed', 'quarantined'])
 
 export const applications = pgTable(
   'applications',
@@ -173,7 +174,7 @@ export const applicationSourceFreshness = pgTable(
   (table) => [check('application_source_freshness_nonnegative_failures', sql`${table.consecutiveFailureCount} >= 0`)],
 )
 
-/** Audit evidence for a completed operator import, without retaining the PII-bearing CSV itself. */
+/** Audit evidence for a completed or quarantined operator import, without retaining the PII-bearing CSV itself. */
 export const applicationImportBatches = pgTable(
   'application_import_batches',
   {
@@ -183,6 +184,11 @@ export const applicationImportBatches = pgTable(
     fileDigest: text('file_digest').notNull(),
     exportedAt: tstz('exported_at').notNull(),
     importedAt: tstz('imported_at').notNull(),
+    status: applicationImportBatchStatusEnum('status').notNull().default('completed'),
+    /** Stable reason only; raw status values and CSV bytes are deliberately not retained. */
+    quarantineReasonCode: text('quarantine_reason_code'),
+    /** One-based CSV record number including the header row, for operator correction. */
+    quarantineRowNumber: integer('quarantine_row_number'),
     rowCount: integer('row_count').notNull(),
     appliedCount: integer('applied_count').notNull(),
     duplicateCount: integer('duplicate_count').notNull(),
@@ -192,14 +198,27 @@ export const applicationImportBatches = pgTable(
   (table) => [
     unique('application_import_batches_source_file_key').on(table.sourceSystem, table.fileDigest),
     index('application_import_batches_source_exported_idx').on(table.sourceSystem, table.exportedAt),
+    index('application_import_batches_status_imported_idx').on(table.status, table.importedAt),
     check('application_import_batches_valid_digest', sql`${table.fileDigest} ~ '^[0-9a-f]{64}$'`),
     check(
       'application_import_batches_nonnegative_counts',
       sql`${table.rowCount} >= 0 and ${table.appliedCount} >= 0 and ${table.duplicateCount} >= 0 and ${table.staleCount} >= 0`,
     ),
     check(
-      'application_import_batches_counts_sum',
-      sql`${table.rowCount} = ${table.appliedCount} + ${table.duplicateCount} + ${table.staleCount}`,
+      'application_import_batches_outcome_evidence',
+      sql`(
+        ${table.status} = 'completed'
+        and ${table.quarantineReasonCode} is null
+        and ${table.quarantineRowNumber} is null
+        and ${table.rowCount} = ${table.appliedCount} + ${table.duplicateCount} + ${table.staleCount}
+      ) or (
+        ${table.status} = 'quarantined'
+        and ${table.quarantineReasonCode} is not null
+        and (${table.quarantineRowNumber} is null or ${table.quarantineRowNumber} > 1)
+        and ${table.appliedCount} = 0
+        and ${table.duplicateCount} = 0
+        and ${table.staleCount} = 0
+      )`,
     ),
   ],
 )

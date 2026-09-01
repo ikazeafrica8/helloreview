@@ -6,6 +6,11 @@ import { withPostgres } from '../../packages/testing/dist/index.js'
 import { ApplicationSyncService, ManualCsvImportService } from '../../apps/api/dist/modules/application-sync/index.js'
 import { MessageTemplateRepository, OutboundIntentService } from '../../apps/api/dist/modules/messaging/index.js'
 import { RankingEvidenceAdapter, SelectionService } from '../../apps/api/dist/modules/selection/index.js'
+import {
+  ADMIN_RBAC_TEST_FIXTURE_POLICY,
+  AdminCommandService,
+  OPERATOR_PRINCIPAL_SCHEMA_VERSION,
+} from '../../apps/api/dist/modules/admin-api/index.js'
 import { ShippingService } from '../../apps/api/dist/modules/shipping/index.js'
 import { PaybackConsentService } from '../../apps/api/dist/modules/payback-consent/index.js'
 import { ReservationService } from '../../apps/api/dist/modules/reservation/index.js'
@@ -15,6 +20,28 @@ import {
 } from '../../apps/api/dist/modules/guideline-delivery/index.js'
 
 const at = (minutes = 0) => new Date(Date.parse('2026-08-25T01:00:00Z') + minutes * 60_000)
+
+const selectionInvocation = (campaignId) => ({
+  principal: {
+    schemaVersion: OPERATOR_PRINCIPAL_SCHEMA_VERSION,
+    principalReference: 'operator:selection-pilot',
+    verified: true,
+    roles: ['senior_operator'],
+    campaignScope: { kind: 'campaigns', campaignIds: [campaignId] },
+    assuranceLevel: 'mfa',
+    sessionReference: 'session:selection-pilot',
+    authenticationContextReference: 'auth-context:selection-pilot',
+    authorizationPolicyVersion: ADMIN_RBAC_TEST_FIXTURE_POLICY.policyVersion,
+    authorizationVersion: 1,
+    environment: 'test',
+    issuedAt: at(-60),
+    expiresAt: at(60),
+  },
+  policy: ADMIN_RBAC_TEST_FIXTURE_POLICY,
+  context: { environment: 'test', evaluatedAt: at(2), currentAuthorizationVersion: 1 },
+  requestReference: 'admin-request:selection-pilot',
+  correlationId: 'selection-approved',
+})
 
 const seedWorkflow = async (
   pool,
@@ -203,27 +230,44 @@ describe('selection shadow mode foundations', () => {
             occurredAt: at(2),
           }),
         ).rejects.toMatchObject({ reasonCode: 'SELECTION_OPERATOR_NOT_AUTHORIZED' })
+        const admin = new AdminCommandService(pool, {}, {}, {}, service)
         const decisionInput = {
           workflowId: ids.workflowId,
           recommendationId: recommendation.id,
+          expectedWorkflowVersion: before.rows[0].version,
+          expectedRecommendationVersion: recommendation.version,
           decision: 'selected',
-          actorType: 'operator',
-          actorReference: 'operator-1',
-          authorized: true,
-          scopeCode: 'WORKFLOW',
           reasonCode: 'MANUAL_OVERRIDE',
-          correlationId: 'selection-approved',
           occurredAt: at(3),
         }
-        const decision = await service.recordManualDecision(decisionInput)
+        await expect(
+          admin.recordSelectionDecision(selectionInvocation(ids.campaignId), {
+            ...decisionInput,
+            expectedWorkflowVersion: before.rows[0].version + 1,
+          }),
+        ).rejects.toMatchObject({ reasonCode: 'SELECTION_WORKFLOW_VERSION_STALE' })
+        await expect(
+          admin.recordSelectionDecision(selectionInvocation(ids.campaignId), {
+            ...decisionInput,
+            expectedRecommendationVersion: recommendation.version + 1,
+          }),
+        ).rejects.toMatchObject({ reasonCode: 'SELECTION_RECOMMENDATION_VERSION_STALE' })
+        const decision = await admin.recordSelectionDecision(selectionInvocation(ids.campaignId), decisionInput)
         expect(decision).toMatchObject({ decision: 'selected', shadowOutcome: 'matched', deduplicated: false })
-        expect(await service.recordManualDecision(decisionInput)).toMatchObject({ id: decision.id, deduplicated: true })
-        const revoked = await service.recordManualDecision({
-          ...decisionInput,
+        expect(await admin.recordSelectionDecision(selectionInvocation(ids.campaignId), decisionInput)).toMatchObject({
+          id: decision.id,
+          deduplicated: true,
+        })
+        const selectedWorkflow = await pool.query(`SELECT version FROM workflow_instances WHERE id = $1`, [
+          ids.workflowId,
+        ])
+        const revoked = await admin.recordSelectionDecision(selectionInvocation(ids.campaignId), {
+          workflowId: ids.workflowId,
           recommendationId: null,
+          expectedWorkflowVersion: selectedWorkflow.rows[0].version,
+          expectedRecommendationVersion: null,
           decision: 'revoked',
           reasonCode: 'SELECTION_REVOKED',
-          correlationId: 'selection-revoked',
           occurredAt: at(4),
         })
         expect(revoked.decision).toBe('revoked')

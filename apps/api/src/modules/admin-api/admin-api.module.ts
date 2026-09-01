@@ -5,6 +5,7 @@ import { HumanTasksModule } from '../human-tasks/index.js'
 import { WorkflowCoreModule } from '../workflow-core/index.js'
 import { AuditLogModule } from '../audit-log/index.js'
 import { ShippingModule } from '../shipping/index.js'
+import { SelectionModule } from '../selection/index.js'
 import { AdminCommandService } from './admin-command.service.js'
 import { ConfigurationAdminCommandService } from './configuration-command.service.js'
 import { OperationsAdminService } from './operations-admin.service.js'
@@ -23,6 +24,7 @@ import {
     WorkflowCoreModule,
     AuditLogModule,
     ShippingModule,
+    SelectionModule,
   ],
   providers: [
     ParticipantAdminQueryService,

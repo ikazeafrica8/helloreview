@@ -105,6 +105,19 @@ describe('PRD §16.1 applicant matching decision table', () => {
     })
   })
 
+  test('multiple candidates from non-phone evidence fail closed into human review', () => {
+    expectEvidence(
+      matchApplicant({ kind: 'multiple_candidates', candidateApplicationIds: ['app-1', 'app-2'] }, decidedAt),
+      {
+        category: 'ambiguous',
+        evidenceCategory: 'ambiguous_evidence',
+        reasonCode: IDENTITY_RESOLUTION_REASON.MULTIPLE_CANDIDATES,
+        automaticLinkAllowed: false,
+        nextAction: 'human_review',
+      },
+    )
+  })
+
   test('row 9 — an existing link to another participant is a security-review ambiguity', () => {
     expectEvidence(matchApplicant({ kind: 'participant_link_conflict', applicationId: 'app-1' }, decidedAt), {
       category: 'ambiguous',

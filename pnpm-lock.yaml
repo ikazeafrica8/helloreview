@@ -117,6 +117,9 @@ importers:
       '@helloreview/observability':
         specifier: workspace:*
         version: link:../../packages/observability
+      '@helloreview/workflow-runtime':
+        specifier: workspace:*
+        version: link:../../packages/workflow-runtime
       '@nestjs/common':
         specifier: ^11.2.1
         version: 11.2.1(reflect-metadata@0.2.2)(rxjs@7.8.2)
@@ -169,6 +172,9 @@ importers:
       '@helloreview/observability':
         specifier: workspace:*
         version: link:../../packages/observability
+      '@helloreview/workflow-runtime':
+        specifier: workspace:*
+        version: link:../../packages/workflow-runtime
       bullmq:
         specifier: ^6.2.0
         version: 6.2.0(ioredis@6.0.0)(pg@8.23.0)
@@ -229,6 +235,12 @@ importers:
       testcontainers:
         specifier: ^12.1.0
         version: 12.1.0
+
+  packages/workflow-runtime:
+    dependencies:
+      '@helloreview/db':
+        specifier: workspace:*
+        version: link:../db
 
 packages:
 

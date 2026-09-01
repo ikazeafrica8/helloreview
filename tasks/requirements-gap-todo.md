@@ -266,6 +266,21 @@ fail-closed result of no longer letting a caller relabel the metric.
 
 ## T137 — Manual-import workflow bootstrap and deterministic candidate lookup
 
+Implementation progress (2026-09-01): the local/fake foundation now records a replay-safe
+`application.import.completed` processing intent using the website export time, supports atomic
+one-workflow-per-application bootstrap (including reuse of a verified participant across campaigns),
+and provides deterministic candidate lookup with a participant-safe redacted result. The bootstrap
+operation and state model now live in `@helloreview/workflow-runtime`, so API and worker use one
+transactional implementation rather than an app-to-app dependency or duplicate SQL. Approved
+migration 0035 now records unapproved website lifecycle codes as replay-safe quarantined batches
+without retaining the raw value or CSV contents; it has been applied to the healthy local Docker
+database and its migration/import/bootstrap integration cases pass. The task remains open for the
+authenticated upload transport and the non-import reconciliation actions listed below.
+An authoritative imported application now initializes its workflow at `application_completed` and
+creates one replay-safe `BEGIN_IDENTITY_MATCHING` side effect; generic/non-import workflow creation
+still starts at `not_applied`. T138 must still safely bind completed intents at worker startup before
+any automatic journey runs.
+
 Status: **Proposed; preserves the approved manual CSV pilot.**
 
 Connect a successful application import/reconciliation to idempotent participant/workflow bootstrap
@@ -292,6 +307,33 @@ and provide the deterministic candidate search needed by Kakao identity resoluti
 
 ## T138 — Inbound-event and workflow-side-effect dispatcher
 
+Implementation progress (2026-09-01): a strict `PROCESS_INBOUND_EVENT` dispatcher core now locks
+the inbox row transactionally, suppresses completed/dead-letter replays, records bounded retry and
+dead-letter evidence using safe reason codes, validates the job/event identity, and refuses AI/OCR
+event registration. The minimized `application.import.completed` handler validates application ids
+and invokes the shared `@helloreview/workflow-runtime` operation through a worker-owned adapter.
+Replay tests prove that initialization evidence and its protected audit are written once. T138
+remains open: `PROCESS_INBOUND_EVENT` also carries external events whose participant journeys are not
+implemented yet, so binding only the import handler would consume those events prematurely. Startup
+registration stays disabled until that full queue contract is covered; the independent
+`workflow_side_effects` dispatcher now has a transaction-bound core that claims pending rows with
+`FOR UPDATE SKIP LOCKED`, uses the canonical shared effect-code registry, suppresses stale or
+human-owned effects, cancels closed-campaign effects, leaves paused work pending, and rolls handler
+failures back for retry. It remains unbound until every effect has a concrete deterministic handler
+and a safe scheduling path; full startup coverage is enforced by an explicit registry assertion. The
+workflow state mutation boundary is now shared and transaction-bound: it locks the workflow, checks
+the expected version, classifies planner rejection before pauses, records protected rejection evidence,
+and commits approved state, event, audit, and side-effect rows atomically. The API delegates to this
+boundary without changing its public errors. The complete legal/illegal transition table, guard and
+trigger registry, reason codes, and pure planner now live in the shared runtime; the API re-exports
+that canonical policy instead of owning a second copy. The first deterministic side-effect handler
+advances only an authoritative import-created application through verified application matching and
+into `review_pending`. A second transaction-bound handler records the imported ranking facts as one
+deduplicated `human_review` recommendation, without changing selection state or evaluating the
+unapproved freshness/region thresholds. Non-import matching work remains pending for candidate
+resolution, and queue startup remains disabled while the rest of the effect registry has no concrete
+handlers.
+
 Status: **Proposed; production provider binding remains disabled until T147–T150.**
 
 Implement the missing durable runtime that consumes inbox events and pending workflow side effects,
@@ -313,6 +355,19 @@ then invokes narrow domain services under idempotency, version, pause, and owner
 **Dependencies:** T18, T27, T35–T47, T135–T137.
 
 ## T139 — Direct-application and secret-comment journey coordinator
+
+Implementation progress (2026-09-01): the direct-application entry point now distinguishes an
+authoritative imported website application from a generic/contact-created workflow. It initializes
+the former as completed and schedules deterministic identity matching once, without creating or
+assuming a Kakao channel identity. The direct-import identity handler now uses the shared governed
+transition boundary to reach `application_matched` and `review_pending`, scheduling
+`LOAD_SELECTION_RULE` without asserting a Kakao identity. Its intermediate `PERSIST_CHANNEL_LINK`
+work becomes stale after the immediate direct-route progression and is suppressed by the dispatcher.
+`LOAD_SELECTION_RULE` now persists a replay-safe manual-review recommendation using the website
+ranking facts while explicitly declining to invent a freshness window or campaign-region mapping.
+Candidate matching for conversational entrants, the operator decision command, secret-comment
+claimant route, approved message ownership, and final campaign route composition remain open;
+automatic selection remains disabled.
 
 Status: **Proposed; automatic selection remains disabled.**
 
@@ -338,6 +393,16 @@ selection, campaign-route, and human-review services.
 **Dependencies:** T64–T72, T135–T138, T145 for automated comment-image evidence.
 
 ## T140 — Governed operator selection command
+
+Implementation progress (2026-09-01): the transport-neutral admin command boundary now loads the
+target workflow's campaign before authorization and uses the existing protected `overrides.approve`
+permission, so submitted commands cannot provide their own role, operator identity, authorization
+flag, campaign scope, or correlation ID. New decisions recheck the expected workflow version and the
+latest recommendation ID/version while holding the workflow lock. The existing immutable manual
+decision, shadow-comparison, protected audit, replay, and revocation behavior is now reachable only
+through those derived values in the admin boundary. Real-PostgreSQL tests cover stale workflow and
+recommendation rejection, successful selection, idempotent replay, and revocation. An authenticated
+console/HTTP transport remains intentionally absent until T151 supplies production identity and RBAC.
 
 Status: **Proposed; production use depends on T151 authentication/RBAC.**
 

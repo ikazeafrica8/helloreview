@@ -61,6 +61,11 @@ describe('database migrations', () => {
           "select enumlabel from pg_enum e join pg_type t on t.oid = e.enumtypid where t.typname = 'campaign_type' order by e.enumsortorder",
         )
         expect(values.rows.map((row) => row.enumlabel)).toEqual(['shipping', 'payback', 'visit'])
+
+        const importBatchStatuses = await client.query(
+          "select enumlabel from pg_enum e join pg_type t on t.oid = e.enumtypid where t.typname = 'application_import_batch_status' order by e.enumsortorder",
+        )
+        expect(importBatchStatuses.rows.map((row) => row.enumlabel)).toEqual(['completed', 'quarantined'])
       } finally {
         await client.end()
       }

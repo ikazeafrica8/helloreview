@@ -30,6 +30,13 @@ export {
   IDENTITY_PARTICIPANT_MESSAGES,
   IdentityAmbiguityService,
 } from './ambiguity.service.js'
+export { ApplicationCandidateLookupService } from './candidate-lookup.service.js'
+export type {
+  CandidateLookupInput,
+  CandidateLookupResult,
+  ParticipantSafeCandidateResult,
+} from './candidate-lookup.service.js'
+export { ApplicationParticipantBootstrapService } from './participant-bootstrap.service.js'
 export type {
   CampaignContext,
   IdentityCandidateLink,

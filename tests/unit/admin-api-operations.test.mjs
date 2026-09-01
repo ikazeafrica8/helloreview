@@ -91,6 +91,36 @@ describe('T106 object-derived command authorization', () => {
     ).rejects.toBeInstanceOf(AdminAuthorizationDeniedError)
     expect(human.assign).not.toHaveBeenCalled()
   })
+
+  test('derives selection authority and campaign scope from the verified invocation', async () => {
+    const pool = { query: vi.fn().mockResolvedValue({ rows: [{ campaign_id: campaignA, workflow_id: workflowId }] }) }
+    const selection = { recordManualDecision: vi.fn().mockResolvedValue({ id: eventId }) }
+    const service = new AdminCommandService(pool, {}, {}, {}, selection)
+    const command = {
+      workflowId,
+      recommendationId: eventId,
+      expectedWorkflowVersion: 2,
+      expectedRecommendationVersion: 1,
+      decision: 'selected',
+      reasonCode: 'MANUAL_SELECTION',
+      occurredAt: evaluatedAt,
+    }
+
+    await expect(service.recordSelectionDecision(invocation('cs_operator'), command)).rejects.toBeInstanceOf(
+      AdminAuthorizationDeniedError,
+    )
+    expect(selection.recordManualDecision).not.toHaveBeenCalled()
+
+    await service.recordSelectionDecision(invocation('senior_operator'), command)
+    expect(selection.recordManualDecision).toHaveBeenCalledWith({
+      ...command,
+      actorType: 'operator',
+      actorReference: 'operator:senior_operator:104',
+      authorized: true,
+      scopeCode: 'WORKFLOW',
+      correlationId: 'cor:admin:104',
+    })
+  })
 })
 
 describe('T108 idempotent retry receipt', () => {

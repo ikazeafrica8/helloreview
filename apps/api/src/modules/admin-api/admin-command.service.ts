@@ -12,6 +12,11 @@ import {
   type HumanReviewReturnValidation,
 } from '../human-tasks/index.js'
 import {
+  SelectionService,
+  type ManualSelectionDecisionRecord,
+  type RecordManualSelectionDecisionInput,
+} from '../selection/index.js'
+import {
   WorkflowCorrectionService,
   type ApplyWorkflowCorrectionInput,
   type WorkflowCorrectionOutcome,
@@ -41,6 +46,7 @@ export class AdminCommandService {
     private readonly humanTasks: HumanReviewOperationsService,
     private readonly approvals: BusinessApprovalService,
     private readonly corrections: WorkflowCorrectionService,
+    private readonly selection: SelectionService,
   ) {}
 
   async assignHumanTask(
@@ -106,6 +112,40 @@ export class AdminCommandService {
     return this.approvals.record({
       ...command,
       approverReference: invocation.principal.principalReference,
+      correlationId: invocation.correlationId,
+    })
+  }
+
+  async recordSelectionDecision(
+    invocation: AdminInvocation,
+    command: Readonly<{
+      workflowId: string
+      recommendationId: string | null
+      expectedWorkflowVersion: number
+      expectedRecommendationVersion: number | null
+      decision: RecordManualSelectionDecisionInput['decision']
+      reasonCode: string
+      occurredAt: Date
+    }>,
+  ): Promise<ManualSelectionDecisionRecord> {
+    const scope = await this.workflowScope(command.workflowId)
+    authorizeAdminInvocation(invocation, 'overrides.approve', scope.campaignId)
+    if (
+      command.decision !== 'revoked' &&
+      (command.recommendationId === null || command.expectedRecommendationVersion === null)
+    )
+      throw new AdminCommandScopeError('ADMIN_SELECTION_RECOMMENDATION_REQUIRED')
+    if (
+      command.decision === 'revoked' &&
+      (command.recommendationId !== null || command.expectedRecommendationVersion !== null)
+    )
+      throw new AdminCommandScopeError('ADMIN_SELECTION_REVOCATION_EVIDENCE_INVALID')
+    return this.selection.recordManualDecision({
+      ...command,
+      actorType: 'operator',
+      actorReference: invocation.principal.principalReference,
+      authorized: true,
+      scopeCode: 'WORKFLOW',
       correlationId: invocation.correlationId,
     })
   }

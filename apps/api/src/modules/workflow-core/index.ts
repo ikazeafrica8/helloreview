@@ -1,6 +1,12 @@
 export { WorkflowCoreModule } from './workflow-core.module.js'
 export { WorkflowInstanceService, WORKFLOW_ORIGIN_DIMENSIONS } from './workflow-instance.service.js'
 export type { CreateWorkflowInput } from './workflow-instance.service.js'
+export type { WorkflowRecord } from './workflow-record.js'
+export { ApplicationWorkflowBootstrapService } from './application-workflow-bootstrap.service.js'
+export type {
+  BootstrapApplicationWorkflowInput,
+  BootstrapApplicationWorkflowOutcome,
+} from './application-workflow-bootstrap.service.js'
 export { WorkflowTransitionService, isPauseBlockingTransition } from './workflow-transition.service.js'
 export type { ApplyWorkflowTransitionInput, WorkflowTransitionOutcome } from './workflow-transition.service.js'
 export {
