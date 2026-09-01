@@ -93,6 +93,10 @@ jobs:
       - name: Start local infrastructure
         run: pnpm services:up
 
+      - name: Prepare application database
+        if: matrix.name == 'Core tests'
+        run: pnpm db:migrate
+
       - name: Run ${{ matrix.name }}
         run: ${{ matrix.command }}
 
