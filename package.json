@@ -40,7 +40,7 @@
     "test:integration": "pnpm run build:fresh && vitest run --project integration",
     "test:security": "pnpm run build:fresh && vitest run --project security",
     "test:e2e": "pnpm run build:fresh && vitest run --project e2e",
-    "test:operator-e2e": "pnpm --filter @helloreview/admin build && node tools/operator-console-e2e.mjs",
+    "test:operator-e2e": "pnpm run build:fresh && node tools/operator-console-e2e.mjs",
     "test:coverage": "pnpm run build:fresh && vitest run --coverage",
     "eval:ai": "pnpm run build:fresh && node tools/evaluate-ai.mjs",
     "eval:ocr": "pnpm run build:fresh && node tools/evaluate-ocr.mjs",
