@@ -31,6 +31,8 @@ export type InboxRelayOptions = Readonly<{
   db: DbClient
   queue: Queue
   logger: Logger
+  /** Only event types whose complete worker handler is currently enabled. */
+  eventTypes: readonly string[]
   /**
    * How old a `received` row must be before the relay touches it.
    *
@@ -78,6 +80,7 @@ export const relayStrandedEvents = async (options: InboxRelayOptions): Promise<R
   const graceMs = options.graceMs ?? DEFAULT_GRACE_MS
   const batchSize = options.batchSize ?? DEFAULT_BATCH_SIZE
   const maxPerPass = options.maxPerPass ?? DEFAULT_MAX_PER_PASS
+  if (options.eventTypes.length === 0) throw new Error('inbox relay requires at least one enabled event type')
 
   let scanned = 0
   let enqueued = 0
@@ -90,11 +93,12 @@ export const relayStrandedEvents = async (options: InboxRelayOptions): Promise<R
       `SELECT id, event_type, external_event_id, source, correlation_id, received_at
          FROM event_inbox
         WHERE status = 'received'
+          AND event_type = ANY($4::text[])
           AND received_at < now() - ($1::bigint * interval '1 millisecond')
           AND ($3::uuid IS NULL OR id > $3::uuid)
         ORDER BY id
         LIMIT $2`,
-      [graceMs, Math.min(batchSize, maxPerPass - scanned), cursor ?? null],
+      [graceMs, Math.min(batchSize, maxPerPass - scanned), cursor ?? null, options.eventTypes],
     )
 
     if (rows.length === 0) break

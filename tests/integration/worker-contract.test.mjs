@@ -42,11 +42,9 @@ const parseEnv = (text) => {
  * expected line appears — this asserts on boot behaviour, not on shutdown, which the drain test
  * covers by calling stop() directly.
  *
- * REDIS_URL is isolated by default. Today `HANDLERS` is empty so this worker binds nothing and
- * could not consume a job if it tried; from T27 onward it will bind real processors, and a boot
- * test that quietly ran them against the developer's own queues would process real work as a side
- * effect of `pnpm test`. Isolating now means that never becomes true. `overrides` still wins, so
- * the unreachable-Redis test below can supply its own deliberately broken URL.
+ * REDIS_URL is isolated because the worker now binds the approved internal import processor. A boot
+ * test must never consume jobs from the developer's queues. `overrides` still wins, so the
+ * unreachable-Redis test below can supply its own deliberately broken URL.
  */
 const runWorker = async (overrides, until) => {
   const { isolatedRedisUrl } = await import('../../packages/testing/dist/index.js')
@@ -192,7 +190,11 @@ describe('worker app', () => {
     // writeable" against a perfectly healthy Redis — the runtime tests all passed regardless.
     const result = await runWorker({}, /ready —/)
     assert.match(result.output, /connected to redis/, `worker never reported connecting:\n${result.output}`)
-    assert.match(result.output, /ready —/, `worker never reported ready:\n${result.output}`)
+    assert.match(
+      result.output,
+      /ready — 1 processor\(s\): process-inbound-event/,
+      `worker did not bind only the approved internal processor:\n${result.output}`,
+    )
   })
 
   test('the worker refuses to start against an unreachable Redis', async () => {

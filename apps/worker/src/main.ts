@@ -2,7 +2,7 @@ import { Redis } from 'ioredis'
 import { ALL_QUEUE_NAMES, QUEUE_NAMES } from '@helloreview/contracts'
 import { readEnvironment, loadWorkerConfig, ConfigurationError } from '@helloreview/config'
 import { createLogger } from '@helloreview/observability'
-import { HANDLERS } from './processors/index.js'
+import { APPROVED_INTERNAL_EVENT_TYPES, createWorkerHandlers } from './processors/index.js'
 import { createWorkerRuntime, createQueue } from './runtime.js'
 import { createDbClient } from '@helloreview/db'
 import { startInboxRelay } from './relay/inbox-relay.js'
@@ -46,28 +46,34 @@ const bootstrap = async (): Promise<void> => {
   await verifyRedis(config.redisUrl)
   logger.info('connected to redis', { operation: 'worker.boot', result: 'ok' })
 
+  const db = createDbClient(config.databaseUrl, 2)
+  const handlers = createWorkerHandlers(db)
+
   // Derived by filtering the registry rather than casting Object.keys(): the cast would be a lie
   // the type checker cannot verify, and it is exactly what @typescript-eslint/no-unsafe-type-assertion
   // exists to catch. ALL_QUEUE_NAMES is already typed, so filtering it needs no assertion at all.
-  const queues = ALL_QUEUE_NAMES.filter((name) => HANDLERS[name] !== undefined)
-  const runtime = createWorkerRuntime({ redisUrl: config.redisUrl, queues, handlers: HANDLERS })
+  const queues = ALL_QUEUE_NAMES.filter((name) => handlers[name] !== undefined)
+  const runtime = createWorkerRuntime({ redisUrl: config.redisUrl, queues, handlers })
   await runtime.start()
 
   // THE INBOX RELAY. The accept path's inline enqueue is a latency optimisation; this is the
   // correctness guarantee — see relay/inbox-relay.ts. It runs whether or not any processor is
   // registered, because a stranded row must be re-queued now even if nothing consumes the queue
   // until T27: the job waiting is the difference between a recoverable backlog and a silent loss.
-  const db = createDbClient(config.databaseUrl, 2)
   const relayQueue = createQueue(config.redisUrl, QUEUE_NAMES.PROCESS_INBOUND_EVENT)
-  const relay = startInboxRelay({ db, queue: relayQueue, logger })
+  const relay = startInboxRelay({
+    db,
+    queue: relayQueue,
+    logger,
+    eventTypes: APPROVED_INTERNAL_EVENT_TYPES,
+  })
   logger.info('inbox relay started', { operation: 'inbox_relay.start', result: 'ok' })
 
-  logger.info(
-    queues.length === 0
-      ? 'ready — 0 concrete provider processors registered; see src/processors/index.ts'
-      : `ready — ${String(queues.length)} processor(s): ${queues.join(', ')}`,
-    { operation: 'worker.ready', result: 'ok', count: queues.length },
-  )
+  logger.info(`ready — ${String(queues.length)} processor(s): ${queues.join(', ')}`, {
+    operation: 'worker.ready',
+    result: 'ok',
+    count: queues.length,
+  })
 
   /**
    * Hold the event loop open.

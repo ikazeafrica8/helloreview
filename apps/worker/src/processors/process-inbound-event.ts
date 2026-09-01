@@ -219,10 +219,12 @@ export const createProcessInboundEventHandler = (
       }
       const eventType = approvedEventType(event.eventType)
       if (eventType === undefined) {
-        return fail(
-          new InboundDispatchError(INBOUND_DISPATCH_REASON.HANDLER_MISSING, terminal),
-          INBOUND_DISPATCH_REASON.HANDLER_MISSING,
-        )
+        // External Kakao/Aligo/provider events already share this durable inbox and queue, but their
+        // participant journeys are not approved yet. A bound import processor must not turn that
+        // expected backlog into failures or dead letters. Leave the authoritative row `received`;
+        // the relay is filtered to approved event types and will pick it up when its handler is
+        // deliberately added to this registry.
+        return undefined
       }
       const handler = options.handlers[eventType]
       if (handler === undefined) {

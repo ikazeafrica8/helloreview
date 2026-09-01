@@ -39,7 +39,10 @@ const recordingLogger = () => {
  * `receivedAtOffsetMs` ages the row so the grace period can be exercised in both directions
  * without sleeping.
  */
-const strandRow = async (client, { externalEventId, receivedAtOffsetMs = -120_000 }) => {
+const strandRow = async (
+  client,
+  { externalEventId, receivedAtOffsetMs = -120_000, eventType = 'application.import.completed' },
+) => {
   const { rows } = await client.query(
     `INSERT INTO event_inbox
        (source, external_event_id, event_type, payload_hash, payload, occurred_at, received_at, correlation_id)
@@ -48,7 +51,7 @@ const strandRow = async (client, { externalEventId, receivedAtOffsetMs = -120_00
     [
       'helloreview_website',
       externalEventId,
-      'application.created',
+      eventType,
       'a'.repeat(64),
       JSON.stringify({ applicationId: 'app_1' }),
       receivedAtOffsetMs,
@@ -81,7 +84,14 @@ const withRelay = async (postgresUrl, redisUrl, body) => {
         db,
         queue,
         logger,
-        run: async (options = {}) => relayStrandedEvents({ db, queue, logger, ...options }),
+        run: async (options = {}) =>
+          relayStrandedEvents({
+            db,
+            queue,
+            logger,
+            eventTypes: ['application.import.completed'],
+            ...options,
+          }),
       }),
     )
   } finally {
@@ -178,6 +188,34 @@ describe('inbox relay', () => {
 
           expect(outcome).toEqual({ scanned: 0, enqueued: 0 })
           expect(await relay.queue.getWaitingCount()).toBe(0)
+        })
+      })
+    })
+  })
+
+  test('leaves an unapproved external event stored without repeatedly re-queueing it', async () => {
+    const { withPostgres, withRedis } = await importBuilt('packages/testing/dist/index.js')
+    const { applyMigrations, createDbClient } = await importBuilt('packages/db/dist/index.js')
+
+    await withPostgres(async (postgres) => {
+      await withRedis(async (redis) => {
+        await applyMigrations(postgres.url)
+        const seed = createDbClient(postgres.url, 1)
+        await strandRow(seed, { externalEventId: 'evt_approved_import' })
+        const externalId = await strandRow(seed, {
+          externalEventId: 'evt_external_deferred',
+          eventType: 'kakao.message.received',
+        })
+        await seed.close()
+
+        await withRelay(postgres.url, redis.url, async (relay) => {
+          expect(await relay.run()).toEqual({ scanned: 1, enqueued: 1 })
+          expect(await relay.queue.getWaitingCount()).toBe(1)
+
+          const verify = createDbClient(postgres.url, 1)
+          const stored = await verify.query(`SELECT status FROM event_inbox WHERE id = $1`, [externalId])
+          await verify.close()
+          expect(stored.rows[0]).toEqual({ status: 'received' })
         })
       })
     })

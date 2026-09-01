@@ -278,8 +278,9 @@ database and its migration/import/bootstrap integration cases pass. The task rem
 authenticated upload transport and the non-import reconciliation actions listed below.
 An authoritative imported application now initializes its workflow at `application_completed` and
 creates one replay-safe `BEGIN_IDENTITY_MATCHING` side effect; generic/non-import workflow creation
-still starts at `not_applied`. T138 must still safely bind completed intents at worker startup before
-any automatic journey runs.
+still starts at `not_applied`. T138 now binds the completed internal import intent at worker startup,
+while the independent workflow-side-effect scheduler remains disabled until its complete supported
+effect set and retry path are safe.
 
 Status: **Proposed; preserves the approved manual CSV pilot.**
 
@@ -314,8 +315,10 @@ event registration. The minimized `application.import.completed` handler validat
 and invokes the shared `@helloreview/workflow-runtime` operation through a worker-owned adapter.
 Replay tests prove that initialization evidence and its protected audit are written once. T138
 remains open: `PROCESS_INBOUND_EVENT` also carries external events whose participant journeys are not
-implemented yet, so binding only the import handler would consume those events prematurely. Startup
-registration stays disabled until that full queue contract is covered; the independent
+implemented yet. The worker now binds the approved import handler while leaving unsupported external
+events authoritatively `received`; the relay queries only enabled event types, so those events are
+available when their complete journey is approved instead of being guessed, failed, or dead-lettered.
+The independent
 `workflow_side_effects` dispatcher now has a transaction-bound core that claims pending rows with
 `FOR UPDATE SKIP LOCKED`, uses the canonical shared effect-code registry, suppresses stale or
 human-owned effects, cancels closed-campaign effects, leaves paused work pending, and rolls handler
@@ -330,9 +333,12 @@ that canonical policy instead of owning a second copy. The first deterministic s
 advances only an authoritative import-created application through verified application matching and
 into `review_pending`. A second transaction-bound handler records the imported ranking facts as one
 deduplicated `human_review` recommendation, without changing selection state or evaluating the
-unapproved freshness/region thresholds. Non-import matching work remains pending for candidate
-resolution, and queue startup remains disabled while the rest of the effect registry has no concrete
-handlers.
+unapproved freshness/region thresholds. A real PostgreSQL/Redis worker test proves one queued import
+intent creates exactly one `application_completed` workflow and one pending
+`BEGIN_IDENTITY_MATCHING` effect without a selection decision. Non-import matching work remains
+pending, and the workflow-side-effect scheduler remains disabled while the rest of the effect
+registry has no concrete handlers. No provider, AI/OCR, outbound sender, or automatic selection path
+is activated.
 
 Status: **Proposed; production provider binding remains disabled until T147–T150.**
 
@@ -341,7 +347,7 @@ then invokes narrow domain services under idempotency, version, pause, and owner
 
 **Acceptance criteria:**
 
-- [ ] `PROCESS_INBOUND_EVENT` has a real dispatcher for every approved internal event type and marks
+- [x] `PROCESS_INBOUND_EVENT` has a real dispatcher for every approved internal event type and marks
       inbox outcomes without swallowing failures.
 - [ ] Pending `workflow_side_effects` are claimed atomically, retried with the same logical key, and
       completed/suppressed/cancelled exactly once.
