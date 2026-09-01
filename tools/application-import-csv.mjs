@@ -56,7 +56,9 @@ const parseArguments = (args) => {
 const printFailure = (error) => {
   if (error instanceof ManualCsvImportError) {
     const at = error.rowNumber === undefined ? '' : ` record=${String(error.rowNumber)}`
-    process.stderr.write(`Import rejected: reason=${error.reasonCode}${at}\n`)
+    const batch = error.evidence.batchId === undefined ? '' : ` quarantine_batch=${error.evidence.batchId}`
+    const replayed = error.evidence.replayed === undefined ? '' : ` replayed=${String(error.evidence.replayed)}`
+    process.stderr.write(`Import rejected: reason=${error.reasonCode}${at}${batch}${replayed}\n`)
     return
   }
   if (error instanceof ConfigurationError) {

@@ -16,6 +16,7 @@ export type ApplicantMatchingEvidence =
   | Readonly<{ kind: 'phone_multiple_campaigns'; candidateApplicationIds: readonly string[] }>
   | Readonly<{ kind: 'secret_comment_screenshot' }>
   | Readonly<{ kind: 'blog_campaign'; applicationId: string; approvedPolicy: 'weak' | 'strong' }>
+  | Readonly<{ kind: 'multiple_candidates'; candidateApplicationIds: readonly string[] }>
   | Readonly<{ kind: 'no_candidate_after_reconciliation' }>
   | Readonly<{ kind: 'participant_link_conflict'; applicationId: string }>
 
@@ -27,6 +28,7 @@ export type ApplicantMatchMethod =
   | 'normalized_phone_multiple_campaigns'
   | 'secret_comment_screenshot'
   | 'blog_url_campaign'
+  | 'multiple_candidates'
   | 'reconciliation'
   | 'existing_participant_link'
 
@@ -38,6 +40,7 @@ export type ApplicantEvidenceCategory =
   | 'campaign_context'
   | 'supporting_only'
   | 'blog_campaign'
+  | 'ambiguous_evidence'
   | 'no_candidate'
   | 'ownership_conflict'
 
@@ -150,6 +153,16 @@ export const matchApplicant = (evidence: ApplicantMatchingEvidence, decidedAt: D
         candidateApplicationIds: [evidence.applicationId],
         automaticLinkAllowed: false,
         nextAction: 'additional_verification',
+      })
+    case 'multiple_candidates':
+      return result(decidedAt, {
+        category: 'ambiguous',
+        method: 'multiple_candidates',
+        evidenceCategory: 'ambiguous_evidence',
+        reasonCode: IDENTITY_RESOLUTION_REASON.MULTIPLE_CANDIDATES,
+        candidateApplicationIds: evidence.candidateApplicationIds,
+        automaticLinkAllowed: false,
+        nextAction: 'human_review',
       })
     case 'no_candidate_after_reconciliation':
       return result(decidedAt, {

@@ -107,6 +107,21 @@ describe('manual application CSV pilot fallback', () => {
         })
         expect(replay).toMatchObject({ batchId: first.batchId, replayed: true, appliedCount: 1 })
 
+        const firstIntent = await pool.query(
+          `SELECT event_type, occurred_at, received_at, payload
+             FROM event_inbox
+            WHERE source = 'helloreview_manual_import' AND external_event_id = $1`,
+          [first.batchId],
+        )
+        expect(firstIntent.rows).toHaveLength(1)
+        expect(firstIntent.rows[0]).toMatchObject({
+          event_type: 'application.import.completed',
+          occurred_at: firstExportedAt,
+          received_at: firstImportedAt,
+          payload: { batchId: first.batchId, sourceSystem: 'helloreview_website' },
+        })
+        expect(firstIntent.rows[0].payload.applicationIds).toHaveLength(1)
+
         const unchangedLaterExport = await importer.importCsv({
           content: csv({ updatedAt: '2026-08-24T01:12:00Z' }),
           sourceSystem: 'helloreview_website',
@@ -160,6 +175,89 @@ describe('manual application CSV pilot fallback', () => {
              (SELECT count(*)::integer FROM application_import_batches) AS batches`,
         )
         expect(evidence.rows[0]).toMatchObject({ changes: 2, batches: 4 })
+
+        const intents = await pool.query(
+          `SELECT count(*)::integer AS count
+             FROM event_inbox
+            WHERE source = 'helloreview_manual_import' AND event_type = 'application.import.completed'`,
+        )
+        expect(intents.rows[0]).toMatchObject({ count: 4 })
+
+        let firstQuarantineError
+        const unsupportedContent = csv({
+          applicationId: 'unsupported-status-app',
+          status: 'website-code-2',
+          updatedAt: '2026-08-24T01:24:00Z',
+        })
+        const unsupportedExportedAt = new Date('2026-08-24T01:25:00Z')
+        try {
+          await importer.importCsv({
+            content: unsupportedContent,
+            sourceSystem: 'helloreview_website',
+            exportedAt: unsupportedExportedAt,
+            importedAt: new Date('2026-08-24T01:26:00Z'),
+          })
+        } catch (error) {
+          firstQuarantineError = error
+        }
+        expect(firstQuarantineError).toMatchObject({
+          reasonCode: APPLICATION_IMPORT_FAILURES.UNSUPPORTED_STATUS,
+          rowNumber: 2,
+          evidence: { rowCount: 1, replayed: false },
+        })
+        expect(firstQuarantineError.evidence.batchId).toEqual(expect.any(String))
+
+        let replayedQuarantineError
+        try {
+          await importer.importCsv({
+            content: unsupportedContent,
+            sourceSystem: 'helloreview_website',
+            exportedAt: unsupportedExportedAt,
+            importedAt: new Date('2026-08-24T01:27:00Z'),
+          })
+        } catch (error) {
+          replayedQuarantineError = error
+        }
+        expect(replayedQuarantineError).toMatchObject({
+          reasonCode: APPLICATION_IMPORT_FAILURES.UNSUPPORTED_STATUS,
+          rowNumber: 2,
+          evidence: {
+            batchId: firstQuarantineError.evidence.batchId,
+            rowCount: 1,
+            replayed: true,
+          },
+        })
+
+        const quarantine = await pool.query(
+          `SELECT status, quarantine_reason_code, quarantine_row_number, row_count,
+                  applied_count, duplicate_count, stale_count
+             FROM application_import_batches
+            WHERE id = $1`,
+          [firstQuarantineError.evidence.batchId],
+        )
+        expect(quarantine.rows).toHaveLength(1)
+        expect(quarantine.rows[0]).toMatchObject({
+          status: 'quarantined',
+          quarantine_reason_code: APPLICATION_IMPORT_FAILURES.UNSUPPORTED_STATUS,
+          quarantine_row_number: 2,
+          row_count: 1,
+          applied_count: 0,
+          duplicate_count: 0,
+          stale_count: 0,
+        })
+        const quarantinedProjection = await pool.query(
+          `SELECT count(*)::integer AS count
+             FROM applications
+            WHERE source_application_id = 'unsupported-status-app'`,
+        )
+        expect(quarantinedProjection.rows[0]).toMatchObject({ count: 0 })
+        const quarantinedIntent = await pool.query(
+          `SELECT count(*)::integer AS count
+             FROM event_inbox
+            WHERE source = 'helloreview_manual_import' AND external_event_id = $1`,
+          [firstQuarantineError.evidence.batchId],
+        )
+        expect(quarantinedIntent.rows[0]).toMatchObject({ count: 0 })
 
         const freshness = await pool.query(
           `SELECT last_attempted_at, last_successful_reconciliation_at

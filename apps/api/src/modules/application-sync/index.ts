@@ -22,5 +22,6 @@ export {
   APPLICATION_IMPORT_HEADERS,
   APPLICATION_IMPORT_MAX_ROWS,
   APPLICATION_IMPORT_FAILURES,
+  APPLICATION_IMPORT_INTENT,
 } from './manual-csv-import.js'
 export type { ParsedApplicationCsvRow, ManualCsvImportOutcome, ApplicationImportFailure } from './manual-csv-import.js'

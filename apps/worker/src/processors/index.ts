@@ -31,3 +31,45 @@ export { createOutboundNotificationStore } from './outbound-store.js'
 export type { ClaimedOutboundNotification, OutboundNotificationStore } from './outbound-store.js'
 export { createAuditGuidelineDeliveriesHandler } from './audit-guideline-deliveries.js'
 export type { GuidelineDeliveryAuditor } from './audit-guideline-deliveries.js'
+export {
+  APPROVED_INTERNAL_EVENT_TYPES,
+  INBOUND_DISPATCH_REASON,
+  InboundDispatchError,
+  assertInboundHandlerCoverage,
+  createApplicationImportCompletedHandler,
+  createProcessInboundEventHandler,
+} from './process-inbound-event.js'
+export type {
+  ApprovedInternalEventType,
+  ImportedApplicationWorkflowBootstrapper,
+  InboundEventContext,
+  InboundEventHandler,
+  InboundEventHandlers,
+} from './process-inbound-event.js'
+export { applicationImportWorkflowBootstrapper } from './application-import-workflow-bootstrapper.js'
+export {
+  WORKFLOW_SIDE_EFFECT_DISPATCH_REASON,
+  WorkflowSideEffectDispatchError,
+  assertWorkflowSideEffectHandlerCoverage,
+  createWorkflowSideEffectDispatcher,
+} from './workflow-side-effects.js'
+export type {
+  ClaimedWorkflowSideEffect,
+  WorkflowSideEffectDispatchResult,
+  WorkflowSideEffectDispatcher,
+  WorkflowSideEffectHandler,
+  WorkflowSideEffectHandlerOutcome,
+  WorkflowSideEffectHandlers,
+} from './workflow-side-effects.js'
+export {
+  DIRECT_APPLICATION_IDENTITY_REASON,
+  DirectApplicationIdentityError,
+  createDirectApplicationIdentityHandler,
+  createDirectApplicationSideEffectHandlers,
+} from './direct-application-identity.js'
+export {
+  MANUAL_SELECTION_RECOMMENDATION_REASON,
+  ManualSelectionRecommendationError,
+  createManualSelectionRecommendationHandler,
+  createManualSelectionRecommendationSideEffectHandlers,
+} from './manual-selection-recommendation.js'
